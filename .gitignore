@@ -50,6 +50,7 @@ yarn-error.log*
 .claude/settings.local.json
 .claude/*
 .atl
+.mcp.json
 
 # --- OS / editors ---
 .DS_Store
