@@ -10,8 +10,8 @@ import pytest
 
 _PACHAPP_PREFIX = "PACHAPP_"
 
-# `pachapp_api.main` builds its module-level `app` eagerly at import time (by
-# design: it fails fast on bad settings), and `pachapp_shared.settings`
+# `api.main` builds its module-level `app` eagerly at import time (by
+# design: it fails fast on bad settings), and `shared.settings`
 # resolves its `.env` file path at *module import* time. Both must be set
 # before any app code is imported/collected, so that the test suite never
 # reads the developer's real repo-root `.env` (R3-test-suite-nonhermetic) and
@@ -32,7 +32,7 @@ os.environ.setdefault("PACHAPP_LLM_API_KEY", "test-collection-time-key")
 def _clean_pachapp_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure ambient PACHAPP_* env vars and the settings cache never leak
     between tests."""
-    from pachapp_shared.settings import get_settings
+    from shared.settings import get_settings
 
     get_settings.cache_clear()
     for key in list(os.environ):

@@ -1,4 +1,4 @@
-"""Guards DEV-REQ-002: pachapp_engine must stay pure (no I/O)."""
+"""Guards DEV-REQ-002: engine must stay pure (no I/O)."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ FORBIDDEN_MODULES = {"sqlite3", "sqlmodel", "httpx", "sqlalchemy"}
 
 
 def _iter_engine_source_files() -> list[Path]:
-    import pachapp_engine
+    import engine
 
-    package_dir = Path(pachapp_engine.__file__).parent
+    package_dir = Path(engine.__file__).parent
     return sorted(package_dir.rglob("*.py"))
 
 
@@ -27,9 +27,9 @@ def _imported_module_roots(source: str) -> set[str]:
     return roots
 
 
-def test_pachapp_engine_has_no_io_imports() -> None:
+def test_engine_has_no_io_imports() -> None:
     source_files = _iter_engine_source_files()
-    assert source_files, "expected at least pachapp_engine/__init__.py"
+    assert source_files, "expected at least engine/__init__.py"
 
     for path in source_files:
         offending = _imported_module_roots(path.read_text()) & FORBIDDEN_MODULES

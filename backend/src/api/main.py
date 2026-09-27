@@ -1,6 +1,6 @@
 """FastAPI application entrypoint for pachapp.
 
-`uvicorn pachapp_api.main:app` imports the module-level `app` below, which is
+`uvicorn api.main:app` imports the module-level `app` below, which is
 built eagerly via `create_app()` so misconfiguration (e.g. an invalid
 `.env`/environment) fails fast with a clear error instead of starting a
 half-working server.
@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from pachapp_shared.settings import Settings, get_settings
+from shared.settings import Settings, get_settings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

@@ -2,10 +2,10 @@
 
 Used by `make gen-client` (see T3) to feed `openapi-typescript`. Requires
 valid (dummy is fine) LLM settings env vars, since `create_app()` builds the
-full app via `pachapp_shared.settings.get_settings()`.
+full app via `shared.settings.get_settings()`.
 
 Usage:
-    uv run python -m pachapp_api.export_openapi [output_path]
+    uv run python -m api.export_openapi [output_path]
 
 With no `output_path`, the schema is printed to stdout.
 """
@@ -16,7 +16,7 @@ import json
 import sys
 from pathlib import Path
 
-from pachapp_api.main import create_app
+from api.main import create_app
 
 
 def export_openapi_json(output: Path | None = None) -> str:

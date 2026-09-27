@@ -23,10 +23,10 @@ pachapp/
     pyproject.toml
     uv.lock
     src/
-      pachapp_api/        # App FastAPI: routers, schemas, dependencias
-      pachapp_worker/      # Proceso worker: pasos del pipeline, job runner
-      pachapp_engine/      # Motor de outfits: funciones puras, sin I/O
-      pachapp_shared/      # Modelos SQLModel, settings Pydantic, enums, repositorios
+      api/        # App FastAPI: routers, schemas, dependencias
+      worker/      # Proceso worker: pasos del pipeline, job runner
+      engine/      # Motor de outfits: funciones puras, sin I/O
+      shared/      # Modelos SQLModel, settings Pydantic, enums, repositorios
     alembic/
       env.py
       versions/
@@ -50,9 +50,9 @@ pachapp/
   .env.example
 ```
 
-**DEV-REQ-001.** El backend DEBE ser un único proyecto `uv` (un solo `pyproject.toml`/`uv.lock` bajo `backend/`) que contenga los paquetes `pachapp_api`, `pachapp_worker`, `pachapp_engine` y `pachapp_shared`, de modo que la API y el worker compartan un mismo virtualenv y un mismo conjunto de definiciones SQLModel/Pydantic. *(valor por defecto, ajustable — una alternativa sería un workspace `uv` con `pyproject.toml` por paquete si el venv compartido genera conflictos de dependencias entre rembg/open_clip y FastAPI.)*
+**DEV-REQ-001.** El backend DEBE ser un único proyecto `uv` (un solo `pyproject.toml`/`uv.lock` bajo `backend/`) que contenga los paquetes `api`, `worker`, `engine` y `shared`, de modo que la API y el worker compartan un mismo virtualenv y un mismo conjunto de definiciones SQLModel/Pydantic. *(valor por defecto, ajustable — una alternativa sería un workspace `uv` con `pyproject.toml` por paquete si el venv compartido genera conflictos de dependencias entre rembg/open_clip y FastAPI.)*
 
-**DEV-REQ-002.** `pachapp_engine` NO DEBE contener I/O (ni sesión de BD ni cliente HTTP) para seguir siendo testeable como funciones puras según D1.
+**DEV-REQ-002.** `engine` NO DEBE contener I/O (ni sesión de BD ni cliente HTTP) para seguir siendo testeable como funciones puras según D1.
 
 **DEV-REQ-003.** La app DEBE ser un único proyecto Expo (React Native + TypeScript) en `app/`, usando Expo Router, con destino iOS/Android (Expo Go) y web (`react-native-web`).
 
@@ -84,8 +84,8 @@ El `Makefile` raíz es el único punto de entrada (D16). Semántica exacta:
 | Target | Semántica |
 | --- | --- |
 | `make install` | `cd backend && uv sync`; `cd app && npm install`. |
-| `make run` | Arranca la API: `cd backend && uv run uvicorn pachapp_api.main:app --reload --host $(PACHAPP_API_HOST) --port $(PACHAPP_API_PORT)`. |
-| `make run-worker` | Arranca el proceso worker: `cd backend && uv run python -m pachapp_worker.main`. Bucle de polling, carga los modelos ML al inicio. |
+| `make run` | Arranca la API: `cd backend && uv run uvicorn api.main:app --reload --host $(PACHAPP_API_HOST) --port $(PACHAPP_API_PORT)`. |
+| `make run-worker` | Arranca el proceso worker: `cd backend && uv run python -m worker.main`. Bucle de polling, carga los modelos ML al inicio. |
 | `make run-ui` | Arranca el servidor de desarrollo de Expo: `cd app && npx expo start`. Web accesible en `:8081`. |
 | `make test` | Ejecuta `cd backend && uv run pytest` y `cd app && npm test`. Falla si alguno falla. |
 | `make lint` | Ejecuta `ruff check backend/` y `npm --prefix app run lint`. |
@@ -100,7 +100,7 @@ El `Makefile` raíz es el único punto de entrada (D16). Semántica exacta:
 
 ## Claves de settings / `.env`
 
-Todas las claves se leen mediante un modelo `Settings` de `pydantic-settings` en `pachapp_shared`, con estos valores por defecto. *(Todos los valores siguientes son por defecto, ajustables.)*
+Todas las claves se leen mediante un modelo `Settings` de `pydantic-settings` en `shared`, con estos valores por defecto. *(Todos los valores siguientes son por defecto, ajustables.)*
 
 | Clave | Valor por defecto | Notas |
 | --- | --- | --- |

@@ -4,8 +4,8 @@ import threading
 import time
 from pathlib import Path
 
-from pachapp_shared.settings import Settings
-from pachapp_worker.main import run
+from shared.settings import Settings
+from worker.main import run
 
 
 def _fast_settings(tmp_path: Path) -> Settings:

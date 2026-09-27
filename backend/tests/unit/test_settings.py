@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from pachapp_shared.settings import Settings
+from shared.settings import Settings
 
 
 def _base_kwargs(tmp_path: Path) -> dict:

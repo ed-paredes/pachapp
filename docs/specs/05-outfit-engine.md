@@ -13,7 +13,7 @@ La persistencia de outfits (solo persisten las interacciones — 06-feedback-his
 ## Dependencias
 
 - Decisiones: D1 (motor en dos etapas), D17 (capas: `mid_layer`, N complementos, `outfit_item.layer`), D18 (reglas de color básicas), D19 (no afecta a esta spec directamente). D8 fue descartado en la iteración 1 (sin filtro ni puntuación por temporada) — ver "Cambios de decisión" más abajo.
-- Modelo de datos: `garment`, `outfit`, `outfit_item`, `setting` (02-data-model.md). `pachapp_engine` DEBE ser funciones puras sin I/O (DEV-REQ-002); el router de la API se encarga de obtener las entradas y de persistir ante la interacción.
+- Modelo de datos: `garment`, `outfit`, `outfit_item`, `setting` (02-data-model.md). `engine` DEBE ser funciones puras sin I/O (DEV-REQ-002); el router de la API se encarga de obtener las entradas y de persistir ante la interacción.
 
 ## Plantillas
 

@@ -12,7 +12,7 @@ import signal
 import threading
 from types import FrameType
 
-from pachapp_shared.settings import Settings, get_settings
+from shared.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 

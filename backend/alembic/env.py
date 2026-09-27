@@ -1,6 +1,6 @@
 """Alembic environment for pachapp.
 
-Uses `pachapp_shared.settings.get_settings().db_path` to build the SQLite
+Uses `shared.settings.get_settings().db_path` to build the SQLite
 URL (rather than `alembic.ini`'s `sqlalchemy.url`), and `SQLModel.metadata`
 as the migration target. `render_as_batch=True` is required for SQLite,
 which cannot ALTER most column properties in place.
@@ -17,7 +17,7 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
-from pachapp_shared.settings import get_settings
+from shared.settings import get_settings
 
 config = context.config
 

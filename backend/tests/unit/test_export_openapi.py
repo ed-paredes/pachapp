@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from pachapp_api.export_openapi import export_openapi_json
+from api.export_openapi import export_openapi_json
 
 
 def _set_dummy_llm_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

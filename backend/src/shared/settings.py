@@ -13,7 +13,7 @@ from pathlib import Path
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# backend/src/pachapp_shared/settings.py -> repo root is three parents up.
+# backend/src/shared/settings.py -> repo root is three parents up.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Overridable so the test suite never depends on the developer's real

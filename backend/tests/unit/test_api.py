@@ -4,8 +4,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from pachapp_api.main import create_app
-from pachapp_shared.settings import Settings
+from api.main import create_app
+from shared.settings import Settings
 
 
 def _settings(tmp_path: Path) -> Settings:

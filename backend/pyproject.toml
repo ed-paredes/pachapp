@@ -27,10 +27,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "src/pachapp_api",
-    "src/pachapp_worker",
-    "src/pachapp_engine",
-    "src/pachapp_shared",
+    "src/api",
+    "src/worker",
+    "src/engine",
+    "src/shared",
 ]
 
 [tool.ruff]
