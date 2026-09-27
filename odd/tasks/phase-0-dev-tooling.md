@@ -37,6 +37,15 @@ Mode: off. Source: no project/session TDD configuration found and none requested
   - Checks: `uv run ruff check`, `uv run ruff format --check`, `uv run ty check src`, `uv run pytest`.
   - Evidence (2026-09-28): uv sync ok; ruff check pass; ruff format --check pass; ty check src pass; pytest 14 passed (1 Starlette TestClient deprecation warning); `/mnt/d` data dir fails fast with the D14 message. Parent spot check re-ran pytest (14 passed) and ty (pass). ~667 authored lines (over the 400 heuristic; scaffold plus tests, not split artificially).
   - Notes: `EXPO_PUBLIC_API_BASE_URL` intentionally not in backend `Settings` (app-only, T2). OpenAPI offline export: `uv run python -m pachapp_api.export_openapi [path]` (for T3).
+  - Commit: `7f70aa9`. Review: assessed medium (`slice_budget_reached`), consent granted, 1 lens (reliability) → approved, acknowledged (lineage review-56e47b45f0245643, authority burned). Reviewed boundary advances to `7f70aa9`.
+- [x] **T1b — Fix non-blocking review findings from T1.** Route: delegated direct (settings, worker, tests). In scope because they are gaps against DEV-REQ-011 / DEV-REQ-014 already authorized in T1:
+  - R3-empty-secret-accepted: reject empty `llm_provider` / `llm_api_key` (DEV-REQ-011).
+  - R3-mnt-guard-bypass: apply the `/mnt` guard to explicit `db_path` and `images_root` too (D14).
+  - R3-poll-interval-unbounded: `worker_poll_interval_ms` (and other numeric settings where meaningful) must be > 0.
+  - R3-test-suite-nonhermetic: tests must not read the developer's repo-root `.env`; clear the `get_settings` cache between tests.
+  - R3-export-openapi-untested: test `export_openapi_json` (valid JSON, contains `/health`, creates parent dirs).
+  - Checks: same as T1.
+  - Evidence (2026-09-28): ruff format --check pass; ruff check pass; ty check src pass; pytest 34 passed. Parent replaced the writer's hermeticity test, which wrote a hostile `.env` into the repo root on every run, with a non-destructive check plus a tmp_path `.env` test. `PACHAPP_ENV_FILE` is a test-only override, not user-facing (keep it out of `.env.example`).
 - [ ] **T2 — App scaffold.** Route: delegated direct (writer trigger). Expo TS + Expo Router, strict tsconfig, eslint/prettier/jest configs, npm scripts `lint`, `format`, `typecheck`, `test`, one smoke test.
   - Checks: `npm run lint`, `npm run typecheck`, `npm test`.
 - [ ] **T3 — Makefile, .env.example, README.** Route: to be decided (likely inline, mechanical). All spec targets; `gen-client` exports OpenAPI without a running server (resolves the open question in 01-dev-tooling.md).
@@ -52,7 +61,7 @@ Forecast: ~600–800 authored changed lines (lockfiles and generated files exclu
 
 | Slice | Branch | Commits |
 | --- | --- | --- |
-| 1 | `feat/phase-0-1-backend` | T1 (pending) |
+| 1 | `feat/phase-0-1-backend` | T1 `7f70aa9`, T1b (pending) |
 | 2 | `feat/phase-0-2-app` | T2 (pending) |
 | 3 | `feat/phase-0-3-makefile` | T3 (pending) |
 
@@ -63,4 +72,4 @@ Forecast: ~600–800 authored changed lines (lockfiles and generated files exclu
 
 ## Next step
 
-T2 (app scaffold) on `feat/phase-0-2-app`, stacked on slice 1.
+T1b, then T2 (app scaffold) on `feat/phase-0-2-app`, stacked on slice 1.
