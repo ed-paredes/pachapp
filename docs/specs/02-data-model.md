@@ -90,7 +90,7 @@ class JobStep(str, Enum):
     consolidate = "consolidate"
 ```
 
-**DAT-REQ-001.** `GarmentCategory`, `GarmentPattern`, `GarmentStatus`, `Season`, `StyleTag`, `OutfitSlot`, `OutfitSource`, `JobStatus`, `JobStep` DEBEN ser `Enum` cerrados de Python, reutilizados de forma idéntica en `pachapp_shared` (BD), los esquemas de la API y el contrato del LLM (03-garment-ingestion.md) — una sola definición, importada en todas partes, nunca redefinida por capa.
+**DAT-REQ-001.** `GarmentCategory`, `GarmentPattern`, `GarmentStatus`, `Season`, `StyleTag`, `OutfitSlot`, `OutfitSource`, `JobStatus`, `JobStep` DEBEN ser `Enum` cerrados de Python, reutilizados de forma idéntica en `shared` (BD), los esquemas de la API y el contrato del LLM (03-garment-ingestion.md) — una sola definición, importada en todas partes, nunca redefinida por capa.
 
 ## `garment`
 

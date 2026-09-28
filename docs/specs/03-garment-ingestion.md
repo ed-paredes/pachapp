@@ -79,7 +79,7 @@ stateDiagram-v2
 
 **ING-REQ-015.** Petición: la imagen `img_cutout` más los nombres de `colors` (no los píxeles en crudo — el color ya está determinado localmente) más hasta 5 ejemplos few-shot extraídos de las filas más recientes de `ai_correction` (agrupadas por campo, más recientes primero). *(N=5 es un valor por defecto, ajustable.)*
 
-**ING-REQ-016.** La respuesta DEBE validarse contra este modelo Pydantic v2 de enums cerrados (compartido con los enums de `pachapp_shared`, DAT-REQ-001):
+**ING-REQ-016.** La respuesta DEBE validarse contra este modelo Pydantic v2 de enums cerrados (compartido con los enums de `shared`, DAT-REQ-001):
 
 ```python
 class GarmentAttributesLLM(BaseModel):
