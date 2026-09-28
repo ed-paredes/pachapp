@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from shared.settings import Settings
+from shared import settings as settings_module
+from shared.settings import Settings, get_settings
 
 
 def _base_kwargs(tmp_path: Path) -> dict:
@@ -151,7 +154,7 @@ def test_api_port_outside_valid_range_raises(tmp_path: Path, port: int) -> None:
 
 def test_repo_root_dotenv_never_read_by_default_settings() -> None:
     """Hermeticity proof (R3-test-suite-nonhermetic): tests/unit/conftest.py
-    points `PACHAPP_ENV_FILE` at a non-existent path before any app code is
+    points `PACHAPP_ENV_FILE` at the empty `os.devnull` before any app code is
     imported, so the developer's repo-root `.env` is never consulted by
     `Settings`. Checked without writing into the repository.
     """
@@ -159,7 +162,7 @@ def test_repo_root_dotenv_never_read_by_default_settings() -> None:
     env_file = Path(str(Settings.model_config["env_file"]))
 
     assert env_file != repo_root_env
-    assert not env_file.exists()
+    assert env_file == Path(os.devnull)
 
 
 def test_env_file_is_read_when_configured(tmp_path: Path) -> None:
@@ -173,3 +176,43 @@ def test_env_file_is_read_when_configured(tmp_path: Path) -> None:
             llm_model_id="claude-sonnet-5-20260101",
             llm_api_key="test-secret-key",
         )
+
+
+def test_get_settings_raises_when_env_file_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`get_settings()` fails fast (R3-missing-env-file-guard-untested) when
+    the file `_ENV_FILE` points at doesn't exist, naming the path.
+
+    `_ENV_FILE` is resolved once at module-import time from
+    `PACHAPP_ENV_FILE`, so it's monkeypatched directly on the module rather
+    than via the env var (which would have no effect after import).
+    """
+    missing_env_file = tmp_path / "does-not-exist" / ".env"
+    monkeypatch.setattr(settings_module, "_ENV_FILE", missing_env_file)
+
+    with pytest.raises(RuntimeError, match=re.escape(str(missing_env_file))):
+        get_settings()
+
+
+def test_get_settings_returns_settings_when_env_file_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An existing file at `_ENV_FILE` satisfies the guard and `get_settings()`
+    returns a `Settings` instance. `Settings`' own `env_file` (in
+    `model_config`) is frozen at test-collection time to `os.devnull` (see
+    conftest.py), so the required fields come from the process environment
+    here, not from this file's contents -- dotenv loading itself is covered
+    separately by `test_env_file_is_read_when_configured`.
+    """
+    existing_env_file = tmp_path / ".env"
+    existing_env_file.write_text("")
+    monkeypatch.setattr(settings_module, "_ENV_FILE", existing_env_file)
+    monkeypatch.setenv("PACHAPP_LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("PACHAPP_LLM_MODEL_ID", "claude-sonnet-5-20260101")
+    monkeypatch.setenv("PACHAPP_LLM_API_KEY", "test-secret-key")
+
+    result = get_settings()
+
+    assert isinstance(result, Settings)
+    assert result.llm_provider == "anthropic"

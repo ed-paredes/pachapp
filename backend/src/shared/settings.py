@@ -124,4 +124,9 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return the process-wide cached Settings instance."""
+    if not _ENV_FILE.exists():
+        raise RuntimeError(
+            f"Missing .env file at {str(_ENV_FILE)}. See docs/specs/01-dev-tooling.md "
+            "(settings table) and docs/architecture/c4.md (D14/D15)."
+        )
     return Settings()
