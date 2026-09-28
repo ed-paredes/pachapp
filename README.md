@@ -55,6 +55,9 @@ The backend reads the dotenv path via `PACHAPP_ENV_FILE`, which the Makefile
 exports (set to `$(ENV_FILE)`'s absolute path); `get_settings()` fails if that
 file doesn't exist.
 
+Precedence: command line > shell environment > `ENV_FILE` > Makefile
+defaults (matches pydantic-settings: process env beats its dotenv).
+
 ## Targets
 
 Generated from the Makefile's `## ` help comments; run `make help` for the

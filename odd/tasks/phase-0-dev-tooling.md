@@ -59,8 +59,16 @@ Mode: off. Source: no project/session TDD configuration found and none requested
   - Evidence so far (branch `feat/phase-0-3-makefile` created from `3d3f802`): with nvm Node, `make lint`, `make typecheck`, `make fmt-check`, `make test` (pytest 34 passed, jest 3 passed) all exit 0; `make gen-client` exit 0 and wrote `schema.ts` (tsc and eslint pass on it). Prettier flagged the generated file → added `src/api-client/schema.ts` to `app/.prettierignore`; format:check passes.
   - Route for README + spec + test: delegated direct (long-session backstop fired). Writer report `done`: ruff check/format pass, ty pass, pytest 38 passed (34 + 4 package-resolution cases), app format:check pass, README targets table matches `make help`. Parent spot check: pytest 38 passed; read back README, spec diff and test; fixed README ("shared (settings)", no models yet).
   - Commits: `88b2fe9` (user's settings.py change + test adaptation); Makefile/.env.example/README/spec/schema.ts/package test in `99f445a`.
-  - Review: assessed medium (`configuration_change` on `.env.example`), 11 paths / 384 lines since `3d3f802`, `review_due=false` (`under_budget`) — pending in the slice; boundary stays `3d3f802`.
+  - Review: assessed medium (`configuration_change` on `.env.example`), 11 paths / 384 lines since `3d3f802`, `review_due=false` (`under_budget`). Then reviewed at the user's request (2026-09-28, range `3d3f802..a0a1509`): consent granted, reliability lens → approved, acknowledged (lineage review-0a461b5476511b28). Boundary advances to `a0a1509`. Advisory findings (non-blocking): R3-missing-env-file-guard-untested (WARNING), R3-makefile-include-overrides-env (WARNING: dotenv values beat shell-exported vars; only command-line overrides win), R3-run-ui-empty-api-url (SUGGESTION), R3-package-resolution-none-file (SUGGESTION). Fixing them is pending a user decision.
   - Still manual/unverified: D13 phone/LAN check. `make install` from a clean clone: deferred by the user (2026-09-28), not needed for now.
+
+- [x] **T3b — Fix slice 3 review findings before opening PRs** (user decision 2026-09-28). Route: delegated direct (long-session backstop). On `feat/phase-0-3-makefile`.
+  - R3-missing-env-file-guard-untested: unit tests for `get_settings()` with a missing env file (RuntimeError naming the path) and an existing one.
+  - R3-makefile-include-overrides-env: shell-exported `PACHAPP_*` / `EXPO_PUBLIC_*` values must win over `ENV_FILE` (matches pydantic-settings precedence); command-line overrides still win; document it.
+  - R3-run-ui-empty-api-url: `make run-ui` fails clearly when `EXPO_PUBLIC_API_BASE_URL` is empty; quote the value.
+  - R3-package-resolution-none-file: assert `module.__file__ is not None` first.
+  - Checks: ruff, ty, pytest; `make lint`, `make typecheck`, `make fmt-check`, `make test`; `make -n` precedence checks.
+  - Evidence (2026-09-28): writer `done` — ruff/ty pass, pytest 40 passed, `make lint/typecheck/fmt-check/test` exit 0; precedence: dotenv 8000, shell 9999 wins, command line 7777 wins, shell `PACHAPP_LLM_API_KEY` reaches recipes; `run-ui` without the URL exits 1 before Expo. Parent spot check: pytest 40 passed, shell port 9999; fixed a Makefile comment that overclaimed `$` handling.
 
 ## Acceptance criteria
 

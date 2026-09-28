@@ -9,10 +9,29 @@ SHELL := /bin/bash
 
 ENV_FILE ?= .env
 
+# Precedence for PACHAPP_*/EXPO_PUBLIC_* settings: command line > shell
+# environment > ENV_FILE > Makefile defaults (matches pydantic-settings:
+# process env beats its dotenv). A command-line assignment is already immune
+# to a plain assignment (only `override` could replace it), but the plain
+# assignments loaded by `-include` below WOULD shadow a shell-exported
+# variable with the dotenv value, and Make would then export that dotenv
+# value to recipes -- the opposite of what we want. So snapshot the
+# shell-environment-origin PACHAPP_*/EXPO_PUBLIC_* variables before the
+# include and restore them after.
+_ENV_PRESERVE_NAMES := $(strip $(foreach v,$(.VARIABLES),$(if $(filter environment,$(origin $(v))),$(if $(filter-out PACHAPP_ENV_FILE,$(filter PACHAPP_% EXPO_PUBLIC_%,$(v))),$(v)))))
+$(foreach v,$(_ENV_PRESERVE_NAMES),$(eval _ENV_STASH_$(v) := $(value $(v))))
+
 # The backend reads this path (shared/settings.py). The Makefile also includes
 # the file so host, port and the app's API URL are available here.
+# PACHAPP_ENV_FILE is deliberately excluded from the preserve/restore above:
+# ENV_FILE stays authoritative even if PACHAPP_ENV_FILE is also exported in
+# the shell.
 export PACHAPP_ENV_FILE := $(abspath $(ENV_FILE))
 -include $(ENV_FILE)
+
+# Restore the shell-environment values that -include just shadowed. As with
+# any environment variable in Make, a `$` inside a value is expanded.
+$(foreach v,$(_ENV_PRESERVE_NAMES),$(eval export $(v) := $(value _ENV_STASH_$(v))))
 
 PACHAPP_API_HOST ?= 0.0.0.0
 PACHAPP_API_PORT ?= 8000
@@ -47,7 +66,11 @@ run-worker: ## Start the processing worker
 	$(BACKEND) uv run python -m worker.main
 
 run-ui: check-node ## Start the Expo dev server (web on :8081)
-	$(APP) EXPO_PUBLIC_API_BASE_URL=$(EXPO_PUBLIC_API_BASE_URL) npx expo start
+	@if [[ -z "$(EXPO_PUBLIC_API_BASE_URL)" ]]; then \
+		echo "error: EXPO_PUBLIC_API_BASE_URL is empty or unset; set it in $(ENV_FILE) (or export it in the shell)." >&2; \
+		exit 1; \
+	fi
+	$(APP) EXPO_PUBLIC_API_BASE_URL="$(EXPO_PUBLIC_API_BASE_URL)" npx expo start
 
 test: check-node ## Run backend and app tests
 	$(BACKEND) uv run pytest

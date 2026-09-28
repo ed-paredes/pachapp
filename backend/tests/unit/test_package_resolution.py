@@ -16,5 +16,10 @@ _BACKEND_SRC = Path(__file__).resolve().parents[2] / "src"
 def test_top_level_package_resolves_to_backend_src(name: str) -> None:
     module = importlib.import_module(name)
 
+    assert module.__file__ is not None, (
+        f"{name!r} resolved as a namespace package (no __init__.py / __file__), "
+        "which means it did NOT resolve to backend/src -- a third-party "
+        "distribution is shadowing this generic top-level name."
+    )
     resolved = Path(module.__file__).resolve().parent
     assert resolved == _BACKEND_SRC / name
