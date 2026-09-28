@@ -108,4 +108,4 @@ Environment note: the user had uvicorn servers on :8000, two of them still runni
 
 ## Next step
 
-1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. ~~Finish T3~~ done (`88b2fe9`, `99f445a`; review pending under budget). 4. Ask the user about push/PRs (stacked-to-main: slice 1 → main, slice 2 → slice 1, slice 3 → slice 2). 5. Optional: `make install` from a clean clone; D13 phone check (user).
+1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. ~~Finish T3~~ done (`88b2fe9`, `99f445a`; review pending under budget). 4. ~~Push~~ done 2026-09-28 (user authorized): all three branches on `origin`. PRs not created — `gh` is not installed; PR bodies prepared (Chain Context per `chained-pr`), user opens them via compare links. Slice 1 is 957 authored lines → `size:exception` requested in its PR body (one slicing pass leaves the scaffold commit at ~667). 5. Optional: `make install` from a clean clone; D13 phone check (user).
