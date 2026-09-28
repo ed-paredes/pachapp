@@ -58,7 +58,9 @@ Mode: off. Source: no project/session TDD configuration found and none requested
   - Decisions (2026-09-28, user): commit the user's `settings.py` change (missing env file → RuntimeError) plus the test adaptation in this slice; update spec 01 `gen-client` row and close its open question; add a package-resolution test (review follow-up).
   - Evidence so far (branch `feat/phase-0-3-makefile` created from `3d3f802`): with nvm Node, `make lint`, `make typecheck`, `make fmt-check`, `make test` (pytest 34 passed, jest 3 passed) all exit 0; `make gen-client` exit 0 and wrote `schema.ts` (tsc and eslint pass on it). Prettier flagged the generated file → added `src/api-client/schema.ts` to `app/.prettierignore`; format:check passes.
   - Route for README + spec + test: delegated direct (long-session backstop fired). Writer report `done`: ruff check/format pass, ty pass, pytest 38 passed (34 + 4 package-resolution cases), app format:check pass, README targets table matches `make help`. Parent spot check: pytest 38 passed; read back README, spec diff and test; fixed README ("shared (settings)", no models yet).
-  - Commits: `88b2fe9` (user's settings.py change + test adaptation); Makefile/.env.example/README/spec/schema.ts/package test in the following commit.
+  - Commits: `88b2fe9` (user's settings.py change + test adaptation); Makefile/.env.example/README/spec/schema.ts/package test in `99f445a`.
+  - Review: assessed medium (`configuration_change` on `.env.example`), 11 paths / 384 lines since `3d3f802`, `review_due=false` (`under_budget`) — pending in the slice; boundary stays `3d3f802`.
+  - Still manual/unverified: `make install` from a clean clone; D13 phone/LAN check.
 
 ## Acceptance criteria
 
@@ -106,4 +108,4 @@ Environment note: the user had uvicorn servers on :8000, two of them still runni
 
 ## Next step
 
-1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. Finish T3 (README, app-side make checks, gen-client), commit on `feat/phase-0-3-makefile`, assess review. 4. Ask about push/PRs (stacked-to-main).
+1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. ~~Finish T3~~ done (`88b2fe9`, `99f445a`; review pending under budget). 4. Ask the user about push/PRs (stacked-to-main: slice 1 → main, slice 2 → slice 1, slice 3 → slice 2). 5. Optional: `make install` from a clean clone; D13 phone check (user).
