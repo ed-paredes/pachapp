@@ -94,7 +94,7 @@ HUE_SCORE_OTHER = 0.1            # cualquier otro Δh
 
 - Baja varianza de `formality` entre todas las prendas presentes (normalizada a `[0,1]`, menor varianza → mayor puntuación).
 - `style_tags` compartidos: similitud de Jaccard media por pares de los conjuntos de `style_tags` entre todas las prendas presentes.
-- Similitud coseno media por pares de los `embedding` CLIP entre todas las prendas presentes.
+- Similitud coseno media por pares de los `embedding` (SigLIP, 08-local-vision.md) entre todas las prendas presentes; solo se comparan embeddings con el mismo `embedding_model` (VIS-REQ-023).
 
 Combinar los tres subcomponentes con igual peso en `C_estilo`, salvo/hasta que se ajusten. *(valor por defecto, ajustable.)*
 

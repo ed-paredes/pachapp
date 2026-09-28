@@ -79,6 +79,7 @@ Todo corre como procesos locales en el PC del usuario (sin contenedores, sin ser
 | `05-outfit-engine.md` | Plantillas, filtros duros, puntuación en cuatro componentes, algoritmo en dos etapas, MMR, endpoint `generate`. |
 | `06-feedback-history.md` | Acciones de feedback, contrato de `POST /outfits` para persistir una propuesta, política de persistencia de outfits, `wear_log`, favoritos, historial/estadísticas. |
 | `07-app-ui.md` | Pantallas, navegación, estados, renderizado de outfits con capas, diferencias web/nativo, polling de jobs. |
+| `08-local-vision.md` | Recorte (BiRefNet), atributos (zero-shot SigLIP + kNN, LLM solo como respaldo opcional) y embedding, paquete `ml`, settings `PACHAPP_ML_*`. |
 
 ## Tabla de trazabilidad (decisión de c4.md → secciones de spec)
 
@@ -111,7 +112,7 @@ El borrador original organiza el trabajo en seis fases secuenciales. Esta tabla 
 | --- | --- | --- |
 | Fase 0: base del proyecto | Monorepo, Docker Compose, login | 01-dev-tooling.md cubre el monorepo y las herramientas; **Docker Compose y login se descartan** (aplazados, D0/auth aplazada) — la iteración 1 usa procesos locales sin auth. |
 | Fase 1: armario manual | Tablas `garment`/`jobs`, endpoints CRUD, subida con rembg, pantallas Armario/Añadir/Detalle | 02-data-model.md, 03-garment-ingestion.md, 04-wardrobe-api.md, 07-app-ui.md |
-| Fase 2: categorización automática | Colores KMeans, LLM con visión, embeddings CLIP, pantalla Revisión | 03-garment-ingestion.md, 04-wardrobe-api.md (flujo de revisión), 07-app-ui.md |
+| Fase 2: categorización automática | Colores KMeans, LLM con visión, embeddings CLIP, pantalla Revisión | Implementada según `08-local-vision.md` (BiRefNet, zero-shot SigLIP + kNN, LLM solo como respaldo opcional); 03-garment-ingestion.md, 04-wardrobe-api.md (flujo de revisión), 07-app-ui.md. **Nota de prioridad (2026-09-28):** los pasos 1–3 de `08-local-vision.md` (registro de modelos, recorte, embedder/zero-shot — no tocan la base de datos) se priorizan antes que el resto del trabajo pendiente de Fase 1; los pasos 4–7 (integración en el pipeline, kNN, `reembed`, respaldo LLM) dependen de que `02-data-model.md`/`03-garment-ingestion.md` ya existan. |
 | Fase 3: motor de outfits | Plantillas, filtros, puntuación, endpoint `generate`, pantalla Hoy | 05-outfit-engine.md, 07-app-ui.md |
 | Fase 4: favoritos, historial y aprendizaje | Tablas `outfit`/`outfit_item`/`wear_log`, feedback, no repetir, pantallas Favoritos/Historial | 06-feedback-history.md, 05-outfit-engine.md (no repetir), 07-app-ui.md |
 | Fase 5: pulido y despliegue | Despliegue VPS/Tailscale, Litestream/R2, builds EAS, caché offline, exportación de datos | **Descartada por completo.** Docker/VPS/Tailscale/EAS, backups (Litestream/R2), caché offline y exportación ZIP están todos en la sección "Aplazado" de c4.md. Lo único de esta fase que sobrevive a la iteración 1 son las dos preparaciones que c4.md sí deja listas: rutas de imagen relativas (03-garment-ingestion.md) y una API sin estado de sesión (04-wardrobe-api.md), ambas pensadas para no tener que rehacer nada cuando se retome esta fase. |
