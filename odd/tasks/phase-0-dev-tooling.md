@@ -60,7 +60,7 @@ Mode: off. Source: no project/session TDD configuration found and none requested
   - Route for README + spec + test: delegated direct (long-session backstop fired). Writer report `done`: ruff check/format pass, ty pass, pytest 38 passed (34 + 4 package-resolution cases), app format:check pass, README targets table matches `make help`. Parent spot check: pytest 38 passed; read back README, spec diff and test; fixed README ("shared (settings)", no models yet).
   - Commits: `88b2fe9` (user's settings.py change + test adaptation); Makefile/.env.example/README/spec/schema.ts/package test in `99f445a`.
   - Review: assessed medium (`configuration_change` on `.env.example`), 11 paths / 384 lines since `3d3f802`, `review_due=false` (`under_budget`) — pending in the slice; boundary stays `3d3f802`.
-  - Still manual/unverified: `make install` from a clean clone; D13 phone/LAN check.
+  - Still manual/unverified: D13 phone/LAN check. `make install` from a clean clone: deferred by the user (2026-09-28), not needed for now.
 
 ## Acceptance criteria
 
@@ -108,4 +108,4 @@ Environment note: the user had uvicorn servers on :8000, two of them still runni
 
 ## Next step
 
-1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. ~~Finish T3~~ done (`88b2fe9`, `99f445a`; review pending under budget). 4. ~~Push~~ done 2026-09-28 (user authorized): all three branches on `origin`. PRs not created — `gh` is not installed; PR bodies prepared (Chain Context per `chained-pr`), user opens them via compare links. Slice 1 is 957 authored lines → `size:exception` requested in its PR body (one slicing pass leaves the scaffold commit at ~667). 5. Optional: `make install` from a clean clone; D13 phone check (user).
+1. ~~Verify and commit T2~~ done (`3d3f802`), review approved. 2. ~~Ask the user about their `settings.py` change~~ → slice 3. 3. ~~Finish T3~~ done (`88b2fe9`, `99f445a`; review pending under budget). 4. ~~Push~~ done 2026-09-28 (user authorized): all three branches on `origin`. PRs not created — `gh` is not installed; PR bodies prepared (Chain Context per `chained-pr`), user opens them via compare links. Slice 1 is 957 authored lines → `size:exception` requested in its PR body (one slicing pass leaves the scaffold commit at ~667). 5. Optional: D13 phone check (user). `make install` clean-clone check deferred by the user.
