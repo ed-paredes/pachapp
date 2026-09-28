@@ -5,8 +5,7 @@ URL (rather than `alembic.ini`'s `sqlalchemy.url`), and `SQLModel.metadata`
 as the migration target. `render_as_batch=True` is required for SQLite,
 which cannot ALTER most column properties in place.
 
-No migrations exist yet: the data model arrives in phase 1
-(docs/specs/02-data-model.md).
+Phase 1 (docs/specs/02-data-model.md) adds the initial tables.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
+from shared import models  # noqa: F401  (registers tables on SQLModel.metadata)
 from shared.settings import get_settings
 
 config = context.config
