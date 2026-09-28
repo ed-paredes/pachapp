@@ -33,9 +33,11 @@ Mode: off (documentation only). Checks: structural readback; cross-reference con
 
 ## Tasks
 
-- [ ] **T1 — Write `08-local-vision.md`.** Route: delegated direct (writer trigger: 6 non-trivial docs, preparation reading 4+ files).
-- [ ] **T2 — Align 00/01/02/03/C4 with 08.** Route: same writer (shared context).
-- [ ] **T3 — Parent readback + consistency check, commit per task, PR.**
+- [x] **T1 — Write `08-local-vision.md`.** Route: delegated direct (writer trigger: 6 non-trivial docs, preparation reading 4+ files).
+  - Evidence: 292-line spec, `VIS-REQ-001..030`, `VIS-SCN-001..005`; writer verified unique requirement IDs and no bare `ML_*`/`backend/app/ml`/`SPEC.md` references. Parent readback fixed 4 details: an internal "T2" reference, a false claim that C4 already limited the worker to one job, `colors.py` "where it lives today" (no code yet), and the `source` in VIS-SCN-001. Commit `377541f`.
+- [x] **T2 — Align 00/01/02/03/C4 with 08.** Route: same writer (shared context).
+  - Evidence: no hard-coded 512 left in docs; `PACHAPP_ML_*` names consistent (10 keys, defined in 08, referenced from 01); C4 mermaid brackets balanced. The parent also fixed 04 (API-SCN-002 `ai_confidence` shape) and 05 (SigLIP embedding, same `embedding_model`), which the writer flagged as out of its file list. Commit `7e034ef`.
+- [x] **T3 — Parent readback + consistency check, commit per task.** Review assess (base `main`, committed only): `passive`, 501 lines → structural readback only. PR pending the user's go-ahead.
 
 ## Acceptance criteria
 
@@ -49,6 +51,12 @@ Forecast: ~400–600 authored lines (docs). Strategy: `ask-on-risk` (ask about c
 
 - 2026-09-28: phase 0 merged; branch and feature document created; hardware checked.
 
+## Open questions (in 08)
+
+torch variant (CPU vs CUDA); `style_tags` prompts for `elegant`/`bohemian`/`preppy`; margin threshold as env setting vs DB `setting`; `style_tags` multi-label threshold; expected LLM-fallback call volume. Note: SPEC-ML's duplicate threshold 0.95 was folded into the existing `setting.duplicate_warning_threshold` (0.92); SPEC-ML's `ML_CONF_THRESHOLD` into `setting.needs_review_threshold`.
+
+Code gap to close in SPEC-ML step 1: `shared/settings.py` still requires `PACHAPP_LLM_*` unconditionally (specs now make them conditional).
+
 ## Next step
 
-Delegate T1+T2 to one writer.
+User: open PR? Answer open questions. Then SPEC-ML step 1 (model registry + device, torch variant) on a new branch.
