@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -151,7 +152,7 @@ def test_api_port_outside_valid_range_raises(tmp_path: Path, port: int) -> None:
 
 def test_repo_root_dotenv_never_read_by_default_settings() -> None:
     """Hermeticity proof (R3-test-suite-nonhermetic): tests/unit/conftest.py
-    points `PACHAPP_ENV_FILE` at a non-existent path before any app code is
+    points `PACHAPP_ENV_FILE` at the empty `os.devnull` before any app code is
     imported, so the developer's repo-root `.env` is never consulted by
     `Settings`. Checked without writing into the repository.
     """
@@ -159,7 +160,7 @@ def test_repo_root_dotenv_never_read_by_default_settings() -> None:
     env_file = Path(str(Settings.model_config["env_file"]))
 
     assert env_file != repo_root_env
-    assert not env_file.exists()
+    assert env_file == Path(os.devnull)
 
 
 def test_env_file_is_read_when_configured(tmp_path: Path) -> None:

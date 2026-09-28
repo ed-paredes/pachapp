@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -17,15 +15,17 @@ _PACHAPP_PREFIX = "PACHAPP_"
 # reads the developer's real repo-root `.env` (R3-test-suite-nonhermetic) and
 # never depends on it existing.
 #
-# Point PACHAPP_ENV_FILE at a path that is guaranteed not to exist: `Settings`
-# silently skips a missing `env_file` (pydantic-settings default behavior),
-# so this is equivalent to disabling dotenv loading entirely for tests.
-os.environ.setdefault(
-    "PACHAPP_ENV_FILE", str(Path(tempfile.gettempdir()) / "pachapp-tests-no-such-env-file")
-)
-os.environ.setdefault("PACHAPP_LLM_PROVIDER", "test-provider")
-os.environ.setdefault("PACHAPP_LLM_MODEL_ID", "test-model-1")
-os.environ.setdefault("PACHAPP_LLM_API_KEY", "test-collection-time-key")
+# Point PACHAPP_ENV_FILE at the empty `os.devnull`: it exists (get_settings()
+# requires the env file to exist) but defines nothing, so this is equivalent
+# to disabling dotenv loading entirely for tests.
+# Values are forced, not defaulted: the Makefile exports PACHAPP_ENV_FILE, and
+# a developer shell may export other PACHAPP_* settings.
+for _key in [key for key in os.environ if key.startswith(_PACHAPP_PREFIX)]:
+    del os.environ[_key]
+os.environ["PACHAPP_ENV_FILE"] = os.devnull
+os.environ["PACHAPP_LLM_PROVIDER"] = "test-provider"
+os.environ["PACHAPP_LLM_MODEL_ID"] = "test-model-1"
+os.environ["PACHAPP_LLM_API_KEY"] = "test-collection-time-key"
 
 
 @pytest.fixture(autouse=True)
