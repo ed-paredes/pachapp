@@ -92,7 +92,7 @@ El `Makefile` raíz es el único punto de entrada (D16). Semántica exacta:
 | `make fmt` | Ejecuta `ruff format backend/` y `npm --prefix app run format` (prettier `--write`). |
 | `make typecheck` | Ejecuta `ty check backend/src` y `npm --prefix app run typecheck` (`tsc --noEmit`). |
 | `make migrate` | `cd backend && uv run alembic upgrade head`. Un target separado `make migrate-new name=<msg>` ejecuta `alembic revision --autogenerate -m <msg>` para crear nuevas migraciones. |
-| `make gen-client` | Exporta el esquema OpenAPI de la API en ejecución (`GET /openapi.json`) y ejecuta `openapi-typescript` contra él, escribiendo los tipos en `app/src/api-client/schema.ts`. Requiere que `make run` esté activo (o un modo de solo-exportar-esquema). |
+| `make gen-client` | Exporta el esquema OpenAPI en proceso (`cd backend && uv run python -m api.export_openapi`, sin servidor en ejecución) y ejecuta `openapi-typescript` contra el resultado, escribiendo los tipos en `app/src/api-client/schema.ts`. |
 
 **DEV-REQ-009.** Todos los targets DEBEN poder ejecutarse desde la raíz del repo sin `cd` manual.
 
@@ -172,4 +172,4 @@ Entonces el arranque DEBE fallar de inmediato con un error explícito que cite D
 - Versión exacta de Python (3.12 vs 3.13) — no hay todavía una investigación de compatibilidad concluyente con rembg/open_clip/scikit-learn.
 - `ty` (Astral) está en desarrollo activo/preview a fecha de esta spec — si su cobertura de casos resulta insuficiente durante la implementación, `mypy` o `pyright` quedan como alternativas de repliegue, pero la decisión tomada es usar `ty` como type checker del backend.
 - Backend en un único proyecto con venv compartido (DEV-REQ-001) vs un workspace `uv` con `pyproject.toml` por paquete — solo importa si las dependencias pesadas exclusivas del worker (rembg/open_clip/scikit-learn) ralentizan de forma notable los flujos de desarrollo que solo tocan la API.
-- Si `make gen-client` debería soportar exportar el esquema sin necesidad de un servidor en ejecución (`python -c "... print(app.openapi())"`) para evitar el problema de bootstrapping "el servidor debe estar corriendo" señalado arriba.
+- ~~Si `make gen-client` debería soportar exportar el esquema sin necesidad de un servidor en ejecución (`python -c "... print(app.openapi())"`) para evitar el problema de bootstrapping "el servidor debe estar corriendo" señalado arriba.~~ Resuelto: sí — `make gen-client` exporta el esquema en proceso vía `api.export_openapi` (ver tabla de targets arriba); nunca requiere `make run`.
