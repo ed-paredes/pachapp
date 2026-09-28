@@ -92,9 +92,9 @@ Cuando se llama a `GET /garments?status=active&category=top&page=1&page_size=20`
 Entonces solo se devuelven prendas `top` activas, paginadas, con un `total` correcto.
 
 **API-SCN-002 — La corrección en revisión escribe `ai_correction` sin tocar `needs_review`.**
-Dada una prenda con `ai_confidence.category = 0.6`, `category = "top"` y `needs_review = true`,
+Dada una prenda con `ai_confidence.category = {value: "top", confidence: 0.6, source: "zero_shot"}`, `category = "top"` y `needs_review = true`,
 Cuando `PATCH /garments/{id}` fija `category = "mid_layer"`,
-Entonces se escribe una fila `ai_correction` (`field="category", ai_value="top", corrected_value="mid_layer"`), `ai_confidence.category` pasa a `1.0` (DAT-REQ-016, calidad de dato), pero `needs_review` sigue en `true` y `user_verified` sigue en `false` (D19) — ninguno de los dos cambia hasta que se complete la revisión.
+Entonces se escribe una fila `ai_correction` (`field="category", ai_value="top", corrected_value="mid_layer"`), `ai_confidence.category` pasa a `{value: "mid_layer", confidence: 1.0, source: "user"}` (DAT-REQ-016/021, calidad de dato), pero `needs_review` sigue en `true` y `user_verified` sigue en `false` (D19) — ninguno de los dos cambia hasta que se complete la revisión.
 
 **API-SCN-002b — "Revisión terminada" limpia el estado sin importar campos pendientes.**
 Dada la misma prenda de API-SCN-002, tras corregir `category` pero dejando `formality` con confianza baja sin corregir,

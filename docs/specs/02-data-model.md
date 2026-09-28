@@ -12,7 +12,7 @@ Todas las tablas, columnas, tipos, nulabilidad, restricciones, índices, enums, 
 
 ## Dependencias
 
-- Decisiones: D1 (capas referenciadas por `outfit_item.layer`), D4 (forma de la reclamación del job), D5 (tablas añadidas), D6 (política de persistencia), D7 (unicidad de `wear_log`), D9 (almacenamiento del umbral de duplicados), D10 (confianza del color), D11 (id de modelo fijado), D16 (SQLModel + Pydantic v2 + Alembic), D17 (capas/`mid_layer`), D18 (reglas de color: sin columnas de configuración para el máximo), D19 (revisión con un único botón: DAT-REQ-018/019). D8 fue descartado (sin lógica de temporada) — ver "Cambios de decisión" más abajo.
+- Decisiones: D1 (capas referenciadas por `outfit_item.layer`), D4 (forma de la reclamación del job), D5 (tablas añadidas), D6 (política de persistencia), D7 (unicidad de `wear_log`), D9 (almacenamiento del umbral de duplicados), D10 (confianza del color), D11 (id de modelo fijado), D16 (SQLModel + Pydantic v2 + Alembic), D17 (capas/`mid_layer`), D18 (reglas de color: sin columnas de configuración para el máximo), D19 (revisión con un único botón: DAT-REQ-018/019). D8 fue descartado (sin lógica de temporada) — ver "Cambios de decisión" más abajo. `embedding`/`embedding_model`/`embedding_dim` y la forma de `ai_confidence` están adaptados a 08-local-vision.md (ver notas junto a esas columnas).
 - Consumido por: 03-garment-ingestion.md, 04-wardrobe-api.md, 05-outfit-engine.md, 06-feedback-history.md.
 
 ## Convenciones
@@ -115,8 +115,10 @@ class JobStep(str, Enum):
 | `brand` | TEXT | Sí | Texto libre |
 | `notes` | TEXT | Sí | Texto libre |
 | `status` | TEXT (enum) | No | Por defecto `active` |
-| `embedding` | BLOB | Sí | Vector CLIP de 512 × float32, null hasta el paso `embedding` |
-| `ai_confidence` | JSON | Sí | `{nombre_campo: float 0..1}`, una entrada por campo poblado por IA |
+| `embedding` | BLOB | Sí | Vector float32, dimensión leída del modelo en tiempo de ejecución (`embedding_dim`, nunca fijada en el código — p. ej. SigLIP ViT-B/16 suele ser 768-d), null hasta el paso `embedding`; ver 08-local-vision.md |
+| `embedding_model` | TEXT | Sí | `<id del modelo>@<revisión>` (p. ej. `hf-hub:Marqo/marqo-fashionSigLIP@<commit>`), null hasta el paso `embedding`; ver DAT-REQ-020 |
+| `embedding_dim` | INTEGER | Sí | Dimensión de `embedding` en el momento en que se escribió; ver DAT-REQ-020 |
+| `ai_confidence` | JSON | Sí | Por atributo, `{value, confidence, source}` con `source ∈ {zero_shot, knn, blend, llm, user}` — ver DAT-REQ-021 y 08-local-vision.md |
 | `color_confidence` | REAL | Sí | 0..1, derivado de la separación de clústeres de KMeans (D10) |
 | `needs_review` | BOOLEAN | No | Por defecto `false`; ver regla abajo |
 | `user_verified` | BOOLEAN | No | Por defecto `false` |
@@ -125,9 +127,13 @@ class JobStep(str, Enum):
 
 Índices: `idx_garment_status`, `idx_garment_category`, `idx_garment_needs_review`.
 
-**DAT-REQ-002.** `needs_review` DEBE fijarse a `true` por el paso `consolidate` del worker cuando: algún valor de `ai_confidence` sea `< settings.needs_review_threshold` (por defecto `0.7`), O `color_confidence < settings.color_review_threshold` (por defecto `0.7`) — combinando la regla de confianza IA del borrador con la adición de D10 de la confianza del color como disparador independiente.
+**DAT-REQ-002.** `needs_review` DEBE fijarse a `true` por el paso `consolidate` del worker cuando: algún valor de `ai_confidence[campo].confidence` sea `< settings.needs_review_threshold` (por defecto `0.7`), O `color_confidence < settings.color_review_threshold` (por defecto `0.7`), O — adición de 08-local-vision.md, VIS-REQ-016 — la diferencia entre el top-1 y el top-2 de la clasificación zero-shot/kNN de algún atributo de una sola etiqueta sea `< PACHAPP_ML_MARGIN_THRESHOLD` (por defecto `0.15`; este umbral vive en el modelo `Settings` de variables de entorno, no en esta tabla `setting`, ver 08-local-vision.md) — combinando la regla de confianza IA del borrador con la adición de D10 de la confianza del color y la regla de margen de 08-local-vision.md como disparadores independientes.
 
 **DAT-REQ-003.** `wear_count` y `last_worn_at` SOLO DEBEN escribirse desde la transacción de mantenimiento de `wear_log` (ver abajo) — nunca directamente desde los endpoints de edición de prendas.
+
+**DAT-REQ-020 (08-local-vision.md).** `embedding_model` y `embedding_dim` DEBEN escribirse en la misma transacción que `embedding`, en el paso `embedding` del worker. El comando `reembed` (08-local-vision.md) DEBE actualizar las tres columnas juntas cuando cambie el modelo o la revisión de embedding.
+
+**DAT-REQ-021 (08-local-vision.md).** `ai_confidence` DEBE tener, por cada campo poblado por IA, un objeto `{value, confidence, source}` con `source ∈ {zero_shot, knn, blend, llm, user}` en vez de un escalar `float` suelto — sustituye la forma `dict[str, float]` de una revisión anterior de esta spec, manteniendo su mismo propósito (saber qué confianza tiene cada campo y si dispara `needs_review`/few-shot). `source="user"` marca los campos fijados por `PATCH`/`ai_correction` (ver DAT-REQ-016) y es el que `reembed` NO DEBE sobrescribir.
 
 ### Esquema JSON de `colors`
 
@@ -144,7 +150,18 @@ class Colors(RootModel[list[ColorEntry]]):
 
 ### Esquema JSON de `ai_confidence`
 
-`dict[str, float]` — las claves son un subconjunto de `{"category", "subcategory", "pattern", "formality", "style_tags", "seasons", "warmth", "material"}`, valores en `[0, 1]`.
+```python
+class AttributeConfidence(BaseModel):
+    value: str | int | list[str]
+    confidence: float                # 0..1
+    source: Literal["zero_shot", "knn", "blend", "llm", "user"]
+
+class AiConfidence(RootModel[dict[str, AttributeConfidence]]):
+    ...  # claves: subconjunto de {"category", "subcategory", "pattern", "formality",
+         # "style_tags", "seasons", "warmth", "material"}
+```
+
+Ver DAT-REQ-021 y 08-local-vision.md (VIS-REQ-019) para el origen de esta forma; sustituye el `dict[str, float]` de una revisión anterior de esta spec.
 
 ## `outfit`
 
@@ -263,9 +280,9 @@ Fila singleton (`id = 1`), creada por una migración de datos de Alembic que sie
 
 **DAT-REQ-012.** DEBE escribirse una fila cada vez que un `PATCH /garments/{id}` cambie un campo que tenga una entrada en el `ai_confidence` de esa prenda en el momento del cambio, y el nuevo valor difiera del almacenado — sin importar si es la primera edición posterior a la ingesta o una posterior (ver 04-wardrobe-api.md para la regla de diff).
 
-**DAT-REQ-016.** Cuando el servidor escribe una fila `ai_correction` para un campo (DAT-REQ-012 / API-REQ-007 en 04-wardrobe-api.md), en la **misma transacción** DEBE fijar `ai_confidence[campo] = 1.0` en el `garment` afectado — por calidad del dato: registra que el valor actual proviene de una corrección explícita del usuario, no de la IA, útil por ejemplo si en el futuro se recalculan métricas sobre `ai_confidence`. Si el campo corregido es `colors`, la misma transacción DEBE además fijar `color_confidence = 1.0`. Esta es una actualización **interna del servidor**, disparada por la lógica de `PATCH`, no una escritura directa del cliente sobre `ai_confidence`/`color_confidence` (esa escritura directa sigue prohibida, ver API-REQ-006 en 04-wardrobe-api.md). **(D19.)** Esta actualización NO afecta a `needs_review`: por D19, corregir un campo individual nunca cambia `needs_review` — ver DAT-REQ-018.
+**DAT-REQ-016.** Cuando el servidor escribe una fila `ai_correction` para un campo (DAT-REQ-012 / API-REQ-007 en 04-wardrobe-api.md), en la **misma transacción** DEBE fijar `ai_confidence[campo] = {value: <valor corregido>, confidence: 1.0, source: "user"}` en el `garment` afectado (forma de DAT-REQ-021) — por calidad del dato: registra que el valor actual proviene de una corrección explícita del usuario, no de la IA, y es el marcador que `reembed` (08-local-vision.md) usa para no sobrescribir el campo. Si el campo corregido es `colors`, la misma transacción DEBE además fijar `color_confidence = 1.0`. Esta es una actualización **interna del servidor**, disparada por la lógica de `PATCH`, no una escritura directa del cliente sobre `ai_confidence`/`color_confidence` (esa escritura directa sigue prohibida, ver API-REQ-006 en 04-wardrobe-api.md). **(D19.)** Esta actualización NO afecta a `needs_review`: por D19, corregir un campo individual nunca cambia `needs_review` — ver DAT-REQ-018.
 
-**DAT-REQ-017.** El campo `confidence` de la respuesta del LLM (`GarmentAttributesLLM.confidence`, ver ING-REQ-016/ING-REQ-027 en 03-garment-ingestion.md) DEBE tener una entrada por cada campo poblado por el modelo. Si al paso `consolidate` le falta la clave de confianza de un campo que sí quedó poblado (`category`, `subcategory`, etc.), el worker DEBE tratar la confianza de ese campo como `0.0` a efectos de `ai_confidence` y de la regla DAT-REQ-002 (dispara `needs_review`), en lugar de omitir esa clave de `ai_confidence`.
+**DAT-REQ-017.** El campo `confidence` de la salida del clasificador (zero-shot/kNN/blend, y del LLM de respaldo cuando está activo — ver `GarmentAttributesLLM.confidence`, ING-REQ-016/ING-REQ-027 en 03-garment-ingestion.md, y VIS-REQ-019 en 08-local-vision.md) DEBE tener una entrada por cada campo poblado. Si al paso `consolidate` le falta la confianza de un campo que sí quedó poblado (`category`, `subcategory`, etc.), el worker DEBE tratar la confianza de ese campo como `0.0` a efectos de `ai_confidence` y de la regla DAT-REQ-002 (dispara `needs_review`), en lugar de omitir esa clave de `ai_confidence`.
 
 **DAT-REQ-018 (D19 — revisión con un único botón).** `needs_review` SOLO puede pasar a `true` mediante el paso `consolidate` del worker (DAT-REQ-002) — incluida una re-ejecución del pipeline tras `POST /garments/{id}/retry` (04-wardrobe-api.md), que puede volver a marcar `needs_review=true` con normalidad si las nuevas condiciones de confianza lo justifican, aunque el usuario ya hubiera completado una revisión anterior. `needs_review` SOLO puede pasar a `false` mediante la acción explícita "Revisión terminada" (`POST /garments/{id}/review/complete`, API-REQ-019 en 04-wardrobe-api.md). Ningún `PATCH /garments/{id}` (ni la escritura de `ai_correction` de DAT-REQ-016) DEBE modificar `needs_review`, ni directamente ni recalculándolo campo a campo — corregir un campo individual guarda la corrección pero dejar `needs_review` como estaba es el comportamiento correcto, no un error.
 

@@ -14,6 +14,7 @@ La UI de revisión/edición en sí (07-app-ui.md), el contrato de `PATCH /garmen
 
 - Decisiones: D4 (reclamación atómica, transacciones cortas), D5 (tabla `job`), D9 (umbral de duplicados), D10 (confianza de color), D11 (modelo fijado + test de contrato), D19 (el pipeline es la única vía que activa `needs_review`; solo la acción "Revisión terminada" en 04-wardrobe-api.md lo desactiva).
 - Modelo de datos: `garment`, `job`, `ai_correction` (02-data-model.md).
+- Implementación de los pasos `cutout`, `ai_attributes` y `embedding`: 08-local-vision.md (BiRefNet, zero-shot SigLIP + kNN, LLM solo como respaldo opcional). Esta spec sigue siendo la fuente de verdad para el orden de los pasos, la máquina de estados del job y el algoritmo de color; 08-local-vision.md detalla cómo se implementan esos tres pasos concretos.
 
 ## Contrato del endpoint de subida
 
@@ -47,15 +48,15 @@ stateDiagram-v2
 | Paso | Entrada | Salida | Manejo de fallos |
 | --- | --- | --- | --- |
 | `preprocess` | `img_original` (subida en crudo) | Imagen corregida por EXIF, orientación normalizada, en memoria | Imagen corrupta → `failed`, `error` fijado, sin reintento (ya validada en la subida) |
-| `cutout` | Imagen preprocesada | `img_cutout` (PNG, fondo transparente, recortado a la bbox) + `img_thumb` (WebP, `PACHAPP_THUMB_PX`) escritos a disco; rutas guardadas en `garment` | `rembg` produce una máscara vacía o casi vacía (no detecta primer plano) → tratado como fallo blando: marcar `needs_review=true`, mantener `img_cutout` como mejor esfuerzo (o recaer en la imagen preprocesada completa), continuar el pipeline en lugar de fallar duro — un recorte malo sigue siendo revisable |
+| `cutout` | Imagen preprocesada | `img_cutout` (PNG, fondo transparente, recortado a la bbox) + `img_thumb` (WebP, `PACHAPP_THUMB_PX`) escritos a disco; rutas guardadas en `garment` | BiRefNet vía `rembg` (08-local-vision.md) produce una máscara vacía o casi vacía (no detecta primer plano) → tratado como fallo blando: marcar `needs_review=true`, mantener `img_cutout` como mejor esfuerzo (o recaer en la imagen preprocesada completa), continuar el pipeline en lugar de fallar duro — un recorte malo sigue siendo revisable |
 | `color` | Píxeles opacos de `img_cutout` | JSON `colors`, `is_neutral`, `color_confidence` | Menos de 1 clúster superviviente tras el descarte del umbral del 10% → `color_confidence` baja, se continúa (activa `needs_review` vía DAT-REQ-002, no un fallo de job) |
-| `ai_attributes` | `img_cutout` + `colors` (nombres) + ejemplos few-shot de `ai_correction` | `category, subcategory, pattern, formality, style_tags, seasons, warmth, material, ai_confidence` | Ver Política de reintentos — hasta 1 reintento, luego se continúa con los campos IA en null y `needs_review=true` |
-| `embedding` | `img_cutout` | Vector CLIP de 512-d en `garment.embedding`; `job.result.duplicate_candidate` si la similitud ≥ umbral | Error de carga/inferencia del modelo → reintentable una vez, luego `failed` |
+| `ai_attributes` | `img_cutout` + `colors` (nombres, usados solo si se llega al respaldo LLM) + embedding SigLIP de la imagen (calculado aquí y reutilizado por el paso `embedding`, ver 08-local-vision.md) | `category, subcategory, pattern, formality, style_tags, seasons, warmth, material` con `ai_confidence` por campo (`{value, confidence, source}`, DAT-REQ-021) — fuente primaria: zero-shot SigLIP + kNN (08-local-vision.md); el LLM con visión SOLO se invoca como respaldo condicional (ver "Contrato del LLM" más abajo) | Error de inferencia del clasificador local → reintentable una vez, luego se continúa con los campos IA en null y `needs_review=true` (igual que antes); si el respaldo LLM está activo y falla, el resultado de la mezcla zero-shot/kNN se mantiene igualmente (no se anula) |
+| `embedding` | `img_cutout` (embedding SigLIP ya calculado en `ai_attributes`, ver arriba) | Vector float32 en `garment.embedding` (dimensión leída del modelo, `garment.embedding_dim`) + `garment.embedding_model`; `job.result.duplicate_candidate` si la similitud ≥ `setting.duplicate_warning_threshold` | Error de carga/inferencia del modelo → reintentable una vez, luego `failed` |
 | `consolidate` | Todo lo anterior | `needs_review` finalizado (DAT-REQ-002), `job.status=done` | N/D — agregación pura, sin llamadas externas |
 
-**ING-REQ-006.** Los pasos DEBEN ejecutarse en el orden fijo `preprocess → cutout → color → ai_attributes → embedding → consolidate`; `color` DEBE terminar antes que `ai_attributes` porque el prompt del LLM incluye los nombres de color detectados como contexto.
+**ING-REQ-006.** Los pasos DEBEN ejecutarse en el orden fijo `preprocess → cutout → color → ai_attributes → embedding → consolidate`; `color` DEBE terminar antes que `ai_attributes` porque, cuando se llega al respaldo LLM (`PACHAPP_ML_LLM_FALLBACK=true`, 08-local-vision.md), su prompt incluye los nombres de color detectados como contexto. El paso `embedding` sigue siendo el que persiste `garment.embedding`/`embedding_model`/`embedding_dim`, aunque el vector en sí se calcule durante `ai_attributes` y se reutilice aquí (08-local-vision.md).
 
-**ING-REQ-007.** El worker DEBE cargar los modelos ML (rembg, CLIP) una sola vez al arrancar el proceso, no por job (coincide con "carga los modelos una vez" de c4.md).
+**ING-REQ-007.** El worker DEBE cargar los modelos ML (BiRefNet vía `rembg`, SigLIP vía `open_clip`; ver 08-local-vision.md) una sola vez al arrancar el proceso, no por job (coincide con "carga los modelos una vez" de c4.md).
 
 ## Variantes y rutas de imagen
 
@@ -77,9 +78,11 @@ stateDiagram-v2
 
 ## Contrato de petición/respuesta del LLM
 
-**ING-REQ-015.** Petición: la imagen `img_cutout` más los nombres de `colors` (no los píxeles en crudo — el color ya está determinado localmente) más hasta 5 ejemplos few-shot extraídos de las filas más recientes de `ai_correction` (agrupadas por campo, más recientes primero). *(N=5 es un valor por defecto, ajustable.)*
+El LLM con visión ya no es el clasificador primario (08-local-vision.md): `category, subcategory, pattern, formality, style_tags, seasons, warmth, material` se rellenan primero por zero-shot SigLIP + kNN. Todo este bloque (ING-REQ-015 a ING-REQ-020, ING-REQ-027) aplica **únicamente cuando `PACHAPP_ML_LLM_FALLBACK=true`** y el worker decide invocar el respaldo (`category` o `formality` siguen bajo el umbral tras la mezcla, ver 08-local-vision.md VIS-REQ-020).
 
-**ING-REQ-016.** La respuesta DEBE validarse contra este modelo Pydantic v2 de enums cerrados (compartido con los enums de `shared`, DAT-REQ-001):
+**ING-REQ-015.** Cuando se invoca el respaldo LLM, la petición DEBE ser: la imagen `img_cutout` más los nombres de `colors` (no los píxeles en crudo — el color ya está determinado localmente) más hasta 5 ejemplos few-shot extraídos de las filas más recientes de `ai_correction` (agrupadas por campo, más recientes primero). *(N=5 es un valor por defecto, ajustable.)*
+
+**ING-REQ-016.** Cuando se invoca el respaldo LLM, su respuesta DEBE validarse contra este modelo Pydantic v2 de enums cerrados (compartido con los enums de `shared`, DAT-REQ-001):
 
 ```python
 class GarmentAttributesLLM(BaseModel):
@@ -95,31 +98,31 @@ class GarmentAttributesLLM(BaseModel):
                                     # style_tags, seasons, warmth, material (si está presente)
 ```
 
-**ING-REQ-017.** El prompt DEBE instruir explícitamente al modelo sobre la frontera `top` vs `mid_layer` vs `outerwear` (jersey/sudadera/cárdigan/sobrecamisa → `mid_layer`; abrigo/chaqueta de exterior → `outerwear`), ya que esta distinción es nueva en la iteración 1 (D17) y no resulta obvia solo por el nombre de la prenda.
+**ING-REQ-017.** Cuando se invoca el respaldo LLM, el prompt DEBE instruir explícitamente al modelo sobre la frontera `top` vs `mid_layer` vs `outerwear` (jersey/sudadera/cárdigan/sobrecamisa → `mid_layer`; abrigo/chaqueta de exterior → `outerwear`), ya que esta distinción es nueva en la iteración 1 (D17) y no resulta obvia solo por el nombre de la prenda. El mismo cuidado aplica al `TAXONOMY` del zero-shot (08-local-vision.md), que ya separa los prompts de `mid_layer` de los de `top`.
 
-**ING-REQ-018.** `PACHAPP_LLM_MODEL_ID` DEBE ser un identificador de modelo fijado y exacto (no un alias "latest"), según D11.
+**ING-REQ-018.** Cuando el respaldo LLM está activo, `PACHAPP_LLM_MODEL_ID` DEBE ser un identificador de modelo fijado y exacto (no un alias "latest"), según D11.
 
-**ING-REQ-019.** Un test de contrato (`backend/tests/contract/`) DEBE verificar que una respuesta de ejemplo grabada/mockeada del LLM para el modelo fijado sigue validando contra `GarmentAttributesLLM`, detectando derivas silenciosas de formato aguas arriba (D11).
+**ING-REQ-019.** Si el respaldo LLM está activo en el entorno de test, un test de contrato (`backend/tests/contract/`) DEBE verificar que una respuesta de ejemplo grabada/mockeada del LLM para el modelo fijado sigue validando contra `GarmentAttributesLLM`, detectando derivas silenciosas de formato aguas arriba (D11). Este test no requiere red ni el flag activo en producción — corre contra una respuesta grabada.
 
-**ING-REQ-027.** `confidence` DEBE contener una entrada por cada campo poblado por el modelo (todas las claves de `GarmentAttributesLLM` cuyo valor no sea `None`). Si al paso `consolidate` le falta la clave de confianza de un campo poblado, el worker DEBE tratar la confianza de ese campo como `0.0` para efectos de `ai_confidence` y de la regla de `needs_review` (dispara la revisión), en vez de omitir esa clave del `ai_confidence` guardado — ver DAT-REQ-017 en 02-data-model.md.
+**ING-REQ-027.** Cuando se invoca el respaldo LLM, su `confidence` DEBE contener una entrada por cada campo poblado por el modelo (todas las claves de `GarmentAttributesLLM` cuyo valor no sea `None`). Si al paso `consolidate` le falta la clave de confianza de un campo poblado, el worker DEBE tratar la confianza de ese campo como `0.0` para efectos de `ai_confidence` y de la regla de `needs_review` (dispara la revisión), en vez de omitir esa clave del `ai_confidence` guardado — ver DAT-REQ-017 en 02-data-model.md. La misma regla aplica, sin necesidad del LLM, a la salida del clasificador zero-shot/kNN (08-local-vision.md).
 
 ## Política de reintentos
 
-**ING-REQ-020.** Ante un fallo de llamada al LLM (timeout, 5xx, error de red) o un `ValidationError` de Pydantic en la respuesta, el worker DEBE reintentar exactamente una vez. *(valor por defecto, ajustable — el borrador dice "un reintento".)*
+**ING-REQ-020.** Cuando el respaldo LLM está activo y se invoca, ante un fallo de llamada (timeout, 5xx, error de red) o un `ValidationError` de Pydantic en la respuesta, el worker DEBE reintentar exactamente una vez. *(valor por defecto, ajustable — el borrador dice "un reintento".)*
 
-**ING-REQ-021.** Si el reintento también falla, el paso `ai_attributes` NO DEBE hacer fallar el job: continúa con todos los campos derivados de IA en `null`, `ai_confidence = {}`, y `needs_review = true` en la consolidación — la prenda queda totalmente editable a mano desde la pantalla de Revisión. `job.error` registra el fallo subyacente para diagnóstico, pero `job.status` igualmente llega a `done`.
+**ING-REQ-021.** Si ese reintento del respaldo LLM también falla, el paso `ai_attributes` NO DEBE hacer fallar el job ni descartar el resultado de la mezcla zero-shot/kNN ya calculado: los campos que el LLM debía corregir se quedan con el valor y `source` que tenían tras la mezcla (`"zero_shot"`/`"knn"`/`"blend"`), `needs_review` sigue en `true` (ya lo estaba, por eso se invocó el respaldo). `job.error` registra el fallo subyacente para diagnóstico, pero `job.status` igualmente llega a `done`. Si en cambio falla el propio clasificador local (zero-shot/kNN, no el respaldo LLM) tras su reintento, el paso continúa con esos campos en `null`, `needs_review = true` en la consolidación — la prenda queda totalmente editable a mano desde la pantalla de Revisión.
 
 **ING-REQ-022.** Los fallos en los pasos `preprocess`, `cutout` o `embedding` SÍ son reintentables una vez (errores transitorios de I/O/modelo); agotar ese reintento fija `job.status=failed` (estos pasos no tienen una alternativa segura de "continuar con nulls" como sí tiene `ai_attributes` — los fallos de cutout/embedding bloquean funcionalidad central como las miniaturas y la detección de duplicados).
 
 ## Embedding + aviso de duplicado
 
-**ING-REQ-023.** Tras calcular el embedding CLIP, el worker DEBE comparar la similitud coseno contra los embeddings de todas las demás prendas `status=active`. Si la similitud máxima ≥ `setting.duplicate_warning_threshold` (por defecto `0.92`, rango calibrado `0.90–0.95` según D9), el worker DEBE escribir `{"duplicate_candidate_garment_id": <uuid>, "similarity": <float>}` en `job.result`.
+**ING-REQ-023.** Tras calcular el embedding SigLIP (08-local-vision.md), el worker DEBE comparar la similitud coseno contra los embeddings de todas las demás prendas `status=active` **con el mismo `embedding_model`** (08-local-vision.md, VIS-REQ-023). Si la similitud máxima ≥ `setting.duplicate_warning_threshold` (por defecto `0.92`, rango calibrado `0.90–0.95` según D9), el worker DEBE escribir `{"duplicate_candidate_garment_id": <uuid>, "similarity": <float>}` en `job.result`.
 
 **ING-REQ-024.** La comprobación de duplicados es **solo un aviso** — NO DEBE bloquear la ingesta ni forzar `needs_review`; se muestra en la pantalla de Revisión como un aviso descartable que enlaza a la prenda similar (D9).
 
 ## Reglas de `needs_review`
 
-Reformulado desde 02-data-model.md DAT-REQ-002 para el contexto del pipeline: en `consolidate`, `needs_review = true` si algún `ai_confidence[campo] < setting.needs_review_threshold` (por defecto `0.7`, tratando como `0.0` cualquier campo poblado sin clave de confianza — ING-REQ-027/DAT-REQ-017) O `color_confidence < setting.color_review_threshold` (por defecto `0.7`) O el paso `ai_attributes` agotó su reintento (ING-REQ-021) O el paso `cutout` produjo una máscara vacía (fallo blando anterior).
+Reformulado desde 02-data-model.md DAT-REQ-002 para el contexto del pipeline: en `consolidate`, `needs_review = true` si algún `ai_confidence[campo].confidence < setting.needs_review_threshold` (por defecto `0.7`, tratando como `0.0` cualquier campo poblado sin clave de confianza — ING-REQ-027/DAT-REQ-017) O `color_confidence < setting.color_review_threshold` (por defecto `0.7`) O la diferencia top-1/top-2 de algún atributo es `< PACHAPP_ML_MARGIN_THRESHOLD` (regla de margen de 08-local-vision.md, VIS-REQ-016) O el paso `ai_attributes` agotó su reintento del clasificador local (ING-REQ-021) O el paso `cutout` produjo una máscara vacía (fallo blando anterior). Un fallo del respaldo LLM opcional no añade un disparador nuevo: si se llegó a invocarlo, `needs_review` ya era `true` por alguna de las condiciones anteriores.
 
 **(D19.)** El pipeline (este paso `consolidate`) es la **única** vía por la que `needs_review` pasa a `true`. Ninguna corrección de campo individual desde la pantalla de Revisión lo pone a `false` — solo la acción explícita "Revisión terminada" (`POST /garments/{id}/review/complete`, API-REQ-019 en 04-wardrobe-api.md) lo hace (DAT-REQ-018 en 02-data-model.md). Un reintento de ingesta (`POST /garments/{id}/retry`, API-REQ-011) que hace que `consolidate` se vuelva a ejecutar PUEDE volver a marcar `needs_review=true` con normalidad según esta misma regla, incluso si el usuario ya había completado una revisión anterior de esa prenda — no es un caso especial, es la regla de siempre aplicada de nuevo.
 
@@ -134,12 +137,12 @@ Reformulado desde 02-data-model.md DAT-REQ-002 para el contexto del pipeline: en
 **ING-SCN-001 — Camino feliz.**
 Dada una foto bien iluminada de una sola prenda sobre fondo liso,
 Cuando se sube vía `POST /garments`,
-Entonces un `job` progresa `pending → claimed → running → done` a través de los seis pasos, la prenda termina con todos los campos IA poblados, valores de `ai_confidence` ≥ 0.7, `color_confidence` ≥ 0.7, y `needs_review = false`.
+Entonces un `job` progresa `pending → claimed → running → done` a través de los seis pasos, la prenda termina con todos los campos IA poblados (por zero-shot/kNN, 08-local-vision.md), valores de `ai_confidence[campo].confidence` ≥ 0.7, `color_confidence` ≥ 0.7, y `needs_review = false`.
 
-**ING-SCN-002 — El LLM falla la validación dos veces.**
-Dado que el LLM devuelve JSON malformado tanto en la llamada inicial como en el reintento,
+**ING-SCN-002 — El clasificador local falla dos veces.**
+Dado que el clasificador zero-shot/kNN falla tanto en el intento inicial como en el reintento (p. ej. error de inferencia del modelo),
 Cuando `ai_attributes` agota su reintento,
-Entonces el job igualmente llega a `done`, `category`/`pattern`/etc. quedan `null`, `needs_review = true`, y la pantalla de Revisión muestra la prenda totalmente editable sin ningún prellenado de IA.
+Entonces el job igualmente llega a `done`, `category`/`pattern`/etc. quedan `null`, `needs_review = true`, y la pantalla de Revisión muestra la prenda totalmente editable sin ningún prellenado de IA. (Si en cambio solo falla el respaldo LLM opcional tras la mezcla, el resultado de la mezcla se conserva — ver ING-REQ-021.)
 
 **ING-SCN-003 — Solo confianza de color baja.**
 Dado que KMeans produce clústeres mal separados en una prenda de patrón muy cargado,
@@ -171,5 +174,5 @@ Entonces la reclamación atómica `UPDATE...RETURNING` (DAT-REQ-009) garantiza q
 
 - Fórmula exacta de `color_confidence` (ING-REQ-014) — necesita ajuste empírico contra fotos reales de prendas antes de confiar en el umbral `0.7`.
 - Variante exacta de ΔE (CIE76 vs CIE2000) y la propia lista de la paleta de ~20 nombres de color — no están enumeradas en el borrador; hay que redactarlas.
-- Si un tercer reintento del LLM (más allá del actual 1) mejoraría de forma significativa el objetivo de precisión de 9/10, o si el ajuste de prompt/few-shot es la palanca mejor — se difiere a la medición en tiempo de implementación.
+- Si un tercer reintento del respaldo LLM (más allá del actual 1, y solo relevante cuando `PACHAPP_ML_LLM_FALLBACK=true`) mejoraría de forma significativa el objetivo de precisión de 9/10, o si el ajuste del `TAXONOMY`/kNN (08-local-vision.md) es la palanca mejor — se difiere a la medición en tiempo de implementación.
 - Si el comportamiento de recaída a la imagen completa de `img_cutout` (ING-SCN-005) debería en su lugar pedir al usuario que repita la foto de inmediato en lugar de continuar silenciosamente — una decisión de UX que pertenece a 07-app-ui.md.
