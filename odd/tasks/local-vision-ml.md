@@ -58,4 +58,4 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 
 ## Next step
 
-Commit T1, assess review, open the T1 PR (stacked on `docs/spec-ml-local-vision`). Then T2 (needs the user's eval photos for its gate).
+T1 committed (`516183e` reviewed+acknowledged, `8314fd0` follow-up, medium/under budget → pending in slice). PR #4 already merged into main, so the T1 PR targets `main`; push/PR await the user. Then T2 (needs the user's eval photos for its gate).
