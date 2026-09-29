@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { getItem, setItem } from '../src/lib/device-storage';
 
@@ -47,6 +47,11 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
 
     await waitFor(() => {
       expect(mockGetItem).toHaveBeenCalledWith('pachapp.captureTips.seen');
+    });
+
+    // Flush the resolved getItem promise so the hook has processed 'true'.
+    await act(async () => {
+      await mockGetItem.mock.results[0].value;
     });
 
     expect(screen.queryByTestId('capture-tips-panel')).toBeNull();

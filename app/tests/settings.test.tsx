@@ -41,6 +41,17 @@ describe('SettingsScreen connection status (UI-REQ-014)', () => {
     });
   });
 
+  it('shows an error with retry on an HTTP 5xx with an empty body (UI-REQ-008)', async () => {
+    (globalThis.fetch as jest.Mock).mockResolvedValueOnce(new Response('', { status: 503 }));
+
+    await renderWithClient(<SettingsScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Reintentar' })).toBeTruthy();
+    });
+    expect(screen.queryByText('Conectado al servidor')).toBeNull();
+  });
+
   it('shows an error with retry when /health fails, and recovers on retry', async () => {
     (globalThis.fetch as jest.Mock)
       .mockRejectedValueOnce(new Error('network error'))

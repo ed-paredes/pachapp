@@ -22,7 +22,12 @@ export async function getItem(key: string): Promise<string | null> {
       return null;
     }
   }
-  return AsyncStorage.getItem(key);
+  try {
+    return await AsyncStorage.getItem(key);
+  } catch {
+    // Best-effort: treat an unreadable store as "nothing stored".
+    return null;
+  }
 }
 
 export async function setItem(key: string, value: string): Promise<void> {
@@ -34,5 +39,9 @@ export async function setItem(key: string, value: string): Promise<void> {
     }
     return;
   }
-  await AsyncStorage.setItem(key, value);
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch {
+    /* ignore native write failures; persistence is best-effort */
+  }
 }
