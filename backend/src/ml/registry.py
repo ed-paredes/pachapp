@@ -14,13 +14,17 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ml.bg_fp16 import ensure_fp16_model, fp16_path, should_use_fp16
 from ml.device import check_session_providers, onnxruntime_providers, resolve_device
 from shared.settings import Settings
+
+if TYPE_CHECKING:
+    import numpy as np
+    from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,46 @@ class GarmentEmbedder:
     device: str
     dim: int
     model_id: str  # "<PACHAPP_ML_EMBED_MODEL>@<PACHAPP_ML_EMBED_REVISION>"
+    _text_cache: dict[str, np.ndarray] = field(default_factory=dict, repr=False, compare=False)
+
+    def embed_image(self, img: Image.Image) -> np.ndarray:
+        """L2-normalized float32 embedding, shape `(dim,)`.
+
+        Accepts any PIL mode: EXIF orientation is applied and transparency is
+        composited over white (same normalization as the background remover).
+        """
+        import numpy as np
+        import torch
+
+        from ml.background import _to_rgb
+        from ml.zero_shot import l2_normalize
+
+        tensor = self.preprocess(_to_rgb(img)).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            feats = self.model.encode_image(tensor)
+        return l2_normalize(np.asarray(feats.float().cpu().numpy()[0], dtype=np.float32))
+
+    def embed_texts(self, texts: list[str]) -> np.ndarray:
+        """L2-normalized float32 text embeddings, shape `(len(texts), dim)`.
+
+        Cached in-process per exact text, so repeated prompts are encoded once.
+        """
+        import numpy as np
+        import torch
+
+        from ml.zero_shot import l2_normalize
+
+        missing = [t for t in dict.fromkeys(texts) if t not in self._text_cache]
+        if missing:
+            tokens = self.tokenizer(missing).to(self.device)
+            with torch.no_grad():
+                feats = self.model.encode_text(tokens)
+            arr = l2_normalize(np.asarray(feats.float().cpu().numpy(), dtype=np.float32))
+            for text, row in zip(missing, arr, strict=True):
+                self._text_cache[text] = row
+        if not texts:
+            return np.zeros((0, self.dim), dtype=np.float32)
+        return np.stack([self._text_cache[t] for t in texts])
 
 
 def _repo_id(embed_model: str) -> str:
