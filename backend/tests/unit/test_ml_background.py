@@ -293,6 +293,9 @@ class _FakeBiRefNetSession:
     def normalize(self, img: Image.Image, mean: Any, std: Any, size: Any) -> dict[str, Any]:
         return {"input": img.size, "mean": mean, "std": std, "size": size}
 
+    def predict(self, img: Image.Image, *args: Any, **kwargs: Any) -> list[Image.Image]:
+        raise AssertionError("the split path must not call predict")
+
     def run(self, _outputs: Any, feed: dict[str, Any]) -> list[Any]:
         import numpy as np
 
@@ -382,3 +385,161 @@ def test_non_birefnet_session_falls_back_to_rembg_remove(
     )
     assert len(calls) == 2
     assert all(isinstance(g, Image.Image) and g.size == (50, 30) for g in got)
+
+
+def test_birefnet_mask_constant_output_is_an_empty_mask() -> None:
+    import warnings
+
+    import numpy as np
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # 0/0 must not even warn
+        mask = background.birefnet_mask(np.full((1, 1, 4, 4), 3.0, dtype=np.float32), (8, 6))
+    assert mask.mode == "L"
+    assert mask.size == (8, 6)
+    assert mask.getextrema() == (0, 0)
+
+
+def test_constant_model_output_raises_empty_cutout(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    session = _install_fake_birefnet(monkeypatch)
+
+    def flat_run(_outputs: Any, feed: dict[str, Any]) -> list[Any]:
+        import numpy as np
+
+        return [np.zeros((1, 1, 64, 64), dtype=np.float32)]
+
+    monkeypatch.setattr(session, "run", flat_run)
+    with pytest.raises(EmptyCutoutError):
+        BiRefNetRemover(settings).remove(Image.new("RGB", (40, 40), "white"))
+
+
+def test_fallback_inference_runs_under_the_infer_lock(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    import threading
+    import time
+
+    remover = BiRefNetRemover(settings)
+    state = {"active": 0, "max": 0, "unlocked_calls": 0}
+    guard = threading.Lock()
+
+    def produce(img: Image.Image) -> Image.Image:
+        if not remover._infer_lock.locked():
+            state["unlocked_calls"] += 1
+        with guard:
+            state["active"] += 1
+            state["max"] = max(state["max"], state["active"])
+        time.sleep(0.01)
+        with guard:
+            state["active"] -= 1
+        return _rgba_with_square(100, (10, 10, 60, 40))
+
+    _install_fake_rembg(monkeypatch, produce)
+    got = list(remover.remove_many(range(8), load=lambda _: Image.new("RGB", (100, 100), "white")))
+    assert all(isinstance(g, Image.Image) for g in got)
+    # Direct callers on other threads share the same lock.
+    threads = [
+        threading.Thread(target=remover.remove, args=(Image.new("RGB", (100, 100)),))
+        for _ in range(4)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert state["unlocked_calls"] == 0
+    assert state["max"] == 1
+
+
+def test_remove_many_isolates_a_corrupt_item(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    _install_fake_birefnet(monkeypatch)
+
+    def load(i: int) -> Image.Image:
+        if i == 2:
+            raise OSError("cannot identify image file")
+        return Image.new("RGB", (80, 80), (i, 0, 0))
+
+    got = list(BiRefNetRemover(settings).remove_many(range(5), load=load))
+    assert len(got) == 5
+    assert isinstance(got[2], OSError)
+    assert [isinstance(g, Image.Image) for g in got] == [True, True, False, True, True]
+
+
+# --- real rembg session classes (no model file, no ONNX runtime session) --------
+
+
+class _FakeOrtSession:
+    """Stands in for `ort.InferenceSession`: a centered-square model output."""
+
+    def __init__(self, path: str, **kwargs: Any) -> None:
+        self.path = path
+        self.runs: list[Any] = []
+
+    def get_providers(self) -> list[str]:
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    def get_inputs(self) -> list[Any]:
+        return [types.SimpleNamespace(name="input")]
+
+    def run(self, _outputs: Any, feed: dict[str, Any]) -> list[Any]:
+        import numpy as np
+
+        self.runs.append(feed)
+        out = np.full((1, 1, 64, 64), -20.0, dtype=np.float32)
+        out[0, 0, 16:48, 16:48] = 20.0
+        return [out]
+
+
+def test_registry_fp16_session_takes_the_locked_birefnet_path(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, tmp_path: Path
+) -> None:
+    import onnxruntime as ort
+    import rembg
+    from rembg.sessions import sessions_class
+
+    lite: Any = next(c for c in sessions_class if c.name() == settings.ml_bg_model)
+    fp32 = tmp_path / "birefnet-general-lite.onnx"
+    monkeypatch.setattr(registry, "resolve_device", lambda requested: "cuda")
+    monkeypatch.setattr(registry, "ensure_fp16_model", lambda src, dst: dst)
+    # No model file and no network: only the class hierarchy and rembg's own code are real.
+    monkeypatch.setattr(lite, "download_models", classmethod(lambda cls, *a, **k: str(fp32)))
+    monkeypatch.setattr(ort, "InferenceSession", _FakeOrtSession)
+    monkeypatch.setattr(
+        rembg, "remove", lambda *a, **k: pytest.fail("rembg.remove must not be used")
+    )
+
+    session = registry.get_background_remover(settings)
+    assert type(session).__name__ == "Fp16Session"
+    remover = BiRefNetRemover(settings)
+    assert remover._is_birefnet(session)
+
+    prepared = remover.prepare(Image.new("RGB", (60, 60), (10, 200, 10)))
+    assert prepared.feed is not None  # fast path, not the fallback
+    result = remover.remove(Image.new("RGB", (60, 60), (10, 200, 10)))
+    assert result.mode == "RGBA"
+    assert len(session.inner_session.runs) == 1  # `remove` inferred via the locked `infer`
+
+
+def test_birefnet_subclass_overriding_predict_takes_the_fallback(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    from rembg.sessions.birefnet_general import BiRefNetSessionGeneral
+
+    class Plain(BiRefNetSessionGeneral):
+        pass
+
+    class Custom(BiRefNetSessionGeneral):
+        def predict(self, img: Image.Image, *args: Any, **kwargs: Any) -> list[Image.Image]:
+            return [Image.new("L", img.size, 255)]
+
+    plain = object.__new__(Plain)
+    custom = object.__new__(Custom)
+    remover = BiRefNetRemover(settings)
+    assert remover._is_birefnet(plain)
+    assert not remover._is_birefnet(custom)
+
+    monkeypatch.setattr(registry, "get_background_remover", lambda s: custom)
+    assert remover.prepare(Image.new("RGB", (20, 20))).feed is None

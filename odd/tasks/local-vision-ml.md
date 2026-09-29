@@ -80,6 +80,14 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 - Native review of `bd1c1d9..0d5cec4` (review-c0145b3e15e7f24f, user granted): approved and acknowledged. Advisory findings fixed in a follow-up commit: `ml-cutouts` output names keep the input filename (`a.jpg.png`) so same-stem inputs no longer overwrite each other; loop tests (success, warm-up excluded from median, empty mask, collision); fp16 session uses the same ORT SessionOptions as rembg's `new_session`; error-path tests. pytest 163 passed.
 - Public sample (not the spec's gate set): CC0 `alexeygrigorev/clothing-dataset-small`, 20 photos (2 per class, test split, ~400 px) → 20/20 non-empty, median 1568 ms/image, visually 18/20 clean (fails: beige shorts with a hole; white-striped tee on a white sheet). Hangers kept in ~7. **Gate accepted by the user on 2026-09-29 with this public sample** (18/20 clean); re-run `make ml-cutouts` on the user's own photos when available.
 
+## T3 review follow-ups (2026-09-30)
+
+Advisory findings from the native reviews of `50020b4` (eval CLI) and `f700dd1..91e60b2` (cutout perf), fixed by a delegated writer (uncommitted at time of writing):
+- Eval CLI: clean `error:` exit 1 for a missing eval dir; unhashable label values and non-UTF-8 `labels.json` map to `EvalError`; `--limit` must be >= 1; new `--min-category-accuracy F` gate (exit 2 after the report; unset = exit 0, `make ml-eval` unchanged; README line added); `main()` control flow covered by offline tests; `--pipeline` report labels the time `cutout wait (pipelined)`.
+- Cutout: fallback (non-BiRefNet) sessions run the whole `rembg.remove` inside `infer` under `_infer_lock`; the fast path is taken only when the session class keeps rembg's BiRefNet `predict`; constant model output gives an empty mask (-> `EmptyCutoutError`) instead of NaN; tests drive rembg's real session classes (fake ORT session, no model) through the registry fp16 path.
+- Pipeline error policy: per-item isolation. An `Exception` in prepare/execute/finish is yielded in that item's position (input order kept) and the rest continue; `remove_many` therefore yields `Image | Exception` (`EmptyCutoutError` is one case). `BaseException` still aborts.
+- Tests: fixed the mutating shared `PREDS`, the vacuous overlap test (now event-based), added `embed_texts` cache tests and the non-lite fp16 `gpu_mem_limit` test.
+
 ## Follow-ups
 
 - `snapshot_download` fetches every file of the pinned revision (~5 GB cache); add `allow_patterns` for the files open_clip's `local-dir:` loader needs. Needs a clean-cache download to verify — do with T3.

@@ -39,7 +39,12 @@ class _FakeRembg:
     """Stands in for the `rembg` module; records every `new_session` call and
     every direct construction of a session class (the fp16 path)."""
 
-    def __init__(self, active_providers: list[str], fp32_file: Path | None = None) -> None:
+    def __init__(
+        self,
+        active_providers: list[str],
+        fp32_file: Path | None = None,
+        model_name: str = "birefnet-general-lite",
+    ) -> None:
         self.active_providers = active_providers
         self.calls: list[tuple[str, list[Any]]] = []
         self.fp16_calls: list[tuple[str, list[Any], str]] = []
@@ -61,7 +66,7 @@ class _FakeRembg:
 
             @classmethod
             def name(cls) -> str:
-                return "birefnet-general-lite"
+                return model_name
 
             @classmethod
             def download_models(cls, *args: Any, **kwargs: Any) -> str:
@@ -175,6 +180,25 @@ def test_cuda_with_fp16_uses_fp16_file_and_provider_options(
     )
 
 
+def test_cuda_fp16_with_non_lite_model_omits_gpu_mem_limit(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "ml_bg_model", "birefnet-general")
+    monkeypatch.setattr(registry, "ensure_fp16_model", lambda src, dst: dst)
+    fake = _FakeRembg(
+        ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        tmp_path / "birefnet-general.onnx",
+        model_name="birefnet-general",
+    )
+    _install_fake_rembg(monkeypatch, fake, device="cuda")
+
+    registry.get_background_remover(settings)
+
+    ((_, providers, _),) = fake.fp16_calls
+    assert providers == onnxruntime_providers("cuda")
+    assert "gpu_mem_limit" not in providers[0][1]
+
+
 def test_cuda_with_fp16_disabled_keeps_fp32(
     monkeypatch: pytest.MonkeyPatch, settings: Settings
 ) -> None:
@@ -226,3 +250,70 @@ def test_cuda_fp16_unknown_model_raises_value_error(
     with pytest.raises(ValueError, match="no-such-model"):
         registry.get_background_remover(settings)
     assert fake.fp16_calls == []
+
+
+# --- GarmentEmbedder.embed_texts cache (fake tokenizer/model; torch only as tensor lib) ---
+
+
+class _FakeTextStack:
+    """Deterministic fake tokenizer + text tower that records what it encodes."""
+
+    def __init__(self) -> None:
+        self.tokenized: list[list[str]] = []
+        self.codes = {"a": 1.0, "b": 2.0, "c": 3.0}
+
+    def tokenizer(self, texts: list[str]) -> Any:
+        import torch
+
+        self.tokenized.append(list(texts))
+        return torch.tensor([[self.codes[t]] for t in texts])
+
+    def encode_text(self, tokens: Any) -> Any:
+        import torch
+
+        return torch.cat([tokens, torch.ones_like(tokens), torch.zeros_like(tokens)], dim=1)
+
+
+def _embedder(stack: _FakeTextStack) -> registry.GarmentEmbedder:
+    return registry.GarmentEmbedder(
+        model=types.SimpleNamespace(encode_text=stack.encode_text),
+        preprocess=None,
+        tokenizer=stack.tokenizer,
+        device="cpu",
+        dim=3,
+        model_id="fake@rev",
+    )
+
+
+def test_embed_texts_dedups_fetches_only_missing_and_keeps_order() -> None:
+    pytest.importorskip("torch")
+    import numpy as np
+
+    stack = _FakeTextStack()
+    embedder = _embedder(stack)
+
+    first = embedder.embed_texts(["a", "b", "a"])
+    assert stack.tokenized == [["a", "b"]]  # duplicate encoded once
+    assert first.shape == (3, 3) and first.dtype == np.float32
+    np.testing.assert_allclose(np.linalg.norm(first, axis=1), 1.0, rtol=1e-6)
+    np.testing.assert_array_equal(first[0], first[2])  # order preserved, repeats equal
+    assert not np.array_equal(first[0], first[1])
+
+    second = embedder.embed_texts(["c", "b", "a", "c"])
+    assert stack.tokenized == [["a", "b"], ["c"]]  # only the missing text was encoded
+    np.testing.assert_array_equal(second[1], first[1])
+    np.testing.assert_array_equal(second[2], first[0])
+    np.testing.assert_array_equal(second[0], second[3])
+
+    again = embedder.embed_texts(["b", "a"])
+    assert len(stack.tokenized) == 2  # fully cached: no model call
+    np.testing.assert_array_equal(again, first[[1, 0]])
+
+
+def test_embed_texts_empty_input_has_shape_zero_by_dim() -> None:
+    pytest.importorskip("torch")
+    stack = _FakeTextStack()
+    out = _embedder(stack).embed_texts([])
+    assert out.shape == (0, 3)
+    assert out.dtype.name == "float32"
+    assert stack.tokenized == []

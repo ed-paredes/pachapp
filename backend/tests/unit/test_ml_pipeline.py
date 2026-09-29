@@ -48,30 +48,31 @@ def test_execute_is_never_concurrent_and_runs_on_caller_thread() -> None:
 
 
 def test_prepare_and_finish_overlap_execute() -> None:
-    events: list[str] = []
-    lock = threading.Lock()
-
-    def log(name: str) -> None:
-        with lock:
-            events.append(name)
+    # Each blocking wait below can only be released by a stage running on a worker
+    # thread *during* an `execute`; a serialized pipeline would time out.
+    prep1_done = threading.Event()
+    fin0_done = threading.Event()
+    overlapped: list[str] = []
 
     def prepare(x: int) -> int:
-        log(f"prep{x}")
+        if x == 1:
+            prep1_done.set()
         return x
 
     def execute(p: int) -> int:
-        log(f"exec{p}")
-        time.sleep(0.05)
+        if p == 0 and prep1_done.wait(timeout=5):
+            overlapped.append("prepare(1) during execute(0)")
+        if p == 1 and fin0_done.wait(timeout=5):
+            overlapped.append("finish(0) during execute(1)")
         return p
 
     def finish(p: int, r: int) -> int:
-        log(f"fin{p}")
+        if p == 0:
+            fin0_done.set()
         return r
 
-    list(run_pipeline(range(3), prepare, execute, finish, lookahead=2))
-    # The next photo is prepared while the current one executes.
-    assert events.index("prep1") < events.index("exec0") + 2
-    assert events.index("prep2") < events.index("fin1")
+    assert list(run_pipeline(range(3), prepare, execute, finish, lookahead=2)) == [0, 1, 2]
+    assert overlapped == ["prepare(1) during execute(0)", "finish(0) during execute(1)"]
 
 
 def test_items_are_consumed_lazily_within_lookahead() -> None:
@@ -88,17 +89,45 @@ def test_items_are_consumed_lazily_within_lookahead() -> None:
     gen.close()
 
 
-def test_stage_exception_propagates() -> None:
+def test_stage_exceptions_are_isolated_per_item_and_keep_order() -> None:
+    def prepare(x: int) -> int:
+        if x == 2:
+            raise ValueError("bad prepare 2")
+        return x
+
     def execute(p: int) -> int:
-        if p == 2:
+        if p == 4:
+            raise RuntimeError("bad execute 4")
+        return p * 10
+
+    def finish(p: int, r: int) -> int:
+        if p == 6:
+            raise KeyError("bad finish 6")
+        return r
+
+    out = list(run_pipeline(range(8), prepare, execute, finish))
+    assert len(out) == 8
+    assert [o for o in out if not isinstance(o, Exception)] == [0, 10, 30, 50, 70]
+    assert [type(out[i]) for i in (2, 4, 6)] == [ValueError, RuntimeError, KeyError]
+    assert [i for i, o in enumerate(out) if isinstance(o, Exception)] == [2, 4, 6]
+
+
+def test_error_does_not_lose_the_previous_result() -> None:
+    def execute(p: int) -> int:
+        if p == 1:
             raise RuntimeError("boom")
         return p
 
-    got: list[int] = []
-    with pytest.raises(RuntimeError, match="boom"):
-        for value in run_pipeline(range(5), lambda x: x, execute, lambda p, r: r):
-            got.append(value)
-    assert got == [0]  # the failure surfaces one item ahead of the consumer
+    got = list(run_pipeline(range(3), lambda x: x, execute, lambda p, r: r))
+    assert got[0] == 0 and isinstance(got[1], RuntimeError) and got[2] == 2
+
+
+def test_base_exceptions_abort_the_run() -> None:
+    def execute(p: int) -> int:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        list(run_pipeline(range(3), lambda x: x, execute, lambda p, r: r))
 
 
 def test_lookahead_must_be_positive() -> None:

@@ -113,6 +113,8 @@ def birefnet_mask(model_output: Any, size: tuple[int, int]) -> Image.Image:
 
     pred = 1 / (1 + np.exp(-model_output[:, 0, :, :]))
     lo, hi = np.min(pred), np.max(pred)
+    if hi == lo:  # constant output: no foreground signal; avoid 0/0 -> NaN
+        return Image.new("L", size, 0)
     pred = np.squeeze((pred - lo) / (hi - lo))
     mask = Image.fromarray((pred * 255).astype("uint8"), mode="L")
     return mask.resize(size, Image.Resampling.LANCZOS)
@@ -123,7 +125,7 @@ class PreparedCutout:
     """Output of `BiRefNetRemover.prepare`: the RGB image and the model feed."""
 
     rgb: Image.Image
-    feed: dict[str, Any] | None  # None -> not a BiRefNet session, use rembg.remove
+    feed: dict[str, Any] | None  # None -> not a fast-path session, `infer` runs rembg.remove
 
 
 class BiRefNetRemover:
@@ -132,7 +134,12 @@ class BiRefNetRemover:
     `remove` runs `prepare` -> `infer` -> `finish`; `remove_many` runs the same
     stages pipelined (CPU pre/post-processing of neighbouring photos overlaps
     the GPU inference) with identical results. Sessions that are not rembg
-    BiRefNet sessions fall back to plain `rembg.remove`.
+    BiRefNet sessions, or whose class overrides rembg's BiRefNet `predict`,
+    fall back to plain `rembg.remove`, run whole inside `infer` (so under the
+    same inference lock; no CPU/GPU overlap on that path).
+
+    Per-item errors in `remove_many` are yielded in place of that item's result
+    (see `ml.pipeline`); `EmptyCutoutError` is one of them.
     """
 
     def __init__(self, settings: Settings, min_coverage: float = MIN_COVERAGE) -> None:
@@ -145,7 +152,11 @@ class BiRefNetRemover:
             from rembg.sessions.birefnet_general import BiRefNetSessionGeneral
         except ImportError:  # pragma: no cover - rembg always ships it
             return False
-        return isinstance(session, BiRefNetSessionGeneral)
+        # Only rembg's own `predict` is replicated by prepare/infer/finish; a
+        # subclass overriding it must keep its own pre/post-processing.
+        return isinstance(session, BiRefNetSessionGeneral) and (
+            type(session).predict is BiRefNetSessionGeneral.predict
+        )
 
     def prepare(self, img: Image.Image) -> PreparedCutout:
         """Normalize to RGB and build the model input (CPU)."""
@@ -157,11 +168,20 @@ class BiRefNetRemover:
         return PreparedCutout(rgb, feed)
 
     def infer(self, prepared: PreparedCutout) -> Any:
-        """Run the model (GPU); serialized. Returns the raw output or None."""
-        if prepared.feed is None:
-            return None
+        """Run the model (GPU); serialized by `_infer_lock`. Returns the raw model
+        output, or for non-BiRefNet sessions the finished RGBA image from
+        `rembg.remove` (which includes its own inference)."""
         session = registry.get_background_remover(self._settings)
         with self._infer_lock:
+            if prepared.feed is None:
+                from rembg import remove
+
+                result = remove(prepared.rgb, session=session)
+                if not isinstance(result, Image.Image):
+                    raise TypeError(
+                        f"rembg.remove returned {type(result).__name__}, expected PIL image"
+                    )
+                return result
             return session.inner_session.run(None, prepared.feed)[0]
 
     def finish(self, prepared: PreparedCutout, raw: Any) -> Image.Image:
@@ -171,15 +191,7 @@ class BiRefNetRemover:
         (ING-SCN-005); see the module docstring for the caller contract.
         """
         if prepared.feed is None:
-            from rembg import remove
-
-            session = registry.get_background_remover(self._settings)
-            result = remove(prepared.rgb, session=session)
-            if not isinstance(result, Image.Image):
-                raise TypeError(
-                    f"rembg.remove returned {type(result).__name__}, expected PIL image"
-                )
-            rgba = result.convert("RGBA")
+            rgba = raw.convert("RGBA")  # `infer` already ran rembg.remove
         else:
             from rembg.bg import naive_cutout
 
@@ -200,20 +212,15 @@ class BiRefNetRemover:
 
     def remove_many[T](
         self, sources: Iterable[T], load: Callable[[T], Image.Image]
-    ) -> Iterator[Image.Image | EmptyCutoutError]:
+    ) -> Iterator[Image.Image | Exception]:
         """Pipelined `remove` over `sources` (`load` turns a source, e.g. a path,
         into an image on a worker thread). Yields, in
-        order, the cutout or the `EmptyCutoutError` for that photo. Batch
-        throughput only: per-photo latency is unchanged."""
+        order, the cutout, or the exception for that photo (`EmptyCutoutError`,
+        or e.g. a decode error for a corrupt file) while the rest still run.
+        Batch throughput only: per-photo latency is unchanged."""
         registry.get_background_remover(self._settings)  # create the session up front
 
         def prep(source: T) -> PreparedCutout:
             return self.prepare(load(source))
 
-        def fin(prepared: PreparedCutout, raw: Any) -> Image.Image | EmptyCutoutError:
-            try:
-                return self.finish(prepared, raw)
-            except EmptyCutoutError as exc:
-                return exc
-
-        return run_pipeline(sources, prep, self.infer, fin)
+        return run_pipeline(sources, prep, self.infer, self.finish)
