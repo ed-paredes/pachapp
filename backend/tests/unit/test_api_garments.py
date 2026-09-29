@@ -177,3 +177,54 @@ def test_openapi_declares_response_models(client: TestClient) -> None:
         "$ref": "#/components/schemas/GarmentCreated"
     }
     assert "JobRead" in spec["components"]["schemas"]
+
+
+def test_upload_over_byte_cap_returns_400_and_stops_reading(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R3-002: the byte cap is enforced while reading, before any decode."""
+    from api.routers import garments as garments_router
+
+    monkeypatch.setattr(garments_router, "MAX_UPLOAD_BYTES", 1024)
+    monkeypatch.setattr(garments_router, "_READ_CHUNK_BYTES", 256)
+
+    response = _upload(client, b"\x00" * 2048)
+
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "IMAGE_TOO_LARGE"
+    assert error["details"] == {"max_bytes": 1024}
+    assert settings.images_root is not None
+    assert not list(settings.images_root.rglob("*.jpg"))
+
+
+def test_upload_at_byte_cap_is_accepted(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from api.routers import garments as garments_router
+
+    payload = _jpeg((20, 20))
+    monkeypatch.setattr(garments_router, "MAX_UPLOAD_BYTES", len(payload))
+
+    assert _upload(client, payload).status_code == 202
+
+
+def test_upload_handler_is_a_sync_def() -> None:
+    """R3-001: a plain `def` runs in the threadpool, not on the event loop."""
+    import inspect
+
+    from api.routers import garments as garments_router
+
+    assert not inspect.iscoroutinefunction(garments_router.upload_garment)
+
+
+def test_get_engine_is_created_once_under_concurrency(settings: Settings) -> None:
+    """R3-003: racing first requests share a single engine."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    app = create_app(settings)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        engines = list(pool.map(lambda _: get_engine(app), range(32)))
+
+    assert len({id(engine) for engine in engines}) == 1
+    engines[0].dispose()

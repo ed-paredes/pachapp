@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 from typing import BinaryIO
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps
 
 JPEG_QUALITY = 92
 WEBP_QUALITY = 85
@@ -49,7 +49,8 @@ def decode_image(source: bytes | BinaryIO, *, max_long_side: int) -> Image.Image
         raise
     except Image.DecompressionBombError as exc:
         raise ImageTooLargeError(0, max_long_side) from exc
-    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 - decoders/EXIF parsers raise KeyError, TypeError, struct.error...
+        # R3-004: any decoder failure on untrusted bytes is a client error, never a 500.
         raise InvalidImageError("payload is not a decodable image") from exc
 
 

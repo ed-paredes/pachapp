@@ -34,6 +34,9 @@ export interface paths {
          * Upload Garment
          * @description Persist the EXIF-corrected original, then create garment + job in one
          *     transaction (ING-REQ-001/003). Heavy processing is left to the worker.
+         *
+         *     A plain `def`: FastAPI runs it in the threadpool, so the blocking Pillow,
+         *     file and SQLAlchemy work never stalls the event loop (R3-001).
          */
         post: operations["upload_garment_garments_post"];
         delete?: never;
