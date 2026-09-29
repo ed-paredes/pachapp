@@ -241,12 +241,16 @@ def test_steps_share_context_data_bag(factory, settings) -> None:
     assert _run(factory, settings, job_id, steps) == JobStatus.done
 
 
-def test_default_steps_are_deferred_placeholders_that_advance(factory, settings) -> None:
-    (job_id,) = _add_jobs(factory, 1)
-    steps = default_steps(settings)
+def test_default_steps_register_real_steps_and_defer_ai_steps(settings) -> None:
+    from worker.runner import deferred_step
+
+    steps = default_steps(settings, remover_factory=lambda: None)  # type: ignore[arg-type]
+
     assert list(steps) == list(STEP_ORDER)
-    assert _run(factory, settings, job_id, dict(steps)) == JobStatus.done
-    assert _job(factory, job_id).progress == 100
+    assert steps[JobStep.ai_attributes] is deferred_step
+    assert steps[JobStep.embedding] is deferred_step
+    for real in (JobStep.preprocess, JobStep.cutout, JobStep.color, JobStep.consolidate):
+        assert steps[real] is not deferred_step
 
 
 def test_retryable_error_is_retried_once_then_succeeds(factory, settings) -> None:

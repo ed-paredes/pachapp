@@ -84,11 +84,26 @@ def deferred_step(_ctx: StepContext) -> None:
     embedding): progress still advances so the table stays monotonic."""
 
 
-def default_steps(settings: Settings) -> Mapping[JobStep, Step]:
-    """Production step registry. A4/A5 replace the placeholders below with the
-    real preprocess/cutout/color/consolidate steps; `ai_attributes` and
-    `embedding` stay deferred until 08 step 4 (A15)."""
-    return {step: deferred_step for step in STEP_ORDER}
+def default_steps(
+    settings: Settings, remover_factory: Callable[[], Any] | None = None
+) -> Mapping[JobStep, Step]:
+    """Production step registry. `ai_attributes` and `embedding` stay deferred
+    until 08 step 4 (A15). `remover_factory` builds the `BackgroundRemover`
+    lazily on the first job; tests inject a fake, production uses BiRefNet."""
+    # Imported here: the step modules import this module for errors/StepContext.
+    from worker.steps.color import color_step
+    from worker.steps.consolidate import consolidate_step
+    from worker.steps.cutout import make_cutout_step, production_remover_factory
+    from worker.steps.preprocess import preprocess_step
+
+    steps: dict[JobStep, Step] = {step: deferred_step for step in STEP_ORDER}
+    steps[JobStep.preprocess] = preprocess_step
+    steps[JobStep.cutout] = make_cutout_step(
+        remover_factory or production_remover_factory(settings)
+    )
+    steps[JobStep.color] = color_step
+    steps[JobStep.consolidate] = consolidate_step
+    return steps
 
 
 def _now() -> datetime:
