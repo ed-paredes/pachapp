@@ -96,6 +96,13 @@ so it needs an NVIDIA GPU and a CUDA 13 driver to actually run on `cuda` -- see
 `docs/specs/08-local-vision.md` for the full settings table and fallback to
 `cpu`/`mps`.
 
+`make ml-cutouts` is the step-2 gate aid: it runs the background remover over
+the photos in `PACHAPP_ML_EVAL_DIR` and writes `<name>.png` cutouts to
+`~/pachapp-data/eval/cutouts`, printing per-image coverage and timing. Inspect
+about 20 eval photos; at least 18 cutouts should be clean. Pass another folder
+with `make ml-cutouts` after editing the target, or run
+`cd backend && uv run python -m ml.cutout_preview INPUT_DIR --out OUTPUT_DIR`.
+
 ## Phone / LAN access (manual)
 
 To open the app on a phone via Expo Go, the phone needs to reach the API
