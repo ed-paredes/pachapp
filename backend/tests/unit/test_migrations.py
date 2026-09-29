@@ -36,12 +36,15 @@ def migrated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
     monkeypatch.setenv("PACHAPP_LLM_API_KEY", "test-key")
     get_settings.cache_clear()
 
-    command.upgrade(_alembic_config(), "head")
+    try:
+        command.upgrade(_alembic_config(), "head")
 
-    db_path = get_settings().db_path
-    assert db_path is not None
-    assert db_path.exists()
-    yield db_path
+        db_path = get_settings().db_path
+        assert db_path is not None
+        assert db_path.exists()
+        yield db_path
+    finally:
+        get_settings.cache_clear()
 
 
 def _connect_with_fk_enforcement(db_path: Path) -> sqlite3.Connection:

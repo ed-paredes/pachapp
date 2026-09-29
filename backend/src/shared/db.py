@@ -40,7 +40,8 @@ def create_db_engine(settings: Settings | None = None) -> Engine:
     (or once per test), with the `Settings` in effect there.
     """
     settings = settings or get_settings()
-    assert settings.db_path is not None  # derived by Settings' model validator
+    if settings.db_path is None:
+        raise ValueError("Settings.db_path is not set; it is derived from data_dir")
     settings.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     engine = create_engine(f"sqlite:///{settings.db_path}")

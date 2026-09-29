@@ -8,9 +8,24 @@ Pydantic models — never direct dict access.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, RootModel
+from typing import Literal
+
+from pydantic import BaseModel, Field, RootModel, model_validator
 
 from shared.enums import ConfidenceSource
+
+_PROPORTION_SUM_TOLERANCE = 1e-6
+
+AttributeName = Literal[
+    "category",
+    "subcategory",
+    "pattern",
+    "formality",
+    "style_tags",
+    "seasons",
+    "warmth",
+    "material",
+]
 
 
 class ColorEntry(BaseModel):
@@ -23,9 +38,22 @@ class ColorEntry(BaseModel):
 
 
 class Colors(RootModel[list[ColorEntry]]):
-    """`garment.colors`: first entry = dominant color, sorted by proportion desc."""
+    """`garment.colors`: first entry = dominant color, sorted by proportion desc.
+
+    Enforced (docs/specs/02-data-model.md, ING-REQ-011): proportions are
+    non-increasing and sum to <= 1 (within float tolerance).
+    """
 
     root: list[ColorEntry] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_order_and_sum(self) -> Colors:
+        proportions = [entry.proportion for entry in self.root]
+        if any(a < b for a, b in zip(proportions, proportions[1:], strict=False)):
+            raise ValueError("colors must be sorted by proportion descending")
+        if sum(proportions) > 1 + _PROPORTION_SUM_TOLERANCE:
+            raise ValueError("color proportions must sum to <= 1")
+        return self
 
 
 class AttributeConfidence(BaseModel):
@@ -40,14 +68,13 @@ class AttributeConfidence(BaseModel):
     source: ConfidenceSource
 
 
-class AiConfidence(RootModel[dict[str, AttributeConfidence]]):
+class AiConfidence(RootModel[dict[AttributeName, AttributeConfidence]]):
     """`garment.ai_confidence`.
 
-    Keys are a subset of {"category", "subcategory", "pattern", "formality",
-    "style_tags", "seasons", "warmth", "material"}.
+    Keys are a subset of the closed set `AttributeName` (docs/specs/02-data-model.md).
     """
 
-    root: dict[str, AttributeConfidence] = Field(default_factory=dict)
+    root: dict[AttributeName, AttributeConfidence] = Field(default_factory=dict)
 
 
 class ScoreBreakdown(BaseModel):
