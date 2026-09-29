@@ -1,12 +1,13 @@
 import { render, screen } from '@testing-library/react-native';
 
-import HomeScreen from '../app/index';
+import TodayScreen from '../app/(tabs)/index';
 
-describe('HomeScreen', () => {
-  it('renders the Spanish placeholder copy', async () => {
-    await render(<HomeScreen />);
+describe('TodayScreen (Hoy)', () => {
+  it('renders the empty-state copy from UI-REQ-005', async () => {
+    await render(<TodayScreen />);
 
-    expect(screen.getByText("P'achapp")).toBeTruthy();
-    expect(screen.getByText('Armario inteligente — en construcción')).toBeTruthy();
+    expect(
+      screen.getByText('Aún no tienes suficientes prendas para generar un outfit'),
+    ).toBeTruthy();
   });
 });
