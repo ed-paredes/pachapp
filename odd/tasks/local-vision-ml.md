@@ -24,7 +24,9 @@ Mode: off (no project/session TDD configuration). Runner: `uv run pytest` (backe
 - [x] **T1 — Step 1: settings, `ml` package skeleton, registry + device, preload.** Route: delegated direct (writer trigger: settings, ml package, worker, tests, Makefile, pyproject).
   - `PACHAPP_ML_*` settings (08 table), conditional `PACHAPP_LLM_*` (VIS-REQ-021 / DEV-REQ-011), cache dir under data dir with D14 guard, `HF_HOME`/`U2NET_HOME` derived in the worker (VIS-REQ-008), pinned embed revision (VIS-REQ-002), `api`↛`ml` test (VIS-REQ-005), `make ml-preload`.
   - Done when (08 step 1): `make ml-preload` downloads BiRefNet and SigLIP into `PACHAPP_ML_CACHE_DIR` and `ml.registry` reports the selected device (expected `cuda`).
-- [ ] **T2 — Step 2: BiRefNet cutout (`BackgroundRemover`).** Gate needs the user's photos (18/20 clean cutouts).
+- [ ] **T2 — Step 2: BiRefNet cutout (`BackgroundRemover`).** Gate needs the user's photos (18/20 clean cutouts). Branch `feat/ml-2-cutout` (stacked on `feat/ml-1-registry`). Route: delegated direct (writer trigger: background.py + tests + CLI + Makefile/README).
+  - `ml/background.py`: `remove(img) -> RGBA cropped to bbox` (08 interfaces); near-empty mask raises a dedicated error so the worker's `cutout` step (plan step 4) can apply ING-SCN-005's soft failure (fallback to the preprocessed image + `needs_review`). Empty-mask threshold is a documented tunable default.
+  - Gate helper: `python -m ml.cutout_preview` / `make ml-cutouts` writes cutouts from `PACHAPP_ML_EVAL_DIR` (or a CLI dir) to an output dir for visual inspection, with per-image timing (VIS-REQ-026 context). Not in 08's CLI list — named in the report as a gate aid.
 - [ ] **T3 — Step 3: embedder + zero-shot + `make ml-eval`.** Gate needs the user's photos (≥85 % category accuracy without kNN).
 
 ## Delivery
@@ -48,6 +50,13 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 - Commit `516183e` assessed high (subprocess in the api↛ml boundary test); consent granted by the user; 4-lens review `review-a661f49fafcd1a10` **approved** and acknowledged (authority burned). Reviewed boundary → `516183e`.
 - 12 advisory (non-blocking) findings. Fixed in a follow-up commit (route: delegated direct writer, 6 files): moving-ref guard for `PACHAPP_ML_EMBED_REVISION` (rejects latest/main/master/HEAD/refs/heads/*, accepts SHA or tag — the spec allows "commit/tag", so no 40-hex requirement) with VIS-REQ-002 in its errors; `.env.example` no longer points to a non-existent `make reembed`; pyproject comment points here instead of an external "report"; comment on the 08-table defaults; `test_ml_cache` env isolation via monkeypatch; new `test_ml_registry.py` (fake rembg, no torch/network). pytest 92 passed.
 - Not changed, by decision: `PACHAPP_ML_EMBED_REVISION` stays required for every process incl. the API (08 table says "obligatorio"; findings R3/R4 suggested validating it only in the worker) — **open question for the user**. Duplicated `ml_cache_dir` assert (suggestion) left as is.
+
+## T2 progress (2026-09-29)
+
+- Implemented by a delegated writer: `ml/background.py` (`BackgroundRemover` Protocol, `BiRefNetRemover`, torch-free `alpha_coverage`/`crop_to_foreground`, `EmptyCutoutError` for ING-SCN-005 with `OPACITY_THRESHOLD=10`, `MIN_COVERAGE=0.5%` as tunable defaults), gate aid `python -m ml.cutout_preview` / `make ml-cutouts`, `test_ml_background.py`. Checks: ruff, format, ty pass; pytest 106 passed.
+- **Performance finding (blocks VIS-REQ-026 `<2 s` on the RTX 2060):** smoke on 3 synthetic 1024 px images took 18–41 s/image on cuda. Isolated ORT benchmark (steady-state, per image): `birefnet-general` fp32 14 s (4.2 s with `cudnn_conv_algo_search=HEURISTIC` + `arena_extend_strategy=kSameAsRequested`); `birefnet-general` fp16 9 s; `birefnet-general-lite` fp32 6.5 s; **`birefnet-general-lite` fp16 0.66 s**, masks vs fp32 IoU ≥ 0.9998. Root cause: fp32 BiRefNet at 1024 px needs more than the ~5.5 GB free VRAM (a single 822 MB tensor on the lite model; `gpu_mem_limit=3 GB` OOMs), so the Windows driver spills to shared system memory. All nodes are placed on the CUDA provider (no CPU fallback).
+- **Decision pending (user):** default background model — (a) `birefnet-general-lite` converted to fp16 at `make ml-preload` (meets `<2 s`; needs `onnx` + `onnxconverter-common` at preload; quality to be confirmed by the 18/20 gate; changes 08's default), (b) keep `birefnet-general` fp32 with the cuDNN/arena options (~4 s; misses `<2 s`), (c) other. Not implemented until decided.
+- Gate (18/20 clean cutouts) waits for the user's eval photos.
 
 ## Follow-ups
 
