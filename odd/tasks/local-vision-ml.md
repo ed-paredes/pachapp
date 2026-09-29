@@ -24,7 +24,7 @@ Mode: off (no project/session TDD configuration). Runner: `uv run pytest` (backe
 - [x] **T1 — Step 1: settings, `ml` package skeleton, registry + device, preload.** Route: delegated direct (writer trigger: settings, ml package, worker, tests, Makefile, pyproject).
   - `PACHAPP_ML_*` settings (08 table), conditional `PACHAPP_LLM_*` (VIS-REQ-021 / DEV-REQ-011), cache dir under data dir with D14 guard, `HF_HOME`/`U2NET_HOME` derived in the worker (VIS-REQ-008), pinned embed revision (VIS-REQ-002), `api`↛`ml` test (VIS-REQ-005), `make ml-preload`.
   - Done when (08 step 1): `make ml-preload` downloads BiRefNet and SigLIP into `PACHAPP_ML_CACHE_DIR` and `ml.registry` reports the selected device (expected `cuda`).
-- [ ] **T2 — Step 2: BiRefNet cutout (`BackgroundRemover`).** Gate needs the user's photos (18/20 clean cutouts). Branch `feat/ml-2-cutout` (stacked on `feat/ml-1-registry`). Route: delegated direct (writer trigger: background.py + tests + CLI + Makefile/README).
+- [x] **T2 — Step 2: BiRefNet cutout (`BackgroundRemover`).** Gate needs the user's photos (18/20 clean cutouts). Branch `feat/ml-2-cutout` (stacked on `feat/ml-1-registry`). Route: delegated direct (writer trigger: background.py + tests + CLI + Makefile/README).
   - `ml/background.py`: `remove(img) -> RGBA cropped to bbox` (08 interfaces); near-empty mask raises a dedicated error so the worker's `cutout` step (plan step 4) can apply ING-SCN-005's soft failure (fallback to the preprocessed image + `needs_review`). Empty-mask threshold is a documented tunable default.
   - Gate helper: `python -m ml.cutout_preview` / `make ml-cutouts` writes cutouts from `PACHAPP_ML_EVAL_DIR` (or a CLI dir) to an output dir for visual inspection, with per-image timing (VIS-REQ-026 context). Not in 08's CLI list — named in the report as a gate aid.
 - [ ] **T3 — Step 3: embedder + zero-shot + `make ml-eval`.** Gate needs the user's photos (≥85 % category accuracy without kNN).
@@ -62,7 +62,7 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 
 - Branches rebased onto main after PRs #5–#9 (T1 `bd1c1d9` = old `516183e`). Rebase surfaced a semantic conflict: data model tests built `Settings` without the required embed revision — fixed in `0d5cec4`.
 - Native review of `bd1c1d9..0d5cec4` (review-c0145b3e15e7f24f, user granted): approved and acknowledged. Advisory findings fixed in a follow-up commit: `ml-cutouts` output names keep the input filename (`a.jpg.png`) so same-stem inputs no longer overwrite each other; loop tests (success, warm-up excluded from median, empty mask, collision); fp16 session uses the same ORT SessionOptions as rembg's `new_session`; error-path tests. pytest 163 passed.
-- Public sample (not the spec's gate set): CC0 `alexeygrigorev/clothing-dataset-small`, 20 photos (2 per class, test split, ~400 px) → 20/20 non-empty, median 1568 ms/image, visually 18/20 clean (fails: beige shorts with a hole; white-striped tee on a white sheet). Hangers kept in ~7. Whether this counts for the T2 gate is the user's call (08 step 2 names the user's own eval photos).
+- Public sample (not the spec's gate set): CC0 `alexeygrigorev/clothing-dataset-small`, 20 photos (2 per class, test split, ~400 px) → 20/20 non-empty, median 1568 ms/image, visually 18/20 clean (fails: beige shorts with a hole; white-striped tee on a white sheet). Hangers kept in ~7. **Gate accepted by the user on 2026-09-29 with this public sample** (18/20 clean); re-run `make ml-cutouts` on the user's own photos when available.
 
 ## Follow-ups
 
