@@ -41,7 +41,7 @@ APP := cd app &&
 NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
-	typecheck migrate migrate-new gen-client
+	typecheck migrate migrate-new gen-client ml-preload
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -99,11 +99,15 @@ migrate-new: ## Create a migration: make migrate-new name="add garment"
 	@if [[ -z "$(name)" ]]; then echo 'usage: make migrate-new name="<message>"' >&2; exit 1; fi
 	$(BACKEND) uv run alembic revision --autogenerate -m "$(name)"
 
-# Exports the schema in-process, so no running API is needed. Dummy LLM values
-# satisfy Settings; they never reach a provider.
+# Exports the schema in-process, so no running API is needed. Dummy LLM/ML
+# values satisfy Settings; they never reach a provider or load a model.
 gen-client: check-node ## Regenerate app/src/api-client/schema.ts from OpenAPI
 	@tmp=$$(mktemp --suffix=.json); trap 'rm -f "$$tmp"' EXIT; \
 	cd backend && PACHAPP_ENV_FILE=/dev/null PACHAPP_LLM_PROVIDER=gen-client \
 		PACHAPP_LLM_MODEL_ID=gen-client PACHAPP_LLM_API_KEY=gen-client \
+		PACHAPP_ML_EMBED_REVISION=gen-client \
 		uv run python -m api.export_openapi "$$tmp" && \
 	cd ../app && npx openapi-typescript "$$tmp" -o src/api-client/schema.ts
+
+ml-preload: ## Download and validate the vision models
+	$(BACKEND) uv run python -m ml.preload

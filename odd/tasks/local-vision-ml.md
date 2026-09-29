@@ -21,7 +21,7 @@ Mode: off (no project/session TDD configuration). Runner: `uv run pytest` (backe
 
 ## Tasks
 
-- [ ] **T1 — Step 1: settings, `ml` package skeleton, registry + device, preload.** Route: delegated direct (writer trigger: settings, ml package, worker, tests, Makefile, pyproject).
+- [x] **T1 — Step 1: settings, `ml` package skeleton, registry + device, preload.** Route: delegated direct (writer trigger: settings, ml package, worker, tests, Makefile, pyproject).
   - `PACHAPP_ML_*` settings (08 table), conditional `PACHAPP_LLM_*` (VIS-REQ-021 / DEV-REQ-011), cache dir under data dir with D14 guard, `HF_HOME`/`U2NET_HOME` derived in the worker (VIS-REQ-008), pinned embed revision (VIS-REQ-002), `api`↛`ml` test (VIS-REQ-005), `make ml-preload`.
   - Done when (08 step 1): `make ml-preload` downloads BiRefNet and SigLIP into `PACHAPP_ML_CACHE_DIR` and `ml.registry` reports the selected device (expected `cuda`).
 - [ ] **T2 — Step 2: BiRefNet cutout (`BackgroundRemover`).** Gate needs the user's photos (18/20 clean cutouts).
@@ -35,6 +35,19 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 
 - 2026-09-28: PR #4 (specs) opened; torch variant CUDA chosen; branch `feat/ml-1-registry` created from `docs/spec-ml-local-vision`.
 
+## T1 verification (2026-09-29, resumed session)
+
+- `ruff check`, `ruff format --check`, `ty check src`: pass. `make lint/fmt-check/typecheck`: pass (backend + app). `uv run pytest`: 80 passed (76 before the guard below + 4 new). App jest: 3 passed.
+- **Defect found and fixed on resume:** `onnxruntime-gpu 1.30.0` (via `rembg[gpu]`) is built against CUDA 13, but torch came from the cu126 index (CUDA 12 libs), so the ORT CUDA provider failed to load and rembg ran BiRefNet on CPU with only a warning. Fix: torch/torchvision moved to the `pytorch-cu130` index (driver 591.86 supports CUDA 13.1); new `ml.device.check_session_providers` makes `get_background_remover` raise instead of silently falling back to CPU on `cuda`.
+- `make ml-preload` (cache `~/pachapp-data-test/models`, revision `c56244cc…`): device `cuda`, BiRefNet session on `CUDAExecutionProvider`, embedding dim 768, cache size unchanged before/after (5 543 440 KB) → no re-download. Elapsed 194 s, of which ~104 s is importing torch/open_clip/rembg/transformers from `backend/.venv` on `/mnt/d` (9p) — environment cost, not code.
+- Deps beyond SPEC-ML's base list: `torchvision` (open_clip), `transformers` + `sentencepiece` (Marqo-FashionSigLIP's HF tokenizer), `onnxruntime-gpu` via `rembg[gpu]` (CUDA inference for BiRefNet; avoids the conflicting CPU `onnxruntime`).
+- Route: delegated direct (writer, previous session); resume fixes inline (2 small mechanical edits + test).
+
+## Follow-ups
+
+- Worker cold start ~100 s from `/mnt/d` imports: consider a checkout on WSL ext4 or `UV_PROJECT_ENVIRONMENT` outside `/mnt` before T2 perf measurements (VIS-REQ-026 budget is per garment, not startup).
+- `.env` / `.env.test` lack `PACHAPP_ML_EMBED_REVISION` (required, no default): user must add it.
+
 ## Next step
 
-Delegate T1.
+Commit T1, assess review, open the T1 PR (stacked on `docs/spec-ml-local-vision`). Then T2 (needs the user's eval photos for its gate).
