@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, UploadFile, status
-from sqlmodel import Session
+from fastapi import APIRouter, Depends, Query, UploadFile, status
+from sqlalchemy import ColumnElement, TextClause, func, text
+from sqlmodel import Session, col, select
 
 from api.deps import get_session, get_settings_dep
-from api.errors import IMAGE_TOO_LARGE, INVALID_IMAGE, AppError, ErrorResponse
-from api.schemas import GarmentCreated
+from api.errors import GARMENT_NOT_FOUND, IMAGE_TOO_LARGE, INVALID_IMAGE, AppError, ErrorResponse
+from api.schemas import (
+    GarmentCreated,
+    GarmentDetail,
+    GarmentList,
+    GarmentListItem,
+    JobSummary,
+)
 from shared import storage
-from shared.enums import GarmentStatus, JobStatus
+from shared.enums import GarmentCategory, GarmentStatus, JobStatus, Season
 from shared.imaging import ImageTooLargeError, InvalidImageError, decode_image, encode_jpeg
-from shared.models import Garment, Job
+from shared.models import Garment, Job, OutfitItem
+from shared.schemas import AiConfidence, ColorEntry, Colors
 from shared.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -93,3 +101,160 @@ def upload_garment(
             logger.exception("could not remove orphan original %s", garment.img_original)
         raise
     return GarmentCreated(garment_id=garment.id, job_id=job.id)
+
+
+# --- A6: reads (API-REQ-003..005) ---
+
+SortField = Literal["created_at", "last_worn_at", "wear_count"]
+SortOrder = Literal["asc", "desc"]
+
+
+def _json_contains(column: str, key: str | None, param: str, value: str) -> TextClause:
+    """`EXISTS` over `json_each(<column>)`: a JSON-array element (or one of its
+    keys) equals `value`. Done in SQL so `total` and pagination stay exact."""
+    target = f"json_extract(json_each.value, '$.{key}')" if key else "json_each.value"
+    return text(
+        f"EXISTS (SELECT 1 FROM json_each(garment.{column}) WHERE {target} = :{param})"
+    ).bindparams(**{param: value})
+
+
+def _job_summaries(session: Session, garment_ids: list[str]) -> dict[str, JobSummary]:
+    """Latest job per garment (newest `created_at`, id as tie-break)."""
+    if not garment_ids:
+        return {}
+    rows = session.exec(
+        select(Job)
+        .where(col(Job.garment_id).in_(garment_ids))
+        .order_by(col(Job.created_at), col(Job.id))
+    ).all()
+    latest: dict[str, JobSummary] = {}
+    for job in rows:  # ascending, so later rows overwrite earlier ones
+        latest[job.garment_id] = JobSummary(
+            id=job.id, status=job.status, step=job.step, progress=job.progress, error=job.error
+        )
+    return latest
+
+
+def _colors(garment: Garment) -> list[ColorEntry] | None:
+    return None if garment.colors is None else Colors.model_validate(garment.colors).root
+
+
+def _list_item(garment: Garment, job: JobSummary | None) -> GarmentListItem:
+    return GarmentListItem(
+        id=garment.id,
+        category=garment.category,
+        subcategory=garment.subcategory,
+        colors=_colors(garment),
+        is_neutral=garment.is_neutral,
+        pattern=garment.pattern,
+        status=garment.status,
+        needs_review=garment.needs_review,
+        user_verified=garment.user_verified,
+        img_thumb=garment.img_thumb,
+        img_cutout=garment.img_cutout,
+        wear_count=garment.wear_count,
+        last_worn_at=garment.last_worn_at,
+        created_at=garment.created_at,
+        job=job,
+    )
+
+
+def garment_detail(session: Session, garment: Garment) -> GarmentDetail:
+    """Full garment record (API-REQ-005); shared with the edit endpoints."""
+    job = _job_summaries(session, [garment.id]).get(garment.id)
+    outfit_count = session.exec(
+        select(func.count()).select_from(OutfitItem).where(OutfitItem.garment_id == garment.id)
+    ).one()
+    ai_confidence = (
+        None
+        if garment.ai_confidence is None
+        else AiConfidence.model_validate(garment.ai_confidence).model_dump(mode="json")
+    )
+    return GarmentDetail(
+        **_list_item(garment, job).model_dump(),
+        img_original=garment.img_original,
+        color_confidence=garment.color_confidence,
+        ai_confidence=ai_confidence,
+        formality=garment.formality,
+        style_tags=garment.style_tags,
+        seasons=garment.seasons,
+        warmth=garment.warmth,
+        material=garment.material,
+        brand=garment.brand,
+        notes=garment.notes,
+        updated_at=garment.updated_at,
+        outfit_count=outfit_count,
+    )
+
+
+def get_garment_or_404(session: Session, garment_id: str) -> Garment:
+    garment = session.get(Garment, garment_id)
+    if garment is None:
+        raise AppError(
+            GARMENT_NOT_FOUND,
+            f"La prenda {garment_id} no existe.",
+            404,
+            {"garment_id": garment_id},
+        )
+    return garment
+
+
+@router.get("/garments", response_model=GarmentList)
+def list_garments(
+    session: Annotated[Session, Depends(get_session)],
+    category: GarmentCategory | None = None,
+    color: str | None = None,
+    season: Season | None = None,
+    status: Annotated[list[GarmentStatus] | None, Query()] = None,
+    needs_review: bool | None = None,
+    sort: SortField = "created_at",
+    order: SortOrder = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> GarmentList:
+    """Filtered, sorted, paginated listing (API-REQ-003/004).
+
+    JSON-array filters (`color`, `season`) use SQLite `json_each` in SQL so the
+    `total` and the page window are exact. `status` may repeat (OR); no `status`
+    means every status. Rows with a NULL sort key go last in either direction;
+    `id` is the stable tie-break."""
+    conditions: list[ColumnElement[bool] | TextClause] = []
+    if category is not None:
+        conditions.append(col(Garment.category) == category)
+    if status:
+        conditions.append(col(Garment.status).in_(status))
+    if needs_review is not None:
+        conditions.append(col(Garment.needs_review) == needs_review)
+    if color is not None:
+        conditions.append(_json_contains("colors", "name", "color", color))
+    if season is not None:
+        conditions.append(_json_contains("seasons", None, "season", season.value))
+
+    sort_column = col(getattr(Garment, sort))
+    ordered = sort_column.asc() if order == "asc" else sort_column.desc()
+    total = session.exec(select(func.count()).select_from(Garment).where(*conditions)).one()
+    garments = session.exec(
+        select(Garment)
+        .where(*conditions)
+        .order_by(sort_column.is_(None), ordered, col(Garment.id))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    jobs = _job_summaries(session, [g.id for g in garments])
+    return GarmentList(
+        items=[_list_item(g, jobs.get(g.id)) for g in garments],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
+    "/garments/{garment_id}",
+    response_model=GarmentDetail,
+    responses={404: {"model": ErrorResponse}},
+)
+def get_garment(
+    garment_id: str, session: Annotated[Session, Depends(get_session)]
+) -> GarmentDetail:
+    return garment_detail(session, get_garment_or_404(session, garment_id))

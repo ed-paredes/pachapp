@@ -28,7 +28,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Garments
+         * @description Filtered, sorted, paginated listing (API-REQ-003/004).
+         *
+         *     JSON-array filters (`color`, `season`) use SQLite `json_each` in SQL so the
+         *     `total` and the page window are exact. `status` may repeat (OR); no `status`
+         *     means every status. Rows with a NULL sort key go last in either direction;
+         *     `id` is the stable tie-break.
+         */
+        get: operations["list_garments_garments_get"];
         put?: never;
         /**
          * Upload Garment
@@ -39,6 +48,23 @@ export interface paths {
          *     file and SQLAlchemy work never stalls the event loop (R3-001).
          */
         post: operations["upload_garment_garments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Garment */
+        get: operations["get_garment_garments__garment_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -66,11 +92,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AttributeConfidenceRead
+         * @description One `ai_confidence` entry (DAT-REQ-021).
+         */
+        AttributeConfidenceRead: {
+            /** Value */
+            value: string | number | string[];
+            /** Confidence */
+            confidence: number;
+            source: components["schemas"]["ConfidenceSource"];
+        };
         /** Body_upload_garment_garments_post */
         Body_upload_garment_garments_post: {
             /** File */
             file: string;
         };
+        /**
+         * ColorEntry
+         * @description One entry of `garment.colors` (docs/specs/02-data-model.md).
+         */
+        ColorEntry: {
+            /** Name */
+            name: string;
+            /** Hex */
+            hex: string;
+            /** Lab */
+            lab: [
+                number,
+                number,
+                number
+            ];
+            /** Proportion */
+            proportion: number;
+        };
+        /**
+         * ConfidenceSource
+         * @description `ai_confidence[field].source` (DAT-REQ-021 / VIS-REQ-019).
+         * @enum {string}
+         */
+        ConfidenceSource: "zero_shot" | "knn" | "blend" | "llm" | "user";
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -90,6 +151,11 @@ export interface components {
             error: components["schemas"]["ErrorBody"];
         };
         /**
+         * GarmentCategory
+         * @enum {string}
+         */
+        GarmentCategory: "top" | "bottom" | "one_piece" | "mid_layer" | "outerwear" | "shoes" | "accessory";
+        /**
          * GarmentCreated
          * @description `202` body of `POST /garments` (ING-REQ-001).
          */
@@ -99,6 +165,129 @@ export interface components {
             /** Job Id */
             job_id: string;
         };
+        /**
+         * GarmentDetail
+         * @description Full record for `GET /garments/{id}` (API-REQ-005).
+         */
+        GarmentDetail: {
+            /** Id */
+            id: string;
+            category: components["schemas"]["GarmentCategory"] | null;
+            /** Subcategory */
+            subcategory: string | null;
+            /** Colors */
+            colors: components["schemas"]["ColorEntry"][] | null;
+            /** Is Neutral */
+            is_neutral: boolean | null;
+            pattern: components["schemas"]["GarmentPattern"] | null;
+            status: components["schemas"]["GarmentStatus"];
+            /** Needs Review */
+            needs_review: boolean;
+            /** User Verified */
+            user_verified: boolean;
+            /** Img Thumb */
+            img_thumb: string | null;
+            /** Img Cutout */
+            img_cutout: string | null;
+            /** Wear Count */
+            wear_count: number;
+            /** Last Worn At */
+            last_worn_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            job: components["schemas"]["JobSummary"] | null;
+            /** Img Original */
+            img_original: string;
+            /** Color Confidence */
+            color_confidence: number | null;
+            /** Ai Confidence */
+            ai_confidence: {
+                [key: string]: components["schemas"]["AttributeConfidenceRead"];
+            } | null;
+            /** Formality */
+            formality: number | null;
+            /** Style Tags */
+            style_tags: string[] | null;
+            /** Seasons */
+            seasons: string[] | null;
+            /** Warmth */
+            warmth: number | null;
+            /** Material */
+            material: string | null;
+            /** Brand */
+            brand: string | null;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Outfit Count */
+            outfit_count: number;
+        };
+        /**
+         * GarmentList
+         * @description Paginated listing envelope (API-REQ-003).
+         */
+        GarmentList: {
+            /** Items */
+            items: components["schemas"]["GarmentListItem"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /**
+         * GarmentListItem
+         * @description Card-sized garment for `GET /garments`; image paths are relative (API-REQ-016).
+         */
+        GarmentListItem: {
+            /** Id */
+            id: string;
+            category: components["schemas"]["GarmentCategory"] | null;
+            /** Subcategory */
+            subcategory: string | null;
+            /** Colors */
+            colors: components["schemas"]["ColorEntry"][] | null;
+            /** Is Neutral */
+            is_neutral: boolean | null;
+            pattern: components["schemas"]["GarmentPattern"] | null;
+            status: components["schemas"]["GarmentStatus"];
+            /** Needs Review */
+            needs_review: boolean;
+            /** User Verified */
+            user_verified: boolean;
+            /** Img Thumb */
+            img_thumb: string | null;
+            /** Img Cutout */
+            img_cutout: string | null;
+            /** Wear Count */
+            wear_count: number;
+            /** Last Worn At */
+            last_worn_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            job: components["schemas"]["JobSummary"] | null;
+        };
+        /**
+         * GarmentPattern
+         * @enum {string}
+         */
+        GarmentPattern: "solid" | "striped" | "plaid" | "printed" | "textured";
+        /**
+         * GarmentStatus
+         * @enum {string}
+         */
+        GarmentStatus: "active" | "laundry" | "archived";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -130,6 +319,25 @@ export interface components {
          * @enum {string}
          */
         JobStep: "preprocess" | "cutout" | "color" | "ai_attributes" | "embedding" | "consolidate";
+        /**
+         * JobSummary
+         * @description Latest job of a garment, so the grid can render a processing placeholder.
+         */
+        JobSummary: {
+            /** Id */
+            id: string;
+            status: components["schemas"]["JobStatus"];
+            step: components["schemas"]["JobStep"] | null;
+            /** Progress */
+            progress: number;
+            /** Error */
+            error: string | null;
+        };
+        /**
+         * Season
+         * @enum {string}
+         */
+        Season: "spring" | "summer" | "autumn" | "winter";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -174,6 +382,45 @@ export interface operations {
             };
         };
     };
+    list_garments_garments_get: {
+        parameters: {
+            query?: {
+                category?: components["schemas"]["GarmentCategory"] | null;
+                color?: string | null;
+                season?: components["schemas"]["Season"] | null;
+                status?: components["schemas"]["GarmentStatus"][] | null;
+                needs_review?: boolean | null;
+                sort?: "created_at" | "last_worn_at" | "wear_count";
+                order?: "asc" | "desc";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     upload_garment_garments_post: {
         parameters: {
             query?: never;
@@ -198,6 +445,46 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_garment_garments__garment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
