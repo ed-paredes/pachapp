@@ -39,6 +39,24 @@ def test_colors_defaults_to_empty_list() -> None:
     assert Colors().root == []
 
 
+def _entry(proportion: float) -> ColorEntry:
+    return ColorEntry(name="x", hex="#000000", lab=(0.0, 0.0, 0.0), proportion=proportion)
+
+
+def test_colors_rejects_unsorted_proportions() -> None:
+    with pytest.raises(ValidationError):
+        Colors(root=[_entry(0.3), _entry(0.7)])
+
+
+def test_colors_rejects_proportions_summing_over_one() -> None:
+    with pytest.raises(ValidationError):
+        Colors(root=[_entry(0.6), _entry(0.5)])
+
+
+def test_colors_accepts_sum_within_float_tolerance() -> None:
+    assert len(Colors(root=[_entry(0.7), _entry(0.3 + 1e-9)]).root) == 2
+
+
 def test_color_entry_proportion_out_of_range_rejected() -> None:
     with pytest.raises(ValidationError):
         ColorEntry(name="marino", hex="#1a2b4c", lab=(0.0, 0.0, 0.0), proportion=1.5)
@@ -62,6 +80,13 @@ def test_ai_confidence_round_trip_through_json_text() -> None:
 
     assert restored == confidence
     assert restored.root["formality"].source == ConfidenceSource.user
+
+
+def test_ai_confidence_rejects_unknown_key() -> None:
+    with pytest.raises(ValidationError):
+        AiConfidence.model_validate(
+            {"colour": {"value": "red", "confidence": 0.9, "source": "llm"}}
+        )
 
 
 def test_attribute_confidence_rejects_unknown_source() -> None:

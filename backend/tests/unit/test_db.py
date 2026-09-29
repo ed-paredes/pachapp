@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from sqlalchemy import text
 
 from shared.db import create_db_engine, create_session_factory
@@ -32,6 +33,15 @@ def test_create_db_engine_creates_db_file_and_parent_dirs(tmp_path: Path) -> Non
         pass
 
     assert settings.db_path.parent.is_dir()
+    assert settings.db_path.exists()
+
+
+def test_create_db_engine_rejects_unset_db_path(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    settings.db_path = None
+
+    with pytest.raises(ValueError, match="db_path"):
+        create_db_engine(settings)
 
 
 def test_pragmas_applied_on_connect(tmp_path: Path) -> None:
