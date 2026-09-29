@@ -78,6 +78,28 @@ def _fp16_session_class(model_name: str) -> Any:
     return Fp16Session
 
 
+def _rembg_session_options() -> Any:
+    """The `ort.SessionOptions` rembg's `new_session` builds when none is given.
+
+    Mirrors `rembg.session_factory.new_session` (not exposed separately): a
+    default `SessionOptions`, with `OMP_NUM_THREADS` (if set) applied to the
+    inter/intra-op thread counts still at their default of 0. Keeps the fp16
+    path, which bypasses `new_session`, on the same ORT options as the fp32 path.
+    """
+    import os
+
+    import onnxruntime as ort
+
+    sess_opts = ort.SessionOptions()
+    if "OMP_NUM_THREADS" in os.environ:
+        threads = int(os.environ["OMP_NUM_THREADS"])
+        if sess_opts.inter_op_num_threads == 0:
+            sess_opts.inter_op_num_threads = threads
+        if sess_opts.intra_op_num_threads == 0:
+            sess_opts.intra_op_num_threads = threads
+    return sess_opts
+
+
 def get_background_remover(settings: Settings) -> Any:
     """Return the process-wide `rembg` session for `settings.ml_bg_model`,
     creating it on first call. Subsequent calls (and calls with a different
@@ -102,7 +124,7 @@ def get_background_remover(settings: Settings) -> Any:
         )
         if should_use_fp16(device, fp16_enabled=settings.ml_bg_fp16):
             session = _fp16_session_class(settings.ml_bg_model)(
-                settings.ml_bg_model, None, providers=providers
+                settings.ml_bg_model, _rembg_session_options(), providers=providers
             )
         else:
             session = new_session(settings.ml_bg_model, providers=providers)

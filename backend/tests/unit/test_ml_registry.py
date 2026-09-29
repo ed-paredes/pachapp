@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import onnxruntime as ort
 import pytest
 
 import ml.registry as registry
@@ -38,15 +39,20 @@ class _FakeRembg:
         self.active_providers = active_providers
         self.calls: list[tuple[str, list[Any]]] = []
         self.fp16_calls: list[tuple[str, list[Any], str]] = []
+        self.fp16_sess_opts: list[Any] = []
         self.module = types.ModuleType("rembg")
         self.module.new_session = self._new_session  # type: ignore[attr-defined]
         fake = self
         fp32 = fp32_file
 
         class _FakeSessionClass(_FakeSession):
-            def __init__(self, model_name: str, sess_opts: Any, providers: list[Any]) -> None:
+            # Same shape as rembg's `BaseSession.__init__`: `providers` is popped
+            # from kwargs, the rest is forwarded to `download_models`.
+            def __init__(self, model_name: str, sess_opts: Any, *args: Any, **kwargs: Any) -> None:
                 super().__init__(fake.active_providers)
-                file = type(self).download_models()
+                providers = kwargs.pop("providers")
+                fake.fp16_sess_opts.append(sess_opts)
+                file = type(self).download_models(*args, **kwargs)
                 fake.fp16_calls.append((model_name, providers, file))
 
             @classmethod
@@ -54,7 +60,7 @@ class _FakeRembg:
                 return "birefnet-general-lite"
 
             @classmethod
-            def download_models(cls) -> str:
+            def download_models(cls, *args: Any, **kwargs: Any) -> str:
                 return str(fp32)
 
         sessions = types.ModuleType("rembg.sessions")
@@ -154,6 +160,9 @@ def test_cuda_with_fp16_uses_fp16_file_and_provider_options(
     assert converted == [(fp32, fp16)]
     assert fake.calls == []
     assert fake.fp16_calls == [("birefnet-general-lite", onnxruntime_providers("cuda"), str(fp16))]
+    sess_opts = fake.fp16_sess_opts[0]
+    assert sess_opts is not None
+    assert isinstance(sess_opts, ort.SessionOptions)
     cuda_entry = fake.fp16_calls[0][1][0]
     assert cuda_entry == ("CUDAExecutionProvider", CUDA_PROVIDER_OPTIONS)
 
@@ -168,4 +177,44 @@ def test_cuda_with_fp16_disabled_keeps_fp32(
     registry.get_background_remover(settings)
 
     assert fake.calls == [(settings.ml_bg_model, onnxruntime_providers("cuda"))]
+    assert fake.fp16_calls == []
+
+
+def test_fp16_session_options_apply_omp_num_threads(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OMP_NUM_THREADS", "3")
+    monkeypatch.setattr(registry, "ensure_fp16_model", lambda src, dst: dst)
+    fake = _FakeRembg(["CUDAExecutionProvider"], tmp_path / "birefnet-general-lite.onnx")
+    _install_fake_rembg(monkeypatch, fake, device="cuda")
+
+    registry.get_background_remover(settings)
+
+    sess_opts = fake.fp16_sess_opts[0]
+    assert sess_opts.inter_op_num_threads == 3
+    assert sess_opts.intra_op_num_threads == 3
+
+
+def test_fp16_session_options_default_without_omp_num_threads(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.setattr(registry, "ensure_fp16_model", lambda src, dst: dst)
+    fake = _FakeRembg(["CUDAExecutionProvider"], tmp_path / "birefnet-general-lite.onnx")
+    _install_fake_rembg(monkeypatch, fake, device="cuda")
+
+    registry.get_background_remover(settings)
+
+    assert fake.fp16_sess_opts[0].intra_op_num_threads == 0
+
+
+def test_cuda_fp16_unknown_model_raises_value_error(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(settings, "ml_bg_model", "no-such-model")
+    fake = _FakeRembg(["CUDAExecutionProvider"], tmp_path / "birefnet-general-lite.onnx")
+    _install_fake_rembg(monkeypatch, fake, device="cuda")
+
+    with pytest.raises(ValueError, match="no-such-model"):
+        registry.get_background_remover(settings)
     assert fake.fp16_calls == []
