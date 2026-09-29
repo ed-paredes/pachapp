@@ -214,6 +214,37 @@ def test_colors_pipeline_value_is_corrected_and_neutral_recomputed(client: TestC
     assert len(_corrections(client, garment_id)) == 1
 
 
+def test_colors_pipeline_confidence_of_exactly_one_is_still_recorded(client: TestClient) -> None:
+    """A flat colour legitimately gets confidence 1.0 from the worker; the
+    marker is the absence of a previous colours correction, not the confidence."""
+    garment_id = _seed(client, colors=[_color("rojo")], is_neutral=False, color_confidence=1.0)
+
+    client.patch(f"/garments/{garment_id}", json={"colors": [_color("azul")]})
+    (correction,) = _corrections(client, garment_id)
+    assert correction.field == "colors" and correction.ai_value[0]["name"] == "rojo"
+
+    client.patch(f"/garments/{garment_id}", json={"colors": [_color("verde")]})
+    assert len(_corrections(client, garment_id)) == 1
+
+
+def test_colors_already_corrected_writes_no_further_correction(client: TestClient) -> None:
+    garment_id = _seed(client, colors=[_color("rojo")], is_neutral=False, color_confidence=0.4)
+    with _db(client) as session:
+        session.add(
+            AiCorrection(
+                garment_id=garment_id,
+                field="colors",
+                ai_value=[_color("beige")],
+                corrected_value=[_color("rojo")],
+            )
+        )
+        session.commit()
+
+    client.patch(f"/garments/{garment_id}", json={"colors": [_color("azul")]})
+
+    assert len(_corrections(client, garment_id)) == 1
+
+
 def test_colors_without_previous_value_writes_no_correction(client: TestClient) -> None:
     garment_id = _seed(client)
 

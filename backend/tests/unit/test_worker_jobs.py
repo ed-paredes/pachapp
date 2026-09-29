@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import threading
+import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,7 +18,7 @@ from shared.db import create_db_engine, create_session_factory
 from shared.enums import JobStatus, JobStep
 from shared.models import Garment, Job
 from shared.settings import Settings
-from worker.claim import claim_next_job, requeue_stuck_jobs
+from worker.claim import claim_next_job, release_orphaned_job, requeue_stuck_jobs
 from worker.main import run
 from worker.runner import (
     STEP_ORDER,
@@ -176,6 +178,35 @@ def test_requeue_stuck_jobs(factory) -> None:
         assert job.claimed_by is None and job.started_at is None
     assert _job(factory, ids[2]).status == JobStatus.done
     assert _job(factory, ids[3]).status == JobStatus.pending
+    assert [_job(factory, job_id).attempts for job_id in ids] == [1, 1, 0, 0]
+
+
+def test_requeue_consumes_retry_budget_and_fails_poison_job(factory, caplog, monkeypatch) -> None:
+    (job_id,) = _add_jobs(factory, 1, status=JobStatus.running, claimed_by="w1")
+    # Earlier tests (alembic's fileConfig) can leave app loggers disabled.
+    claim_logger = logging.getLogger("worker.claim")
+    monkeypatch.setattr(claim_logger, "disabled", False)
+    monkeypatch.setattr(claim_logger, "propagate", True)
+
+    with caplog.at_level("INFO", logger="worker.claim"):
+        with factory() as session:
+            assert requeue_stuck_jobs(session) == 1
+        assert _job(factory, job_id).status == JobStatus.pending
+        assert _job(factory, job_id).attempts == 1
+        assert "1 requeued, 0 failed" in caplog.text
+
+        with factory() as session:  # the worker died again while running it
+            claim_next_job(session, "w2")
+        with factory() as session:
+            assert requeue_stuck_jobs(session) == 0
+        assert "0 requeued, 1 failed" in caplog.text
+
+    job = _job(factory, job_id)
+    assert job.status == JobStatus.failed
+    assert job.error is not None and job.error.startswith("El procesamiento se interrumpió")
+    assert job.finished_at is not None
+    with factory() as session:
+        assert claim_next_job(session, "w3") is None
 
 
 # --- runner ---------------------------------------------------------------------
@@ -401,3 +432,100 @@ def test_run_loop_requeues_stuck_jobs_at_start_and_picks_up_new_ones(
 def _all_jobs(factory) -> list[Job]:
     with factory() as session:
         return list(session.exec(select(Job)).all())
+
+
+# --- orphaned jobs (run_job raised after the claim) ---------------------------------
+
+
+def _run_loop_until(engine, settings, steps, done: Callable[[], bool]) -> None:
+    stop = threading.Event()
+    thread = threading.Thread(target=run, args=(stop, settings, steps, engine))
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not done() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    stop.set()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+
+
+def test_bookkeeping_error_requeues_orphan_and_job_then_completes(
+    engine, factory, settings, monkeypatch
+) -> None:
+    """A bookkeeping write fails once ("database is locked"): the job must not
+    stay claimed/running; it goes back to pending (budget left) and finishes."""
+    from sqlalchemy.exc import OperationalError
+
+    from worker import runner
+
+    (job_id,) = _add_jobs(factory, 1)
+    real_mark_done = runner._mark_done
+    calls = {"n": 0}
+
+    def flaky_mark_done(*args, **kwargs) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OperationalError("UPDATE job", {}, Exception("database is locked"))
+        real_mark_done(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "_mark_done", flaky_mark_done)
+    monkeypatch.setattr("worker.main.ORPHAN_RELEASE_BACKOFF_S", (0.0, 0.0))
+
+    _run_loop_until(
+        engine, settings, _noop_steps(), lambda: _job(factory, job_id).status == JobStatus.done
+    )
+
+    job = _job(factory, job_id)
+    assert job.status == JobStatus.done
+    assert job.attempts == 1  # the orphan release consumed the retry budget
+
+
+def test_orphan_with_spent_budget_is_failed_in_spanish(
+    engine, factory, settings, monkeypatch
+) -> None:
+    (job_id,) = _add_jobs(factory, 1, attempts=1)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr("worker.main.run_job", boom)
+    monkeypatch.setattr("worker.main.ORPHAN_RELEASE_BACKOFF_S", (0.0,))
+
+    _run_loop_until(
+        engine, settings, _noop_steps(), lambda: _job(factory, job_id).status == JobStatus.failed
+    )
+
+    job = _job(factory, job_id)
+    assert job.status == JobStatus.failed
+    assert job.error is not None and "interrumpió" in job.error
+
+
+def test_orphan_release_is_retried_with_backoff(engine, factory, settings, monkeypatch) -> None:
+    (job_id,) = _add_jobs(factory, 1, attempts=1)
+    real_release = release_orphaned_job
+    calls = {"n": 0}
+
+    def flaky_release(session, jid):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("database is locked")
+        return real_release(session, jid)
+
+    monkeypatch.setattr("worker.main.run_job", lambda *a, **k: 1 / 0)
+    monkeypatch.setattr("worker.main.release_orphaned_job", flaky_release)
+    monkeypatch.setattr("worker.main.ORPHAN_RELEASE_BACKOFF_S", (0.0, 0.0, 0.0, 0.0))
+
+    _run_loop_until(
+        engine, settings, _noop_steps(), lambda: _job(factory, job_id).status == JobStatus.failed
+    )
+
+    assert calls["n"] == 3
+    assert _job(factory, job_id).status == JobStatus.failed
+
+
+def test_release_orphaned_job_ignores_settled_jobs(factory) -> None:
+    (job_id,) = _add_jobs(factory, 1, status=JobStatus.done)
+    with factory() as session:
+        assert release_orphaned_job(session, job_id) is None
+        assert release_orphaned_job(session, "missing") is None
+    assert _job(factory, job_id).status == JobStatus.done
