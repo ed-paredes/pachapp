@@ -65,7 +65,14 @@ export interface paths {
         get: operations["get_garment_garments__garment_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Garment
+         * @description API-REQ-012: permanent delete of an accidental upload. Refused with 409
+         *     when the garment is part of an outfit (`GARMENT_HAS_HISTORY`, archive
+         *     instead) or while the worker is processing it (`GARMENT_PROCESSING`).
+         *     Rows go in one transaction; image files are removed best-effort afterwards.
+         */
+        delete: operations["delete_garment_garments__garment_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -93,6 +100,68 @@ export interface paths {
          *     (API-REQ-019, D19). Idempotent; changes no other field.
          */
         post: operations["complete_review_garments__garment_id__review_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Garment
+         * @description API-REQ-010: `status = archived` (idempotent).
+         */
+        post: operations["archive_garment_garments__garment_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate Garment
+         * @description API-REQ-010: `status = active` (idempotent).
+         */
+        post: operations["reactivate_garment_garments__garment_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Garment
+         * @description API-REQ-011: only a `failed` latest job can be retried; it goes back to
+         *     `pending` with a fresh retry budget so the worker re-runs the whole pipeline
+         *     (user-corrected colours are kept by the worker's color step).
+         */
+        post: operations["retry_garment_garments__garment_id__retry_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -573,6 +642,53 @@ export interface operations {
             };
         };
     };
+    delete_garment_garments__garment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_garment_garments__garment_id__patch: {
         parameters: {
             query?: never;
@@ -639,6 +755,135 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_garment_garments__garment_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_garment_garments__garment_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_garment_garments__garment_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

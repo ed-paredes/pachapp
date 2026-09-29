@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from PIL import Image
 
 from shared import storage
+from shared.corrections import has_color_correction
 from shared.models import Garment
 from worker.colors import extract_colors
 from worker.runner import PermanentStepError, RetryableStepError, StepContext
@@ -46,6 +47,10 @@ def color_step(ctx: StepContext) -> None:
             raise PermanentStepError(
                 f"garment {ctx.garment_id} disappeared", user_message=MSG_COLOR
             )
+        if has_color_correction(session, ctx.garment_id):
+            # Retry re-runs the pipeline, but user-corrected colours win
+            # (colors, color_confidence and is_neutral stay as the user left them).
+            return
         garment.colors = result.colors.model_dump(mode="json")
         garment.is_neutral = result.is_neutral
         garment.color_confidence = result.confidence
