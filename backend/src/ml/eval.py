@@ -344,10 +344,10 @@ def _evaluate(
             t0 = time.perf_counter()
             out = next(cutouts)
             empty = isinstance(out, EmptyCutoutError)
-            # Empty cutout: fall back to the full image, reloaded from disk because
-            # the pipeline's own copy of the decoded photo is not handed back.
             if isinstance(out, Exception) and not empty:
                 raise out  # e.g. an undecodable photo: abort like the sequential path
+            # Empty cutout: fall back to the full image, reloaded from disk because
+            # the pipeline's own copy of the decoded photo is not handed back.
             img = out if isinstance(out, Image.Image) else _load(path)
             classify(path, img, empty=empty, cutout_s=time.perf_counter() - t0, wall_start=t0)
         return preds

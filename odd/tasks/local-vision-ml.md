@@ -82,7 +82,7 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 
 ## T3 review follow-ups (2026-09-30)
 
-Advisory findings from the native reviews of `50020b4` (eval CLI) and `f700dd1..91e60b2` (cutout perf), fixed by a delegated writer (uncommitted at time of writing):
+Advisory findings from the native reviews of `50020b4` (eval CLI) and `f700dd1..91e60b2` (cutout perf), fixed by a delegated writer (commit `e7336d6`):
 - Eval CLI: clean `error:` exit 1 for a missing eval dir; unhashable label values and non-UTF-8 `labels.json` map to `EvalError`; `--limit` must be >= 1; new `--min-category-accuracy F` gate (exit 2 after the report; unset = exit 0, `make ml-eval` unchanged; README line added); `main()` control flow covered by offline tests; `--pipeline` report labels the time `cutout wait (pipelined)`.
 - Cutout: fallback (non-BiRefNet) sessions run the whole `rembg.remove` inside `infer` under `_infer_lock`; the fast path is taken only when the session class keeps rembg's BiRefNet `predict`; constant model output gives an empty mask (-> `EmptyCutoutError`) instead of NaN; tests drive rembg's real session classes (fake ORT session, no model) through the registry fp16 path.
 - Pipeline error policy: per-item isolation. An `Exception` in prepare/execute/finish is yielded in that item's position (input order kept) and the rest continue; `remove_many` therefore yields `Image | Exception` (`EmptyCutoutError` is one case). `BaseException` still aborts.
@@ -98,3 +98,8 @@ Advisory findings from the native reviews of `50020b4` (eval CLI) and `f700dd1..
 ## Next step
 
 T1 committed (`516183e` reviewed+acknowledged, `8314fd0` follow-up, medium/under budget → pending in slice). PR #4 already merged into main, so the T1 PR targets `main`; push/PR await the user. Then T2 (needs the user's eval photos for its gate).
+
+## T3 closure (2026-09-30)
+
+- Review of `e7336d6` (4 lenses, review-4d6736d5ac27e249): approved and acknowledged. Two trivial findings fixed inline (stale note, comment order in `ml.eval`). Remaining advisory follow-ups (not blocking): per-item isolation in `run_pipeline` also swallows systemic GPU errors (CUDA OOM, broken session) item by item instead of failing fast; `BiRefNetRemover.infer`→`finish` passes either raw ONNX output or a finished image through the same `raw` parameter; `remove_many` now yields `Exception` objects — only `ml.eval` consumes it today and handles them; the worker (08 step 4 / Hito A A15) must check `isinstance(result, Exception)` if it adopts it; the pipelined eval branch is untested with a fake remover.
+- T3 complete: category 94.4 % (36) / 97.0 % (300), needs_review 27.8 % / 36.7 %, ~0.6 s per garment, `--min-category-accuracy` gate. PRs opened for user review (not merged, per user).
