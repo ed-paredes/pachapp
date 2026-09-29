@@ -19,6 +19,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "llm_provider": "anthropic",
         "llm_model_id": "claude-sonnet-5-20260101",
         "llm_api_key": "test-secret-key",
+        "ml_embed_revision": "test-revision",
     }
     kwargs.update(overrides)
     return Settings(**kwargs)

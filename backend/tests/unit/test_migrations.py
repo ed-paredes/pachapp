@@ -34,6 +34,7 @@ def migrated_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pat
     monkeypatch.setenv("PACHAPP_LLM_PROVIDER", "test-provider")
     monkeypatch.setenv("PACHAPP_LLM_MODEL_ID", "test-model-1")
     monkeypatch.setenv("PACHAPP_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("PACHAPP_ML_EMBED_REVISION", "test-revision")
     get_settings.cache_clear()
 
     try:

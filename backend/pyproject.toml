@@ -10,6 +10,32 @@ dependencies = [
     "pydantic-settings>=2.4",
     "sqlmodel>=0.0.21",
     "alembic>=1.13",
+    # Local vision (08-local-vision.md, step 1). torch/torchvision come from
+    # the explicit PyTorch CUDA 13.0 index below (tool.uv.sources), matching
+    # driver 591.86 (CUDA 13.1). It must stay on the same CUDA major as
+    # onnxruntime-gpu (pulled by rembg[gpu], built against CUDA 13): its CUDA
+    # provider loads the CUDA/cuDNN libraries torch installs, and on a
+    # mismatch rembg's BiRefNet falls back to CPU. Everything else comes from
+    # PyPI as usual.
+    "torch==2.14.0",
+    "torchvision==0.29.0",
+    "open_clip_torch>=3.3,<3.4",
+    # Not in SPEC-ML's base list, but required at runtime: Marqo-FashionSigLIP
+    # declares `hf_tokenizer_name` in its open_clip config, so open_clip loads
+    # its tokenizer via `transformers.AutoTokenizer` (open_clip's `HFTokenizer`)
+    # rather than its own built-in tokenizer; that tokenizer is
+    # SentencePiece-based (a T5-style tokenizer), hence `sentencepiece` too.
+    "transformers>=4.45",
+    "sentencepiece>=0.2",
+    # rembg's onnxruntime is an extra, not a base dependency: selecting only
+    # "gpu" pulls onnxruntime-gpu and avoids ever installing the CPU
+    # onnxruntime package alongside it (they conflict on the same import
+    # path). Justification: odd/tasks/local-vision-ml.md (T1 verification section);
+    # outside SPEC-ML's base list.
+    "rembg[gpu]>=2.0.85,<2.1",
+    "pillow>=12.1,<13",
+    "numpy>=2.3,<3",
+    "scikit-learn>=1.5,<2",
 ]
 
 [dependency-groups]
@@ -31,7 +57,17 @@ packages = [
     "src/worker",
     "src/engine",
     "src/shared",
+    "src/ml",
 ]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130" }]
+torchvision = [{ index = "pytorch-cu130" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [tool.ruff]
 line-length = 100

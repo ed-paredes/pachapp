@@ -23,9 +23,16 @@ _PACHAPP_PREFIX = "PACHAPP_"
 for _key in [key for key in os.environ if key.startswith(_PACHAPP_PREFIX)]:
     del os.environ[_key]
 os.environ["PACHAPP_ENV_FILE"] = os.devnull
+# The vision LLM fallback is opt-in and off by default (08-local-vision.md,
+# VIS-REQ-021), so these are no longer required for Settings() to succeed;
+# kept for modules (e.g. api.main) that still build a full app at collection
+# time and may want to exercise the fallback path.
 os.environ["PACHAPP_LLM_PROVIDER"] = "test-provider"
 os.environ["PACHAPP_LLM_MODEL_ID"] = "test-model-1"
 os.environ["PACHAPP_LLM_API_KEY"] = "test-collection-time-key"
+# Required, no default (VIS-REQ-002): must be set before any app code that
+# builds Settings() is imported/collected.
+os.environ["PACHAPP_ML_EMBED_REVISION"] = "test-collection-time-revision"
 
 
 @pytest.fixture(autouse=True)

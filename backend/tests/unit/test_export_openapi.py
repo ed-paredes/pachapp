@@ -15,6 +15,7 @@ def _set_dummy_llm_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PACHAPP_LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("PACHAPP_LLM_MODEL_ID", "claude-sonnet-5-20260101")
     monkeypatch.setenv("PACHAPP_LLM_API_KEY", "test-secret-key")
+    monkeypatch.setenv("PACHAPP_ML_EMBED_REVISION", "test-revision")
 
 
 def test_export_openapi_json_writes_valid_json_creating_parent_dirs(

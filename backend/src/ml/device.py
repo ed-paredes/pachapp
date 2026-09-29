@@ -1,0 +1,99 @@
+"""Device selection for the local vision stack (08-local-vision.md).
+
+`select_device` is a pure function (no torch import, easy to unit-test with
+synthetic availability flags, VIS-REQ-029); `resolve_device` is the thin
+wrapper that actually asks torch what's available. `onnxruntime_providers`
+maps a resolved device to the ordered provider list `rembg`/`onnxruntime`
+should try, so BiRefNet runs on the same device as the embedder.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+Device = str  # "cpu" | "cuda" | "mps"
+
+
+def select_device(
+    requested: str,
+    *,
+    cuda_available: bool,
+    mps_available: bool,
+) -> Device:
+    """Resolve `PACHAPP_ML_DEVICE` (`auto`/`cpu`/`cuda`/`mps`) to a concrete
+    device, given availability flags. Pure and torch-free so it can be
+    exercised with synthetic flags in unit tests (VIS-REQ-029).
+
+    `auto` prefers `cuda` > `mps` > `cpu`. An explicit `cuda`/`mps` request
+    that isn't available raises a clear error rather than silently falling
+    back to `cpu` (08-local-vision.md: a silent CPU fallback would blow the
+    <2s/<10s per-garment performance budget, VIS-REQ-026, without saying so).
+    """
+    if requested == "auto":
+        if cuda_available:
+            return "cuda"
+        if mps_available:
+            return "mps"
+        return "cpu"
+
+    if requested == "cpu":
+        return "cpu"
+
+    if requested == "cuda":
+        if not cuda_available:
+            raise RuntimeError(
+                "PACHAPP_ML_DEVICE=cuda was requested but torch.cuda.is_available() is "
+                "False. Check the NVIDIA driver and that torch was installed from the "
+                "CUDA index (see backend/pyproject.toml), or set PACHAPP_ML_DEVICE=auto "
+                "or PACHAPP_ML_DEVICE=cpu."
+            )
+        return "cuda"
+
+    if requested == "mps":
+        if not mps_available:
+            raise RuntimeError(
+                "PACHAPP_ML_DEVICE=mps was requested but torch.backends.mps.is_available() "
+                "is False. MPS is only available on Apple Silicon. Set PACHAPP_ML_DEVICE=auto "
+                "or PACHAPP_ML_DEVICE=cpu instead."
+            )
+        return "mps"
+
+    raise ValueError(
+        f"PACHAPP_ML_DEVICE must be one of 'auto', 'cpu', 'cuda', 'mps'. Got: {requested!r}."
+    )
+
+
+def resolve_device(requested: str) -> Device:
+    """`select_device`, but querying torch for real availability. Imports
+    torch lazily so importing this module never pulls torch in."""
+    import torch
+
+    return select_device(
+        requested,
+        cuda_available=torch.cuda.is_available(),
+        mps_available=torch.backends.mps.is_available(),
+    )
+
+
+def onnxruntime_providers(device: Device) -> list[str]:
+    """Ordered onnxruntime execution providers for `rembg`'s BiRefNet session,
+    matching the resolved torch device. onnxruntime has no MPS provider, so
+    `mps` (like `cpu`) runs BiRefNet on CPU."""
+    if device == "cuda":
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
+
+
+def check_session_providers(device: Device, active_providers: Sequence[str]) -> None:
+    """Fail loudly when an onnxruntime session for a `cuda` device ended up
+    CPU-only. onnxruntime drops an unloadable CUDA provider (e.g. a CUDA major
+    mismatch between onnxruntime-gpu and the libraries torch installs) with
+    only a warning, which would put BiRefNet on CPU silently -- the same
+    failure `select_device` refuses for an explicit `cuda` request."""
+    if device == "cuda" and "CUDAExecutionProvider" not in active_providers:
+        raise RuntimeError(
+            "BiRefNet was requested on cuda but onnxruntime could not load its CUDA "
+            f"provider (active providers: {active_providers}). onnxruntime-gpu and torch "
+            "must use the same CUDA major (see backend/pyproject.toml), or set "
+            "PACHAPP_ML_DEVICE=cpu."
+        )

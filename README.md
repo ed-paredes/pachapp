@@ -77,12 +77,24 @@ live list.
 | `migrate` | Apply database migrations |
 | `migrate-new` | Create a migration: `make migrate-new name="add garment"` |
 | `gen-client` | Regenerate `app/src/api-client/schema.ts` from OpenAPI |
+| `ml-preload` | Download and validate the vision models |
 
 ## `make gen-client`
 
 Exports the OpenAPI schema in-process (no running API needed) and runs
 `openapi-typescript` against it, writing `app/src/api-client/schema.ts`. That
 file is committed (DEV-REQ-010) and excluded from Prettier.
+
+## Vision models
+
+`make ml-preload` downloads BiRefNet (background removal, via `rembg`) and
+the pinned SigLIP embedding model (via `open_clip`) into
+`PACHAPP_ML_CACHE_DIR` (default `~/pachapp-data/models`). The first run
+downloads roughly 5 GB; later runs just validate the existing cache. `torch`
+is installed from the PyTorch CUDA 13.0 wheel index (`backend/pyproject.toml`),
+so it needs an NVIDIA GPU and a CUDA 13 driver to actually run on `cuda` -- see
+`docs/specs/08-local-vision.md` for the full settings table and fallback to
+`cpu`/`mps`.
 
 ## Phone / LAN access (manual)
 
