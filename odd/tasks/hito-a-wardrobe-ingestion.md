@@ -40,8 +40,8 @@ Mode: off (no project/session TDD configuration). Runners: `uv run pytest` (back
 
 Route per task: delegated direct (writer trigger: each task touches 2+ non-trivial files). Stacked PRs to main, one or two tasks per PR.
 
-- [ ] **A1 (B)** Imaging/storage helpers (`shared/imaging.py`, `shared/storage.py`) + error envelope (`api/errors.py`). Done when: unit tests (EXIF, decode/size validation, relative layout) pass; envelope `{"error":{code,message,details}}`; api↛ml boundary test still passes.
-- [ ] **A2 (B)** DB session dependency, `POST /garments` (202, ING-REQ-001..003), `GET /jobs/{id}` (ING-REQ-026), `/images` static mount (API-REQ-016); `python-multipart` if missing; regenerate client. Done when: TestClient tests with tmp DB/images root pass.
+- [x] **A1 (B)** Imaging/storage helpers (`shared/imaging.py`, `shared/storage.py`) + error envelope (`api/errors.py`). Done when: unit tests (EXIF, decode/size validation, relative layout) pass; envelope `{"error":{code,message,details}}`; api↛ml boundary test still passes.
+- [x] **A2 (B)** DB session dependency, `POST /garments` (202, ING-REQ-001..003), `GET /jobs/{id}` (ING-REQ-026), `/images` static mount (API-REQ-016); `python-multipart` if missing; regenerate client. Done when: TestClient tests with tmp DB/images root pass.
 - [ ] **A3 (B)** Worker runner: atomic claim (DAT-REQ-009, ING-SCN-006), lifecycle, step-at-start, retry-once, progress table, stuck-job requeue, deferred steps. Done when: tests with fake steps pass.
 - [ ] **A4 (B)** Steps preprocess + cutout (fake-remover tests; soft failure ING-SCN-005; cutout/thumb files, relative paths). Done when: ING-REQ-008/009, ING-SCN-005 tests pass.
 - [ ] **A5 (B)** Colour extraction (ING-REQ-010..014) + consolidate (colour threshold, cutout soft failure). Done when: end-to-end worker test (fake remover) pending → done with colours and `needs_review`.
@@ -67,6 +67,8 @@ Forecast: ~3,500–4,500 authored lines (lockfiles and generated `schema.ts` exc
 - 2026-09-29: read-only mapping of specs 03/04/07/02 vs code done; worktree + feature doc created.
 - A1/A2 implementation (writer): A1 = `shared/imaging.py`, `shared/storage.py`, `api/errors.py` + tests `test_imaging.py`, `test_storage.py`, `test_api_errors.py`. A2 = `api/deps.py` (lazy engine on `app.state`, per-request session), `api/schemas.py`, `api/routers/{garments,jobs}.py`, `api/main.py` wiring (lifespan creates images root; `/images` StaticFiles), `test_api_garments.py`, `app/src/api-client/schema.ts`. Dep added: `python-multipart` (pyproject + uv.lock). Fix outside the task files: `shared/models.py` dropped `from __future__ import annotations` (relationships quoted) because instantiating ORM rows raised a SQLAlchemy mapper error. Defaults applied: Spanish messages for INVALID_IMAGE/IMAGE_TOO_LARGE; alpha flattened on white for the JPEG original.
 
+- 2026-09-29: A1 `01e8f85`, A2 `8a9328d` (+ `python-multipart`, client regenerated). Latent main bug found and fixed first in `8684293`: `shared/models.py` Relationships were unmappable under `from __future__ import annotations` (no ORM row could be created; data model tests only used raw SQL) — regression test added. Each commit passes alone (pytest 164 / 186 / 197). Notes: upload has only the pixel cap (no byte cap); PNG alpha is flattened onto white for the JPEG original.
+
 ## Next step
 
-A1 + A2 (one writer, two work-unit commits).
+Review assessment for `origin/main..HEAD`, then A3 (worker runner).
