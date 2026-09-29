@@ -188,6 +188,8 @@ Para cada atributo de una sola etiqueta (`category`, `subcategory` vía categor�
 
 **VIS-REQ-016.** El worker DEBE marcar el atributo como de baja confianza (dispara `needs_review`, ver más abajo) cuando el top-1 de `p` sea `< setting.needs_review_threshold` (VIS-REQ-006) **o** cuando `top-1 − top-2 < PACHAPP_ML_MARGIN_THRESHOLD` — la regla de margen es nueva respecto a `02-data-model.md` DAT-REQ-002 y se define aquí en detalle.
 
+En la iteración 1 esta regla dispara `needs_review` únicamente para `category` y `pattern`. `material` y `formality` se guardan con su valor y su confianza en `ai_confidence` (y siguen apareciendo como de baja confianza en la evaluación), pero no disparan `needs_review` hasta que exista kNN o calibración (decisión del usuario, 2026-09-29; motivo: con la regla literal ~90 % de las prendas de la evaluación pública quedaban marcadas, casi todas por `material`/`formality`, cuyas probabilidades zero-shot no están calibradas). `subcategory` y `style_tags` tampoco lo disparan.
+
 Casos especiales:
 
 **VIS-REQ-017.** `formality` (ordinal) DEBE calcularse como la media ponderada de las probabilidades (o de los vecinos si el kNN está activo), redondeada al entero más cercano en `[1, 5]`; su confianza es `1 − desviación_típica / 2`.

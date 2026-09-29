@@ -41,6 +41,14 @@ STYLE_MAX_TAGS = 3
 # e.g. "a shirt"/"a t-shirt") and `style_tags` (multi-label) do not trigger it.
 REVIEW_ATTRIBUTES = ("category", "pattern", "material", "formality")
 
+# Subset of `REVIEW_ATTRIBUTES` that actually sets `needs_review` in iteration 1
+# (user decision 2026-09-29, VIS-REQ-016): the literal rule flagged ~90 % of the
+# public evaluation garments through `material`/`formality`, whose zero-shot
+# probabilities are uncalibrated. Those two still report their low-confidence
+# state (`ZeroShotResult.low_confidence`) but do not trigger review until kNN or
+# calibration exists.
+REVIEW_TRIGGER_ATTRIBUTES = ("category", "pattern")
+
 
 class TextEmbedder(Protocol):
     def embed_texts(self, texts: list[str]) -> np.ndarray: ...
@@ -129,8 +137,8 @@ class ZeroShotResult:
     `garment.ai_confidence` shape (VIS-REQ-019), `source="zero_shot"`."""
 
     predictions: dict[str, AttributeConfidence]
-    needs_review: bool
-    low_confidence: list[str] = field(default_factory=list)
+    needs_review: bool  # True only when a `REVIEW_TRIGGER_ATTRIBUTES` member is low-confidence
+    low_confidence: list[str] = field(default_factory=list)  # every low-confidence attribute
 
 
 class ZeroShotClassifier:
@@ -213,4 +221,5 @@ class ZeroShotClassifier:
         preds["style_tags"] = make(selected, tag_conf)
 
         low = [a for a in REVIEW_ATTRIBUTES if a in low]
-        return ZeroShotResult(predictions=preds, needs_review=bool(low), low_confidence=low)
+        needs_review = any(a in REVIEW_TRIGGER_ATTRIBUTES for a in low)
+        return ZeroShotResult(predictions=preds, needs_review=needs_review, low_confidence=low)
