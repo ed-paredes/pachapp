@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from shared.enums import (
     ConfidenceSource,
@@ -14,8 +14,10 @@ from shared.enums import (
     GarmentStatus,
     JobStatus,
     JobStep,
+    Season,
+    StyleTag,
 )
-from shared.schemas import ColorEntry
+from shared.schemas import ColorEntry, Colors
 
 
 class GarmentCreated(BaseModel):
@@ -100,3 +102,36 @@ class GarmentDetail(GarmentListItem):
     notes: str | None
     updated_at: datetime
     outfit_count: int  # computed from outfit_item, not stored
+
+
+# --- A7a: garment edits (API-REQ-006/007/019) ---
+
+
+class GarmentPatch(BaseModel):
+    """Editable fields only (API-REQ-006). Unknown or forbidden fields
+    (`wear_count`, `needs_review`, `ai_confidence`, `img_*`, ...) are rejected
+    with FastAPI's standard 422 (`extra="forbid"`, API-REQ-002). Only `brand`
+    and `notes` may be cleared with `null`; every other field must carry a value.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: GarmentCategory | None = None
+    subcategory: str | None = None
+    colors: Colors | None = None
+    pattern: GarmentPattern | None = None
+    formality: int | None = Field(default=None, ge=1, le=5)
+    style_tags: list[StyleTag] | None = None
+    seasons: list[Season] | None = None
+    warmth: int | None = Field(default=None, ge=1, le=5)
+    material: str | None = None
+    brand: str | None = None
+    notes: str | None = None
+    status: GarmentStatus | None = None
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _reject_null_on_required(cls, value: Any, info: ValidationInfo) -> Any:
+        if value is None and info.field_name not in {"brand", "notes"}:
+            raise ValueError("null is not allowed for this field")
+        return value

@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.errors import register_error_handlers
-from api.routers import garments, jobs
+from api.routers import garment_edit, garments, jobs
 from shared.settings import Settings, get_settings
 
 
@@ -53,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(garments.router)
+    app.include_router(garment_edit.router)
     app.include_router(jobs.router)
 
     # API-REQ-016: serves the relative paths stored on `garment`. `check_dir`

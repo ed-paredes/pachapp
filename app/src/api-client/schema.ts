@@ -68,6 +68,34 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Patch Garment
+         * @description Partial update. Corrections of AI-attributed fields are recorded as
+         *     `ai_correction` rows and stamped `source="user"` in the same transaction
+         *     (API-REQ-007, DAT-REQ-012/016). Never touches `needs_review` or
+         *     `user_verified` (DAT-REQ-018/019).
+         */
+        patch: operations["patch_garment_garments__garment_id__patch"];
+        trace?: never;
+    };
+    "/garments/{garment_id}/review/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Review
+         * @description The only action that clears `needs_review` and sets `user_verified`
+         *     (API-REQ-019, D19). Idempotent; changes no other field.
+         */
+        post: operations["complete_review_garments__garment_id__review_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -126,6 +154,14 @@ export interface components {
             /** Proportion */
             proportion: number;
         };
+        /**
+         * Colors
+         * @description `garment.colors`: first entry = dominant color, sorted by proportion desc.
+         *
+         *     Enforced (docs/specs/02-data-model.md, ING-REQ-011): proportions are
+         *     non-increasing and sum to <= 1 (within float tolerance).
+         */
+        Colors: components["schemas"]["ColorEntry"][];
         /**
          * ConfidenceSource
          * @description `ai_confidence[field].source` (DAT-REQ-021 / VIS-REQ-019).
@@ -279,6 +315,35 @@ export interface components {
             job: components["schemas"]["JobSummary"] | null;
         };
         /**
+         * GarmentPatch
+         * @description Editable fields only (API-REQ-006). Unknown or forbidden fields
+         *     (`wear_count`, `needs_review`, `ai_confidence`, `img_*`, ...) are rejected
+         *     with FastAPI's standard 422 (`extra="forbid"`, API-REQ-002). Only `brand`
+         *     and `notes` may be cleared with `null`; every other field must carry a value.
+         */
+        GarmentPatch: {
+            category?: components["schemas"]["GarmentCategory"] | null;
+            /** Subcategory */
+            subcategory?: string | null;
+            colors?: components["schemas"]["Colors"] | null;
+            pattern?: components["schemas"]["GarmentPattern"] | null;
+            /** Formality */
+            formality?: number | null;
+            /** Style Tags */
+            style_tags?: components["schemas"]["StyleTag"][] | null;
+            /** Seasons */
+            seasons?: components["schemas"]["Season"][] | null;
+            /** Warmth */
+            warmth?: number | null;
+            /** Material */
+            material?: string | null;
+            /** Brand */
+            brand?: string | null;
+            /** Notes */
+            notes?: string | null;
+            status?: components["schemas"]["GarmentStatus"] | null;
+        };
+        /**
          * GarmentPattern
          * @enum {string}
          */
@@ -338,6 +403,11 @@ export interface components {
          * @enum {string}
          */
         Season: "spring" | "summer" | "autumn" | "winter";
+        /**
+         * StyleTag
+         * @enum {string}
+         */
+        StyleTag: "casual" | "classic" | "street" | "minimal" | "sport" | "elegant" | "bohemian" | "preppy";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -464,6 +534,90 @@ export interface operations {
         };
     };
     get_garment_garments__garment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_garment_garments__garment_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GarmentPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_review_garments__garment_id__review_complete_post: {
         parameters: {
             query?: never;
             header?: never;

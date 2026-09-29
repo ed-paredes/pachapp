@@ -36,6 +36,7 @@ import numpy as np
 from PIL import Image
 from sklearn.cluster import KMeans
 
+from shared.colors_palette import NEUTRAL_NAMES
 from shared.schemas import ColorEntry, Colors
 
 # Alpha strictly above this counts as foreground (0-255). Same notion as
@@ -52,9 +53,6 @@ MAX_SAMPLE_PIXELS = 20_000
 
 COMPACTNESS_SCALE = 20.0
 SEPARATION_SCALE = 25.0
-
-# ING-REQ-013.
-NEUTRAL_NAMES = frozenset({"negro", "blanco", "gris", "beige", "camel", "marino", "denim"})
 
 # Fixed palette (ING-REQ-012): Spanish name -> sRGB anchor.
 PALETTE: dict[str, tuple[int, int, int]] = {
