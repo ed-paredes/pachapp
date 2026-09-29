@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.errors import register_error_handlers
 from api.routers import garment_edit, garment_lifecycle, garments, jobs
+from api.routers import settings as settings_router
 from shared.settings import Settings, get_settings
 
 
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(garment_edit.router)
     app.include_router(garment_lifecycle.router)
     app.include_router(jobs.router)
+    app.include_router(settings_router.router)
 
     # API-REQ-016: serves the relative paths stored on `garment`. `check_dir`
     # is off because the directory is created at startup, not at import.

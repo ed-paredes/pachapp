@@ -185,6 +185,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Settings
+         * @description Partial update. If any `weight_*` is present, the four resulting weights
+         *     must sum to 1.0 +- 0.01 or nothing is written (`INVALID_WEIGHTS`, DAT-REQ-011).
+         */
+        patch: operations["patch_settings_settings_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -472,6 +494,55 @@ export interface components {
          * @enum {string}
          */
         Season: "spring" | "summer" | "autumn" | "winter";
+        /**
+         * SettingsPatch
+         * @description Partial update (API-REQ-015). Unknown fields are a 422 (`extra="forbid"`);
+         *     an explicit `null` is rejected too, since no setting is nullable.
+         */
+        SettingsPatch: {
+            /** Weight Color */
+            weight_color?: number | null;
+            /** Weight Style */
+            weight_style?: number | null;
+            /** Weight Novelty */
+            weight_novelty?: number | null;
+            /** Weight Preference */
+            weight_preference?: number | null;
+            /** No Repeat Days */
+            no_repeat_days?: number | null;
+            /** Max Accessories */
+            max_accessories?: number | null;
+            /** Duplicate Warning Threshold */
+            duplicate_warning_threshold?: number | null;
+            /** Needs Review Threshold */
+            needs_review_threshold?: number | null;
+            /** Color Review Threshold */
+            color_review_threshold?: number | null;
+        };
+        /**
+         * SettingsRead
+         * @description The singleton `setting` row (API-REQ-014).
+         */
+        SettingsRead: {
+            /** Weight Color */
+            weight_color: number;
+            /** Weight Style */
+            weight_style: number;
+            /** Weight Novelty */
+            weight_novelty: number;
+            /** Weight Preference */
+            weight_preference: number;
+            /** No Repeat Days */
+            no_repeat_days: number;
+            /** Max Accessories */
+            max_accessories: number;
+            /** Duplicate Warning Threshold */
+            duplicate_warning_threshold: number;
+            /** Needs Review Threshold */
+            needs_review_threshold: number;
+            /** Color Review Threshold */
+            color_review_threshold: number;
+        };
         /**
          * StyleTag
          * @enum {string}
@@ -924,6 +995,68 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRead"];
+                };
+            };
+        };
+    };
+    patch_settings_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRead"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
