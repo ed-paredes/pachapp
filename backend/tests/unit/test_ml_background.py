@@ -4,6 +4,7 @@ and the registry session is patched, so no torch, no model and no network."""
 
 from __future__ import annotations
 
+import statistics
 import sys
 import types
 from collections.abc import Callable, Iterator
@@ -161,3 +162,118 @@ def test_preview_empty_dir_exits_nonzero(
 
     assert cutout_preview.main([str(tmp_path)]) == 1
     assert "no .jpg" in capsys.readouterr().err
+
+
+def test_remover_rejects_non_pil_result(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    _install_fake_rembg(monkeypatch, lambda img: b"raw-bytes")  # type: ignore[arg-type,return-value]
+
+    with pytest.raises(TypeError, match="bytes"):
+        BiRefNetRemover(settings).remove(Image.new("RGB", (10, 10)))
+
+
+def _write_image(path: Path) -> None:
+    Image.new("RGB", (100, 100), "white").save(path)
+
+
+def _run_preview(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    input_dir: Path,
+    out_dir: Path,
+) -> tuple[int, list[float]]:
+    """Run `cutout_preview.main` with a fake rembg; returns (exit code, the
+    per-image durations in ms the fake clock produced, in call order)."""
+    monkeypatch.setattr(cutout_preview, "get_settings", lambda: settings)
+    monkeypatch.setattr(cutout_preview, "configure_model_cache", lambda path: None)
+    monkeypatch.setattr("ml.device.resolve_device", lambda requested: "cpu")
+
+    def produce(img: Image.Image) -> Image.Image:
+        # Marker: images with a non-white top-left pixel yield a near-empty mask.
+        if img.getpixel((0, 0)) != (255, 255, 255):
+            return _rgba_with_square(100, (0, 0, 1, 1))
+        return _rgba_with_square(100, (10, 10, 60, 40))
+
+    _install_fake_rembg(monkeypatch, produce)
+
+    # Deterministic clock: call n (start, end pairs) -> the i-th image takes 10*(i+1) ms.
+    durations: list[float] = []
+    state = {"now": 0.0, "pending": None}
+
+    def fake_perf_counter() -> float:
+        if state["pending"] is None:
+            state["pending"] = state["now"]
+            return state["now"]
+        index = len(durations)
+        duration_ms = 10.0 * (index + 1)
+        durations.append(duration_ms)
+        state["now"] += duration_ms / 1000
+        state["pending"] = None
+        return state["now"]
+
+    monkeypatch.setattr(cutout_preview.time, "perf_counter", fake_perf_counter)
+    code = cutout_preview.main([str(input_dir), "--out", str(out_dir)])
+    return code, durations
+
+
+def test_preview_writes_one_png_per_input_and_excludes_warmup_from_median(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    input_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    input_dir.mkdir()
+    for name in ("a.jpg", "b.jpg", "c.jpg"):
+        _write_image(input_dir / name)
+
+    code, durations = _run_preview(monkeypatch, settings, input_dir, out_dir)
+
+    assert code == 0
+    assert sorted(p.name for p in out_dir.iterdir()) == ["a.jpg.png", "b.jpg.png", "c.jpg.png"]
+    with Image.open(out_dir / "a.jpg.png") as cutout:
+        assert cutout.mode == "RGBA"
+        assert cutout.size == (50, 30)
+    out = capsys.readouterr().out
+    assert "(includes warm-up)" in out.splitlines()[1]
+    assert out.count("(includes warm-up)") == 1
+    # durations 10, 20, 30 ms: warm-up (10) excluded -> median of (20, 30) = 25
+    assert durations == [10.0, 20.0, 30.0]
+    assert f"median ms (excluding warm-up): {statistics.median(durations[1:]):.0f}" in out
+
+
+def test_preview_lists_empty_masks_continues_and_exits_zero(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    input_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    input_dir.mkdir()
+    _write_image(input_dir / "a.jpg")
+    Image.new("RGB", (100, 100), "black").save(input_dir / "b.jpg")  # -> near-empty mask
+    _write_image(input_dir / "c.jpg")
+
+    code, _ = _run_preview(monkeypatch, settings, input_dir, out_dir)
+
+    assert code == 0
+    assert sorted(p.name for p in out_dir.iterdir()) == ["a.jpg.png", "c.jpg.png"]
+    out = capsys.readouterr().out
+    assert "b.jpg: EMPTY mask" in out
+    assert "empty masks: 1" in out
+    assert "empty: b.jpg" in out
+
+
+def test_preview_inputs_differing_only_by_extension_get_distinct_outputs(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    input_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    input_dir.mkdir()
+    _write_image(input_dir / "a.jpg")
+    _write_image(input_dir / "a.png")
+
+    code, _ = _run_preview(monkeypatch, settings, input_dir, out_dir)
+
+    assert code == 0
+    assert sorted(p.name for p in out_dir.iterdir()) == ["a.jpg.png", "a.png.png"]

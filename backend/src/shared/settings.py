@@ -104,7 +104,9 @@ class Settings(BaseSettings):
     # --- Local vision (08-local-vision.md) ---
     ml_device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
     ml_cache_dir: Path | None = None
-    ml_bg_model: str = "birefnet-general"
+    ml_bg_model: str = "birefnet-general-lite"
+    # fp16 copy of the BG model, used only on cuda (VIS-REQ-026); see ml/bg_fp16.py.
+    ml_bg_fp16: bool = True
     ml_embed_model: str = "hf-hub:Marqo/marqo-fashionSigLIP"
     # Required, no versioned default (VIS-REQ-002, analogous to D11).
     ml_embed_revision: str

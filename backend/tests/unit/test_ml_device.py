@@ -6,7 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-from ml.device import check_session_providers, onnxruntime_providers, select_device
+from ml.device import (
+    CUDA_PROVIDER_OPTIONS,
+    check_session_providers,
+    onnxruntime_providers,
+    select_device,
+)
 
 
 @pytest.mark.parametrize(
@@ -62,7 +67,10 @@ def test_unknown_device_raises_value_error() -> None:
 
 
 def test_onnxruntime_providers_cuda_includes_cpu_fallback() -> None:
-    assert onnxruntime_providers("cuda") == ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    assert onnxruntime_providers("cuda") == [
+        ("CUDAExecutionProvider", CUDA_PROVIDER_OPTIONS),
+        "CPUExecutionProvider",
+    ]
 
 
 @pytest.mark.parametrize("device", ["cpu", "mps"])

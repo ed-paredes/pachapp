@@ -50,7 +50,8 @@ def test_defaults_derive_db_path_and_images_root(tmp_path: Path) -> None:
     assert settings.llm_api_key is None
     assert settings.ml_device == "auto"
     assert settings.ml_cache_dir == kwargs["data_dir"] / "models"
-    assert settings.ml_bg_model == "birefnet-general"
+    assert settings.ml_bg_model == "birefnet-general-lite"
+    assert settings.ml_bg_fp16 is True
     assert settings.ml_embed_model == "hf-hub:Marqo/marqo-fashionSigLIP"
     assert settings.ml_embed_revision == "test-revision"
     assert settings.ml_margin_threshold == 0.15

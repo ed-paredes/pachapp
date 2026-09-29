@@ -25,10 +25,18 @@ def _find_images(input_dir: Path) -> list[Path]:
     return sorted(p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in _EXTENSIONS)
 
 
+def _output_name(path: Path) -> str:
+    """`<original filename>.png`, e.g. `a.jpg` -> `a.jpg.png`: inputs that differ
+    only by extension (`a.jpg`, `a.png`) never collide and stay traceable."""
+    return f"{path.name}.png"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ml.cutout_preview", description=__doc__)
     parser.add_argument("input_dir", nargs="?", type=Path, default=None)
-    parser.add_argument("--out", type=Path, default=None, help="output dir for <stem>.png cutouts")
+    parser.add_argument(
+        "--out", type=Path, default=None, help="output dir for <filename>.png cutouts"
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO)
@@ -74,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{path.name}: EMPTY mask (coverage {exc.coverage:.2%}) {ms:.0f} ms")
             continue
         ms = (time.perf_counter() - start) * 1000
-        cutout.save(out_dir / f"{path.stem}.png")
+        cutout.save(out_dir / _output_name(path))
         warm = " (includes warm-up)" if index == 0 else ""
         if index > 0:
             timings.append(ms)

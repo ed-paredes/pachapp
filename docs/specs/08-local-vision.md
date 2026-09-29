@@ -33,7 +33,7 @@ Deriva de `SPEC-ML.md` (raíz del repo), adaptado a la arquitectura aprobada: su
 
 | Uso | Modelo | Licencia | Notas |
 | --- | --- | --- | --- |
-| Quitar fondo | `birefnet-general` vía `rembg` | MIT | Alternativa `birefnet-general-lite` si la CPU va lenta |
+| Quitar fondo | `birefnet-general-lite` vía `rembg` (copia fp16 en `cuda`) | MIT | Por defecto desde 2026-09-29 (ver nota en VIS-REQ-026); `birefnet-general` sigue disponible vía `PACHAPP_ML_BG_MODEL` |
 | Embeddings + zero-shot | `hf-hub:Marqo/marqo-fashionSigLIP` vía `open_clip` | Apache 2.0 | La dimensión del embedding se lee del modelo en tiempo de ejecución; no se fija en el código |
 | Segmentación de ropa en persona (v2) | `mattmdjaga/segformer_b2_clothes` | Ver model card | Fuera de alcance; no se carga en la iteración 1 |
 | Respaldo | LLM con visión vía API (`PACHAPP_LLM_*`) | — | Solo si `PACHAPP_ML_LLM_FALLBACK=true` |
@@ -58,7 +58,8 @@ Todas las claves nuevas usan el prefijo `PACHAPP_ML_` en el mismo modelo `Settin
 | --- | --- | --- |
 | `PACHAPP_ML_DEVICE` | `auto` | `auto` \| `cpu` \| `cuda` \| `mps`; `auto` prueba `cuda` > `mps` > `cpu` |
 | `PACHAPP_ML_CACHE_DIR` | `${PACHAPP_DATA_DIR}/models` | Caché de todos los modelos (BiRefNet/rembg y SigLIP/open_clip); sujeta a la misma guardia `/mnt/*` que `PACHAPP_DATA_DIR` (D14) |
-| `PACHAPP_ML_BG_MODEL` | `birefnet-general` | Ver VIS-REQ-001 |
+| `PACHAPP_ML_BG_MODEL` | `birefnet-general-lite` | Ver VIS-REQ-001 y la nota de VIS-REQ-026 |
+| `PACHAPP_ML_BG_FP16` | `true` | Usa una copia fp16 del modelo de recorte solo cuando el dispositivo resuelto es `cuda` (`cpu`/`mps` conservan fp32); la conversión se hace una vez en `make ml-preload` (`onnx` + `onnxconverter-common`) |
 | `PACHAPP_ML_EMBED_MODEL` | `hf-hub:Marqo/marqo-fashionSigLIP` | Identificador de `open_clip` |
 | `PACHAPP_ML_EMBED_REVISION` | *(ninguno — obligatorio)* | Ver VIS-REQ-002 |
 | `PACHAPP_ML_MARGIN_THRESHOLD` | `0.15` | Diferencia mínima top1 − top2; ver regla de `needs_review` más abajo |
@@ -221,6 +222,8 @@ Respecto a `02-data-model.md` (detalle de la adaptación; los requisitos normati
 **Hardware de referencia (comprobado 2026-09-28):** NVIDIA RTX 2060 6 GB visible desde WSL2 (driver 591.86), 8 cores, ~7 GB de RAM disponibles en WSL2. `PACHAPP_ML_DEVICE=auto` debe preferir `cuda` en esta máquina.
 
 **VIS-REQ-026.** Objetivo de rendimiento por prenda, de principio a fin del pipeline de visión (cutout + zero-shot + embedding, sin contar un eventual respaldo LLM): `< 10 s` en CPU (2 vCPU / 4 GB, objetivo de referencia de SPEC-ML) y `< 2 s` con GPU o Apple Silicon. En la máquina de referencia de arriba, con torch CUDA instalado, aplica el objetivo de `< 2 s`; con la variante CPU de torch (ver pregunta abierta), aplica el de `< 10 s`.
+
+> **Decisión (2026-09-29, usuario): modelo de recorte por defecto = `birefnet-general-lite` en fp16.** En la RTX 2060 6 GB, BiRefNet fp32 a 1024 px supera la VRAM libre (~5,5 GB) y el controlador desborda a memoria compartida. Medido en régimen estable, por imagen (solo ORT): `birefnet-general` fp32 14 s (4,2 s con `cudnn_conv_algo_search=HEURISTIC` y `arena_extend_strategy=kSameAsRequested`); `birefnet-general` fp16 9 s; `birefnet-general-lite` fp32 6,5 s; `birefnet-general-lite` fp16 0,66 s, con máscaras IoU ≥ 0,9998 frente a fp32. Solo la variante lite fp16 cumple `< 2 s`. La calidad se confirma con la puerta de 18/20 recortes limpios (paso 2).
 
 ## Despliegue
 
