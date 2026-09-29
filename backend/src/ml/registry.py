@@ -19,7 +19,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ml.bg_fp16 import ensure_fp16_model, fp16_path, should_use_fp16
-from ml.device import check_session_providers, onnxruntime_providers, resolve_device
+from ml.device import (
+    LITE_FP16_GPU_MEM_LIMIT_BYTES,
+    check_session_providers,
+    onnxruntime_providers,
+    resolve_device,
+)
 from shared.settings import Settings
 
 if TYPE_CHECKING:
@@ -27,6 +32,8 @@ if TYPE_CHECKING:
     from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+LITE_MODEL_NAME = "birefnet-general-lite"  # the model the arena cap was measured for
 
 _HF_HUB_PREFIX = "hf-hub:"
 
@@ -159,14 +166,19 @@ def get_background_remover(settings: Settings) -> Any:
         from rembg import new_session
 
         device = resolve_device(settings.ml_device)
-        providers = onnxruntime_providers(device)
+        use_fp16 = should_use_fp16(device, fp16_enabled=settings.ml_bg_fp16)
+        # The arena cap is only valid for the fp16 lite model (see ml.device).
+        capped = use_fp16 and settings.ml_bg_model == LITE_MODEL_NAME
+        providers = onnxruntime_providers(
+            device, gpu_mem_limit=LITE_FP16_GPU_MEM_LIMIT_BYTES if capped else None
+        )
         logger.info(
             "Loading rembg session %r on device=%s (providers=%s)",
             settings.ml_bg_model,
             device,
             providers,
         )
-        if should_use_fp16(device, fp16_enabled=settings.ml_bg_fp16):
+        if use_fp16:
             session = _fp16_session_class(settings.ml_bg_model)(
                 settings.ml_bg_model, _rembg_session_options(), providers=providers
             )

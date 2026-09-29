@@ -277,3 +277,108 @@ def test_preview_inputs_differing_only_by_extension_get_distinct_outputs(
 
     assert code == 0
     assert sorted(p.name for p in out_dir.iterdir()) == ["a.jpg.png", "a.png.png"]
+
+
+# --- BiRefNet split path (prepare / infer / finish, remove_many) ---------------
+
+
+class _FakeBiRefNetSession:
+    """Stands in for rembg's BiRefNet session: `normalize` builds a feed and
+    `inner_session.run` returns a model output whose sigmoid is a centered square."""
+
+    def __init__(self) -> None:
+        self.feeds: list[Any] = []
+        self.inner_session = self
+
+    def normalize(self, img: Image.Image, mean: Any, std: Any, size: Any) -> dict[str, Any]:
+        return {"input": img.size, "mean": mean, "std": std, "size": size}
+
+    def run(self, _outputs: Any, feed: dict[str, Any]) -> list[Any]:
+        import numpy as np
+
+        self.feeds.append(feed)
+        out = np.full((1, 1, 64, 64), -20.0, dtype=np.float32)
+        out[0, 0, 16:48, 16:48] = 20.0
+        return [out]
+
+
+def _install_fake_birefnet(monkeypatch: pytest.MonkeyPatch) -> _FakeBiRefNetSession:
+    session = _FakeBiRefNetSession()
+    sessions_pkg = types.ModuleType("rembg.sessions")
+    mod = types.ModuleType("rembg.sessions.birefnet_general")
+    mod.BiRefNetSessionGeneral = _FakeBiRefNetSession  # type: ignore[attr-defined]
+    bg = types.ModuleType("rembg.bg")
+
+    def naive_cutout(img: Image.Image, mask: Image.Image) -> Image.Image:
+        out = img.convert("RGBA")
+        out.putalpha(mask)
+        return out
+
+    bg.naive_cutout = naive_cutout  # type: ignore[attr-defined]
+    rembg = types.ModuleType("rembg")
+    rembg.remove = lambda *a, **k: pytest.fail("rembg.remove must not be used")  # type: ignore[attr-defined]
+    for name, module in {
+        "rembg": rembg,
+        "rembg.sessions": sessions_pkg,
+        "rembg.sessions.birefnet_general": mod,
+        "rembg.bg": bg,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setattr(registry, "get_background_remover", lambda s: session)
+    return session
+
+
+def test_birefnet_mask_matches_reference_math() -> None:
+    import numpy as np
+
+    out = np.full((1, 1, 4, 4), -20.0, dtype=np.float32)
+    out[0, 0, 1:3, 1:3] = 20.0
+    mask = background.birefnet_mask(out, (8, 8))
+    assert mask.mode == "L"
+    assert mask.size == (8, 8)
+    assert mask.getpixel((4, 4)) == 255  # inside the square
+    assert mask.getpixel((0, 0)) == 0  # background
+
+
+def test_birefnet_path_uses_feed_constants_and_crops(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    session = _install_fake_birefnet(monkeypatch)
+    result = BiRefNetRemover(settings).remove(Image.new("RGB", (80, 80), (10, 200, 10)))
+    assert session.feeds[0]["mean"] == (0.485, 0.456, 0.406)
+    assert session.feeds[0]["std"] == (0.229, 0.224, 0.225)
+    assert session.feeds[0]["size"] == (1024, 1024)
+    assert result.mode == "RGBA"
+    # The square is half the image; LANCZOS ringing may widen the bbox a little.
+    assert 40 <= result.width < 80
+    assert 40 <= result.height < 80
+
+
+def test_remove_many_equals_sequential_and_yields_empty_errors(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    _install_fake_birefnet(monkeypatch)
+    remover = BiRefNetRemover(settings, min_coverage=0.2)
+    images = [Image.new("RGB", (80 + 8 * i, 80), (i, 0, 0)) for i in range(5)]
+    expected = [remover.remove(img) for img in images]
+    got = list(remover.remove_many(range(5), load=lambda i: images[i]))
+    assert [g.tobytes() for g in got if isinstance(g, Image.Image)] == [
+        e.tobytes() for e in expected
+    ]
+    strict = BiRefNetRemover(settings, min_coverage=0.9)  # square covers 25 %
+    results = list(strict.remove_many(range(3), load=lambda i: images[i]))
+    assert len(results) == 3
+    assert all(isinstance(r, EmptyCutoutError) for r in results)
+
+
+def test_non_birefnet_session_falls_back_to_rembg_remove(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    calls = _install_fake_rembg(monkeypatch, lambda img: _rgba_with_square(100, (10, 10, 60, 40)))
+    got = list(
+        BiRefNetRemover(settings).remove_many(
+            [1, 2], load=lambda _: Image.new("RGB", (100, 100), "white")
+        )
+    )
+    assert len(calls) == 2
+    assert all(isinstance(g, Image.Image) and g.size == (50, 30) for g in got)

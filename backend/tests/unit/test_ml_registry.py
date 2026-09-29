@@ -14,7 +14,11 @@ import onnxruntime as ort
 import pytest
 
 import ml.registry as registry
-from ml.device import CUDA_PROVIDER_OPTIONS, onnxruntime_providers
+from ml.device import (
+    CUDA_PROVIDER_OPTIONS,
+    LITE_FP16_GPU_MEM_LIMIT_BYTES,
+    onnxruntime_providers,
+)
 from shared.settings import Settings
 
 
@@ -159,12 +163,16 @@ def test_cuda_with_fp16_uses_fp16_file_and_provider_options(
     fp16 = tmp_path / "birefnet-general-lite.fp16.onnx"
     assert converted == [(fp32, fp16)]
     assert fake.calls == []
-    assert fake.fp16_calls == [("birefnet-general-lite", onnxruntime_providers("cuda"), str(fp16))]
+    capped = onnxruntime_providers("cuda", gpu_mem_limit=LITE_FP16_GPU_MEM_LIMIT_BYTES)
+    assert fake.fp16_calls == [("birefnet-general-lite", capped, str(fp16))]
     sess_opts = fake.fp16_sess_opts[0]
     assert sess_opts is not None
     assert isinstance(sess_opts, ort.SessionOptions)
     cuda_entry = fake.fp16_calls[0][1][0]
-    assert cuda_entry == ("CUDAExecutionProvider", CUDA_PROVIDER_OPTIONS)
+    assert cuda_entry == (
+        "CUDAExecutionProvider",
+        {**CUDA_PROVIDER_OPTIONS, "gpu_mem_limit": str(LITE_FP16_GPU_MEM_LIMIT_BYTES)},
+    )
 
 
 def test_cuda_with_fp16_disabled_keeps_fp32(

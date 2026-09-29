@@ -77,6 +77,9 @@ def test_format_report_contains_sections() -> None:
     assert "b.jpg: bottom -> top" in report
     assert "confusion matrix" in report
     assert "low-confidence by attribute" in report
+    assert "(trigger attributes: category, pattern)" in report
+    assert "material 0 (no review)" in report
+    assert "category 0," in report
 
 
 def test_parse_labels_ok() -> None:
@@ -98,3 +101,10 @@ def test_parse_labels_ok() -> None:
 def test_parse_labels_errors(raw: object, message: str) -> None:
     with pytest.raises(EvalError, match=message):
         parse_labels(raw, ["a.jpg"])
+
+
+def test_report_includes_throughput_only_when_wall_time_is_recorded() -> None:
+    assert "Throughput" not in format_report(LABELS, PREDS)
+    timed = [_pred(f"{i}.jpg", "top", wall_s=w) for i, w in enumerate([9.0, 0.5, 0.5, 0.5])]
+    report = format_report({}, timed)
+    assert "Throughput (wall, excluding first): 2.00 garments/s (0.500 s/garment)" in report

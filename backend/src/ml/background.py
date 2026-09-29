@@ -19,11 +19,15 @@ Callers MUST call `ml.cache.configure_model_cache` before the first `remove`
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+import threading
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from PIL import Image, ImageOps
 
 from ml import registry
+from ml.pipeline import run_pipeline
 from shared.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,12 @@ class EmptyCutoutError(Exception):
             f"Cutout mask is near-empty: foreground coverage {coverage:.4%} "
             f"is below the minimum {min_coverage:.4%}"
         )
+
+
+# BiRefNet input normalization and size, as in rembg's `BiRefNetSessionGeneral.predict`.
+_BIREFNET_MEAN = (0.485, 0.456, 0.406)
+_BIREFNET_STD = (0.229, 0.224, 0.225)
+_BIREFNET_SIZE = (1024, 1024)
 
 
 class BackgroundRemover(Protocol):
@@ -95,12 +105,89 @@ def _to_rgb(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
+def birefnet_mask(model_output: Any, size: tuple[int, int]) -> Image.Image:
+    """Model output -> 8-bit mask at `size`: sigmoid, min-max normalization and a
+    LANCZOS resize back to the input size. Same math as rembg's
+    `BiRefNetSessionGeneral.predict`, so results are identical to `rembg.remove`."""
+    import numpy as np
+
+    pred = 1 / (1 + np.exp(-model_output[:, 0, :, :]))
+    lo, hi = np.min(pred), np.max(pred)
+    pred = np.squeeze((pred - lo) / (hi - lo))
+    mask = Image.fromarray((pred * 255).astype("uint8"), mode="L")
+    return mask.resize(size, Image.Resampling.LANCZOS)
+
+
+@dataclass
+class PreparedCutout:
+    """Output of `BiRefNetRemover.prepare`: the RGB image and the model feed."""
+
+    rgb: Image.Image
+    feed: dict[str, Any] | None  # None -> not a BiRefNet session, use rembg.remove
+
+
 class BiRefNetRemover:
-    """`BackgroundRemover` backed by the process-wide BiRefNet `rembg` session."""
+    """`BackgroundRemover` backed by the process-wide BiRefNet `rembg` session.
+
+    `remove` runs `prepare` -> `infer` -> `finish`; `remove_many` runs the same
+    stages pipelined (CPU pre/post-processing of neighbouring photos overlaps
+    the GPU inference) with identical results. Sessions that are not rembg
+    BiRefNet sessions fall back to plain `rembg.remove`.
+    """
 
     def __init__(self, settings: Settings, min_coverage: float = MIN_COVERAGE) -> None:
         self._settings = settings
         self._min_coverage = min_coverage
+        self._infer_lock = threading.Lock()  # one inference at a time (VIS-REQ-025)
+
+    def _is_birefnet(self, session: Any) -> bool:
+        try:
+            from rembg.sessions.birefnet_general import BiRefNetSessionGeneral
+        except ImportError:  # pragma: no cover - rembg always ships it
+            return False
+        return isinstance(session, BiRefNetSessionGeneral)
+
+    def prepare(self, img: Image.Image) -> PreparedCutout:
+        """Normalize to RGB and build the model input (CPU)."""
+        session = registry.get_background_remover(self._settings)
+        rgb = _to_rgb(img)
+        if not self._is_birefnet(session):
+            return PreparedCutout(rgb, None)
+        feed = session.normalize(rgb, _BIREFNET_MEAN, _BIREFNET_STD, _BIREFNET_SIZE)
+        return PreparedCutout(rgb, feed)
+
+    def infer(self, prepared: PreparedCutout) -> Any:
+        """Run the model (GPU); serialized. Returns the raw output or None."""
+        if prepared.feed is None:
+            return None
+        session = registry.get_background_remover(self._settings)
+        with self._infer_lock:
+            return session.inner_session.run(None, prepared.feed)[0]
+
+    def finish(self, prepared: PreparedCutout, raw: Any) -> Image.Image:
+        """Mask -> RGBA cutout cropped to the foreground bbox (CPU).
+
+        Raises `EmptyCutoutError` when coverage is below `min_coverage`
+        (ING-SCN-005); see the module docstring for the caller contract.
+        """
+        if prepared.feed is None:
+            from rembg import remove
+
+            session = registry.get_background_remover(self._settings)
+            result = remove(prepared.rgb, session=session)
+            if not isinstance(result, Image.Image):
+                raise TypeError(
+                    f"rembg.remove returned {type(result).__name__}, expected PIL image"
+                )
+            rgba = result.convert("RGBA")
+        else:
+            from rembg.bg import naive_cutout
+
+            rgba = naive_cutout(prepared.rgb, birefnet_mask(raw, prepared.rgb.size)).convert("RGBA")
+        coverage = alpha_coverage(rgba)
+        if coverage < self._min_coverage:
+            raise EmptyCutoutError(coverage, self._min_coverage)
+        return crop_to_foreground(rgba)
 
     def remove(self, img: Image.Image) -> Image.Image:
         """Cut out the foreground and crop to its bbox (RGBA).
@@ -108,14 +195,25 @@ class BiRefNetRemover:
         Raises `EmptyCutoutError` when coverage is below `min_coverage`
         (ING-SCN-005); see the module docstring for the caller contract.
         """
-        from rembg import remove
+        prepared = self.prepare(img)
+        return self.finish(prepared, self.infer(prepared))
 
-        session = registry.get_background_remover(self._settings)
-        result = remove(_to_rgb(img), session=session)
-        if not isinstance(result, Image.Image):
-            raise TypeError(f"rembg.remove returned {type(result).__name__}, expected PIL image")
-        rgba = result.convert("RGBA")
-        coverage = alpha_coverage(rgba)
-        if coverage < self._min_coverage:
-            raise EmptyCutoutError(coverage, self._min_coverage)
-        return crop_to_foreground(rgba)
+    def remove_many[T](
+        self, sources: Iterable[T], load: Callable[[T], Image.Image]
+    ) -> Iterator[Image.Image | EmptyCutoutError]:
+        """Pipelined `remove` over `sources` (`load` turns a source, e.g. a path,
+        into an image on a worker thread). Yields, in
+        order, the cutout or the `EmptyCutoutError` for that photo. Batch
+        throughput only: per-photo latency is unchanged."""
+        registry.get_background_remover(self._settings)  # create the session up front
+
+        def prep(source: T) -> PreparedCutout:
+            return self.prepare(load(source))
+
+        def fin(prepared: PreparedCutout, raw: Any) -> Image.Image | EmptyCutoutError:
+            try:
+                return self.finish(prepared, raw)
+            except EmptyCutoutError as exc:
+                return exc
+
+        return run_pipeline(sources, prep, self.infer, fin)

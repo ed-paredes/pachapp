@@ -8,6 +8,7 @@ import pytest
 
 from ml.device import (
     CUDA_PROVIDER_OPTIONS,
+    LITE_FP16_GPU_MEM_LIMIT_BYTES,
     check_session_providers,
     onnxruntime_providers,
     select_device,
@@ -71,6 +72,18 @@ def test_onnxruntime_providers_cuda_includes_cpu_fallback() -> None:
         ("CUDAExecutionProvider", CUDA_PROVIDER_OPTIONS),
         "CPUExecutionProvider",
     ]
+
+
+def test_onnxruntime_providers_cuda_gpu_mem_limit_is_opt_in() -> None:
+    (name, options), _ = onnxruntime_providers("cuda", gpu_mem_limit=4 * 1024**3)
+    assert name == "CUDAExecutionProvider"
+    assert options == {**CUDA_PROVIDER_OPTIONS, "gpu_mem_limit": str(4 * 1024**3)}
+    assert "gpu_mem_limit" not in CUDA_PROVIDER_OPTIONS  # module constant not mutated
+    assert "gpu_mem_limit" not in onnxruntime_providers("cuda")[0][1]
+
+
+def test_lite_fp16_mem_limit_leaves_headroom_over_measured_peak() -> None:
+    assert int(3.3 * 1024**3) < LITE_FP16_GPU_MEM_LIMIT_BYTES
 
 
 @pytest.mark.parametrize("device", ["cpu", "mps"])

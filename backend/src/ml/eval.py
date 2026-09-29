@@ -1,7 +1,7 @@
 """CLI: evaluate the zero-shot pipeline on labeled photos (08-local-vision.md
 VIS-REQ-028/VIS-REQ-030, step 3 gate: >= 85 % `category` accuracy without kNN).
 
-Usage: `python -m ml.eval [EVAL_DIR] [--no-cutout] [--limit N]` (wired up as
+Usage: `python -m ml.eval [EVAL_DIR] [--no-cutout] [--limit N] [--pipeline]` (wired up as
 `make ml-eval`). `EVAL_DIR` defaults to `PACHAPP_ML_EVAL_DIR`; it holds
 `*.jpg/*.jpeg/*.png` photos plus a `labels.json`:
 
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ml.cache import configure_model_cache
-from ml.zero_shot import REVIEW_ATTRIBUTES
+from ml.zero_shot import REVIEW_ATTRIBUTES, REVIEW_TRIGGER_ATTRIBUTES
 from shared.enums import GarmentCategory, GarmentPattern
 from shared.settings import get_settings
 
@@ -60,6 +60,7 @@ class Prediction:
     cutout_s: float = 0.0
     embed_s: float = 0.0  # embed + classify
     empty_cutout: bool = False
+    wall_s: float = 0.0  # wall-clock share of this garment (load + cutout + embed), for throughput
 
 
 def find_images(eval_dir: Path) -> list[Path]:
@@ -220,11 +221,16 @@ def format_report(
     out += [
         "",
         f"needs_review: {review}/{n} ({100 * review / n:.1f} %)" if n else "needs_review: n/a",
+        "  (trigger attributes: " + ", ".join(REVIEW_TRIGGER_ATTRIBUTES) + ")",
     ]
 
     by_attr = {a: sum(a in p.low_confidence for p in preds) for a in REVIEW_ATTRIBUTES}
     out.append(
-        "  low-confidence by attribute: " + ", ".join(f"{a} {c}" for a, c in by_attr.items())
+        "  low-confidence by attribute: "
+        + ", ".join(
+            f"{a} {c}" + ("" if a in REVIEW_TRIGGER_ATTRIBUTES else " (no review)")
+            for a, c in by_attr.items()
+        )
     )
 
     cut_mean, cut_med = timing_stats([p.cutout_s for p in preds])
@@ -237,6 +243,13 @@ def format_report(
     if not cutout_enabled:
         out.append("  (cutout disabled: --no-cutout)")
 
+    wall_mean, _ = timing_stats([p.wall_s for p in preds])
+    if wall_mean > 0:
+        out.append(
+            f"Throughput (wall, excluding first): {1 / wall_mean:.2f} garments/s "
+            f"({wall_mean:.3f} s/garment)"
+        )
+
     out.append(f"Empty cutouts (fell back to full image): {sum(p.empty_cutout for p in preds)}")
     wrong = misclassified(labels, preds)
     out += ["", f"Misclassified category ({len(wrong)}):"]
@@ -244,11 +257,38 @@ def format_report(
     return "\n".join(out)
 
 
-def _evaluate(
-    images: Sequence[Path], *, use_cutout: bool, settings
-) -> list[Prediction]:  # pragma: no cover - needs real models
+def _to_prediction(
+    path: Path, result, *, empty: bool, cutout_s: float, embed_s: float, wall_s: float
+) -> Prediction:
+    p = result.predictions
+    formality = p["formality"].value
+    assert isinstance(formality, int)
+    return Prediction(
+        filename=path.name,
+        category=str(p["category"].value),
+        category_confidence=p["category"].confidence,
+        subcategory=str(p["subcategory"].value),
+        pattern=str(p["pattern"].value),
+        formality=formality,
+        needs_review=result.needs_review or empty,
+        low_confidence=tuple(result.low_confidence),
+        cutout_s=cutout_s,
+        embed_s=embed_s,
+        empty_cutout=empty,
+        wall_s=wall_s,
+    )
+
+
+def _load(path: Path):  # pragma: no cover - needs PIL files
     from PIL import Image
 
+    with Image.open(path) as opened:
+        return opened.copy()
+
+
+def _evaluate(
+    images: Sequence[Path], *, use_cutout: bool, pipeline: bool, settings
+) -> list[Prediction]:  # pragma: no cover - needs real models
     from ml.background import BiRefNetRemover, EmptyCutoutError
     from ml.registry import get_embedder
     from ml.zero_shot import ZeroShotClassifier
@@ -256,39 +296,47 @@ def _evaluate(
     embedder = get_embedder(settings)
     classifier = ZeroShotClassifier(embedder, margin_threshold=settings.ml_margin_threshold)
     remover = BiRefNetRemover(settings) if use_cutout else None
-    preds = []
+    preds: list[Prediction] = []
+
+    def classify(path: Path, img, *, empty: bool, cutout_s: float, wall_start: float) -> None:
+        t1 = time.perf_counter()
+        result = classifier.classify(embedder.embed_image(img))
+        t2 = time.perf_counter()
+        preds.append(
+            _to_prediction(
+                path,
+                result,
+                empty=empty,
+                cutout_s=cutout_s,
+                embed_s=t2 - t1,
+                wall_s=t2 - wall_start,
+            )
+        )
+        print(f"[{len(preds)}/{len(images)}] {path.name}: {preds[-1].category}", flush=True)
+
+    if remover is not None and pipeline:
+        # Same results as the sequential path; photo N+1 is decoded/normalized and
+        # photo N-1 post-processed on worker threads while the GPU runs photo N.
+        # `cutout_s` is then the time the consumer waited for the next cutout.
+        cutouts = iter(remover.remove_many(images, load=_load))
+        for path in images:
+            t0 = time.perf_counter()
+            out = next(cutouts)
+            empty = isinstance(out, EmptyCutoutError)
+            img = _load(path) if isinstance(out, EmptyCutoutError) else out
+            classify(path, img, empty=empty, cutout_s=time.perf_counter() - t0, wall_start=t0)
+        return preds
+
     for path in images:
-        with Image.open(path) as opened:
-            img = opened.copy()
-        empty = False
         t0 = time.perf_counter()
+        img = _load(path)
+        empty = False
         if remover is not None:
             try:
                 img = remover.remove(img)
             except EmptyCutoutError:
                 empty = True
-        t1 = time.perf_counter()
-        result = classifier.classify(embedder.embed_image(img))
-        t2 = time.perf_counter()
-        p = result.predictions
-        formality = p["formality"].value
-        assert isinstance(formality, int)
-        preds.append(
-            Prediction(
-                filename=path.name,
-                category=str(p["category"].value),
-                category_confidence=p["category"].confidence,
-                subcategory=str(p["subcategory"].value),
-                pattern=str(p["pattern"].value),
-                formality=formality,
-                needs_review=result.needs_review or empty,
-                low_confidence=tuple(result.low_confidence),
-                cutout_s=t1 - t0,
-                embed_s=t2 - t1,
-                empty_cutout=empty,
-            )
-        )
-        print(f"[{len(preds)}/{len(images)}] {path.name}: {preds[-1].category}", flush=True)
+        classify(path, img, empty=empty, cutout_s=time.perf_counter() - t0, wall_start=t0)
     return preds
 
 
@@ -296,6 +344,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ml.eval", description=__doc__)
     parser.add_argument("eval_dir", nargs="?", type=Path, default=None)
     parser.add_argument("--no-cutout", action="store_true", help="skip background removal")
+    parser.add_argument(
+        "--pipeline",
+        action="store_true",
+        help="overlap CPU work with GPU inference (same predictions, batch throughput)",
+    )
     parser.add_argument("--limit", type=int, default=None, help="evaluate only the first N photos")
     args = parser.parse_args(argv)
 
@@ -319,7 +372,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     configure_model_cache(settings.ml_cache_dir)
-    preds = _evaluate(images, use_cutout=not args.no_cutout, settings=settings)
+    preds = _evaluate(
+        images, use_cutout=not args.no_cutout, pipeline=args.pipeline, settings=settings
+    )
     print()
     print(format_report(labels, preds, cutout_enabled=not args.no_cutout))
     return 0
