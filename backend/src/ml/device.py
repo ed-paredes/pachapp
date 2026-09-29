@@ -10,8 +10,18 @@ should try, so BiRefNet runs on the same device as the embedder.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 Device = str  # "cpu" | "cuda" | "mps"
+
+# BiRefNet at 1024 px is memory-hungry: HEURISTIC skips cuDNN's exhaustive
+# conv-algorithm search (which allocates huge workspaces) and kSameAsRequested
+# stops the arena from doubling allocations. Measured 14 s -> 4.2 s per image
+# for fp32 on the 6 GB reference GPU (VIS-REQ-026).
+CUDA_PROVIDER_OPTIONS: dict[str, str] = {
+    "cudnn_conv_algo_search": "HEURISTIC",
+    "arena_extend_strategy": "kSameAsRequested",
+}
 
 
 def select_device(
@@ -75,12 +85,16 @@ def resolve_device(requested: str) -> Device:
     )
 
 
-def onnxruntime_providers(device: Device) -> list[str]:
+def onnxruntime_providers(device: Device) -> list[Any]:
     """Ordered onnxruntime execution providers for `rembg`'s BiRefNet session,
     matching the resolved torch device. onnxruntime has no MPS provider, so
-    `mps` (like `cpu`) runs BiRefNet on CPU."""
+    `mps` (like `cpu`) runs BiRefNet on CPU. The CUDA provider is a
+    `(name, options)` tuple, which onnxruntime accepts in `providers`."""
     if device == "cuda":
-        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        return [
+            ("CUDAExecutionProvider", dict(CUDA_PROVIDER_OPTIONS)),
+            "CPUExecutionProvider",
+        ]
     return ["CPUExecutionProvider"]
 
 

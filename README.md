@@ -90,7 +90,11 @@ file is committed (DEV-REQ-010) and excluded from Prettier.
 `make ml-preload` downloads BiRefNet (background removal, via `rembg`) and
 the pinned SigLIP embedding model (via `open_clip`) into
 `PACHAPP_ML_CACHE_DIR` (default `~/pachapp-data/models`). The first run
-downloads roughly 5 GB; later runs just validate the existing cache. `torch`
+downloads roughly 5 GB; later runs just validate the existing cache. The
+default background model is `birefnet-general-lite`; on `cuda` it is converted
+once to an fp16 copy (`*.fp16.onnx`, next to the fp32 file; about 40 s) so it
+fits a 6 GB GPU -- disable with `PACHAPP_ML_BG_FP16=false`. Preload prints the
+BG file, its precision and the warm per-image time. `torch`
 is installed from the PyTorch CUDA 13.0 wheel index (`backend/pyproject.toml`),
 so it needs an NVIDIA GPU and a CUDA 13 driver to actually run on `cuda` -- see
 `docs/specs/08-local-vision.md` for the full settings table and fallback to

@@ -33,6 +33,12 @@ dependencies = [
     # path). Justification: odd/tasks/local-vision-ml.md (T1 verification section);
     # outside SPEC-ML's base list.
     "rembg[gpu]>=2.0.85,<2.1",
+    # Not in SPEC-ML's base list: `make ml-preload` converts the background
+    # model to fp16 once (ml/bg_fp16.py) so BiRefNet fits the 6 GB reference
+    # GPU and meets VIS-REQ-026. Justification: odd/tasks/local-vision-ml.md
+    # (T2 progress). Imported lazily; only the conversion needs them.
+    "onnx>=1.17",
+    "onnxconverter-common>=1.14",
     "pillow>=12.1,<13",
     "numpy>=2.3,<3",
     "scikit-learn>=1.5,<2",
