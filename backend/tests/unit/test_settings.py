@@ -164,9 +164,33 @@ def test_blank_ml_embed_revision_raises(tmp_path: Path, blank_revision: str) -> 
     kwargs = _base_kwargs(tmp_path)
     kwargs["ml_embed_revision"] = blank_revision
 
-    with pytest.raises(ValidationError, match="DEV-REQ-011") as exc_info:
+    with pytest.raises(ValidationError, match="VIS-REQ-002") as exc_info:
         Settings(**kwargs)
     assert "PACHAPP_ML_EMBED_REVISION" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "moving_revision",
+    ["latest", "LATEST", "main", "master", "HEAD", "refs/heads/main", "  Main  "],
+)
+def test_moving_ml_embed_revision_raises(tmp_path: Path, moving_revision: str) -> None:
+    kwargs = _base_kwargs(tmp_path)
+    kwargs["ml_embed_revision"] = moving_revision
+
+    with pytest.raises(ValidationError, match="VIS-REQ-002") as exc_info:
+        Settings(**kwargs)
+    assert "PACHAPP_ML_EMBED_REVISION" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "pinned_revision",
+    ["c56244cc94f92419e8369fa71efdaf403b124ce8", "v1.0"],
+)
+def test_pinned_ml_embed_revision_is_accepted(tmp_path: Path, pinned_revision: str) -> None:
+    kwargs = _base_kwargs(tmp_path)
+    kwargs["ml_embed_revision"] = pinned_revision
+
+    assert Settings(**kwargs).ml_embed_revision == pinned_revision
 
 
 def test_ml_cache_dir_under_mnt_raises_with_d14(tmp_path: Path) -> None:

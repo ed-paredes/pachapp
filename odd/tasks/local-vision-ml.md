@@ -43,7 +43,15 @@ Forecast: T1 ~400–600 authored lines (lockfile excluded). Strategy `ask-on-ris
 - Deps beyond SPEC-ML's base list: `torchvision` (open_clip), `transformers` + `sentencepiece` (Marqo-FashionSigLIP's HF tokenizer), `onnxruntime-gpu` via `rembg[gpu]` (CUDA inference for BiRefNet; avoids the conflicting CPU `onnxruntime`).
 - Route: delegated direct (writer, previous session); resume fixes inline (2 small mechanical edits + test).
 
+## T1 native review (2026-09-29)
+
+- Commit `516183e` assessed high (subprocess in the api↛ml boundary test); consent granted by the user; 4-lens review `review-a661f49fafcd1a10` **approved** and acknowledged (authority burned). Reviewed boundary → `516183e`.
+- 12 advisory (non-blocking) findings. Fixed in a follow-up commit (route: delegated direct writer, 6 files): moving-ref guard for `PACHAPP_ML_EMBED_REVISION` (rejects latest/main/master/HEAD/refs/heads/*, accepts SHA or tag — the spec allows "commit/tag", so no 40-hex requirement) with VIS-REQ-002 in its errors; `.env.example` no longer points to a non-existent `make reembed`; pyproject comment points here instead of an external "report"; comment on the 08-table defaults; `test_ml_cache` env isolation via monkeypatch; new `test_ml_registry.py` (fake rembg, no torch/network). pytest 92 passed.
+- Not changed, by decision: `PACHAPP_ML_EMBED_REVISION` stays required for every process incl. the API (08 table says "obligatorio"; findings R3/R4 suggested validating it only in the worker) — **open question for the user**. Duplicated `ml_cache_dir` assert (suggestion) left as is.
+
 ## Follow-ups
+
+- `snapshot_download` fetches every file of the pinned revision (~5 GB cache); add `allow_patterns` for the files open_clip's `local-dir:` loader needs. Needs a clean-cache download to verify — do with T3.
 
 - Worker cold start ~100 s from `/mnt/d` imports: consider a checkout on WSL ext4 or `UV_PROJECT_ENVIRONMENT` outside `/mnt` before T2 perf measurements (VIS-REQ-026 budget is per garment, not startup).
 - `.env` / `.env.test` lack `PACHAPP_ML_EMBED_REVISION` (required, no default): user must add it.

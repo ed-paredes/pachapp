@@ -12,11 +12,17 @@ import pytest
 from ml.cache import configure_model_cache
 
 
+def _isolate_cache_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Register HF_HOME/U2NET_HOME with monkeypatch so the values that
+    `configure_model_cache` writes to `os.environ` are restored at teardown."""
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("U2NET_HOME", raising=False)
+
+
 def test_creates_cache_dir_and_sets_env_vars(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("HF_HOME", raising=False)
-    monkeypatch.delenv("U2NET_HOME", raising=False)
+    _isolate_cache_env(monkeypatch)
     cache_dir = tmp_path / "models"
     assert not cache_dir.exists()
 
@@ -27,7 +33,8 @@ def test_creates_cache_dir_and_sets_env_vars(
     assert os.environ["U2NET_HOME"] == str(cache_dir)
 
 
-def test_is_idempotent_on_an_existing_dir(tmp_path: Path) -> None:
+def test_is_idempotent_on_an_existing_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _isolate_cache_env(monkeypatch)
     cache_dir = tmp_path / "models"
     cache_dir.mkdir()
     (cache_dir / "already-here.txt").write_text("keep me")
@@ -38,7 +45,8 @@ def test_is_idempotent_on_an_existing_dir(tmp_path: Path) -> None:
     assert (cache_dir / "already-here.txt").read_text() == "keep me"
 
 
-def test_creates_nested_parent_dirs(tmp_path: Path) -> None:
+def test_creates_nested_parent_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _isolate_cache_env(monkeypatch)
     cache_dir = tmp_path / "a" / "b" / "models"
 
     configure_model_cache(cache_dir)
@@ -47,6 +55,7 @@ def test_creates_nested_parent_dirs(tmp_path: Path) -> None:
 
 
 def test_expands_user_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _isolate_cache_env(monkeypatch)
     monkeypatch.setenv("HOME", str(tmp_path))
     cache_dir = Path("~/models-cache")
 

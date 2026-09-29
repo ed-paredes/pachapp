@@ -45,13 +45,29 @@ def _reject_mnt_path(path: Path, *, env_var: str) -> None:
         )
 
 
-def _reject_blank(value: str, *, env_var: str) -> None:
-    """Raise if `value` is empty or whitespace-only (DEV-REQ-011)."""
+def _reject_blank(value: str, *, env_var: str, req_id: str = "DEV-REQ-011") -> None:
+    """Raise if `value` is empty or whitespace-only (DEV-REQ-011 by default)."""
     if not value.strip():
         raise ValueError(
-            f"{env_var} must not be empty or whitespace-only (DEV-REQ-011): secrets and "
+            f"{env_var} must not be empty or whitespace-only ({req_id}): secrets and "
             "other required settings must fail fast instead of silently accepting a "
             f"copied-but-unfilled `.env` line, e.g. `{env_var}=`."
+        )
+
+
+# Moving refs that would let PACHAPP_ML_EMBED_REVISION drift (VIS-REQ-002).
+_MOVING_REVISIONS = frozenset({"latest", "main", "master", "head"})
+
+
+def _reject_moving_revision(value: str, *, env_var: str) -> None:
+    """Raise if `value` is a moving alias/branch ref rather than a pinned
+    commit or tag (VIS-REQ-002). A tag or a full SHA is accepted."""
+    normalized = value.strip().lower()
+    if normalized in _MOVING_REVISIONS or normalized.startswith("refs/heads/"):
+        raise ValueError(
+            f"{env_var} must be a pinned commit or tag (VIS-REQ-002, analogous to D11), "
+            "not a moving ref such as 'latest', 'main', 'master', 'HEAD' or 'refs/heads/*': "
+            f"existing embeddings must stay comparable across worker restarts. Got: {value!r}."
         )
 
 
@@ -92,6 +108,7 @@ class Settings(BaseSettings):
     ml_embed_model: str = "hf-hub:Marqo/marqo-fashionSigLIP"
     # Required, no versioned default (VIS-REQ-002, analogous to D11).
     ml_embed_revision: str
+    # Defaults for the next three come from the 08-local-vision.md settings table.
     ml_margin_threshold: float = Field(default=0.15, gt=0, lt=1)
     ml_knn_k: int = Field(default=7, gt=0)
     ml_knn_min_verified: int = Field(default=30, gt=0)
@@ -134,7 +151,10 @@ class Settings(BaseSettings):
 
         # No "latest" alias, analogous to D11 (VIS-REQ-002): existing
         # embeddings must stay comparable across worker restarts.
-        _reject_blank(self.ml_embed_revision, env_var="PACHAPP_ML_EMBED_REVISION")
+        _reject_blank(
+            self.ml_embed_revision, env_var="PACHAPP_ML_EMBED_REVISION", req_id="VIS-REQ-002"
+        )
+        _reject_moving_revision(self.ml_embed_revision, env_var="PACHAPP_ML_EMBED_REVISION")
 
         # The vision LLM is an opt-in fallback (08-local-vision.md,
         # VIS-REQ-021): its three settings are required, fail-fast, only when
