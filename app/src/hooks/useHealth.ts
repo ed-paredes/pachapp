@@ -11,9 +11,9 @@ export function useHealth() {
   return useQuery({
     queryKey: ['health'],
     queryFn: async () => {
-      const { data, error } = await apiClient.GET('/health');
-      if (error) {
-        throw error;
+      const { data, error, response } = await apiClient.GET('/health');
+      if (!response.ok || error) {
+        throw new Error(`Health check failed with status ${response.status}`);
       }
       return data;
     },

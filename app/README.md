@@ -25,8 +25,27 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-Routes live in `app/` (Expo Router), non-route code in `src/` (`api-client/`,
-`components/`, `screens/`, `hooks/`), tests in `tests/`.
+Routes live in `app/` (Expo Router):
+
+- `(tabs)/` — bottom tabs: `index` (Hoy), `wardrobe` (Armario), `add`
+  (Añadir), `history` (Historial).
+- `review/[id]`, `garments/[id]`, `favorites`, `settings` — stack screens
+  reached from the tabs (Revisión, Detalle de prenda, Favoritos, Ajustes).
+
+Non-route code lives in `src/`:
+
+- `api-client/` — `config.ts` (`EXPO_PUBLIC_API_BASE_URL`), `schema.ts`
+  (generated, see `make gen-client`), `http-client.ts` (typed `openapi-fetch`
+  client), `query-client.ts` (shared `QueryClient`).
+- `components/` — shared UI: `LoadingState`, `EmptyState`, `ErrorState`,
+  `IconSymbol` (tab/header icons via `expo-symbols`), `CaptureTipsPanel`.
+- `hooks/` — `useHealth` (TanStack Query wrapper for `/health`),
+  `useCaptureTipsSeen` (local "seen" persistence for the Añadir tips panel).
+- `lib/device-storage.ts` — small key/value storage abstraction
+  (`localStorage` on web, `@react-native-async-storage/async-storage` on
+  native).
+
+Tests live in `tests/`.
 
 ## Scripts
 
