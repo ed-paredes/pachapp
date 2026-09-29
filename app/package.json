@@ -54,5 +54,10 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --ci"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
+  }
 }
