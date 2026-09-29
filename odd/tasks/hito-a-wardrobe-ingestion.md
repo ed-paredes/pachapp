@@ -65,6 +65,7 @@ Forecast: ~3,500–4,500 authored lines (lockfiles and generated `schema.ts` exc
 ## Progress
 
 - 2026-09-29: read-only mapping of specs 03/04/07/02 vs code done; worktree + feature doc created.
+- A1/A2 implementation (writer): A1 = `shared/imaging.py`, `shared/storage.py`, `api/errors.py` + tests `test_imaging.py`, `test_storage.py`, `test_api_errors.py`. A2 = `api/deps.py` (lazy engine on `app.state`, per-request session), `api/schemas.py`, `api/routers/{garments,jobs}.py`, `api/main.py` wiring (lifespan creates images root; `/images` StaticFiles), `test_api_garments.py`, `app/src/api-client/schema.ts`. Dep added: `python-multipart` (pyproject + uv.lock). Fix outside the task files: `shared/models.py` dropped `from __future__ import annotations` (relationships quoted) because instantiating ORM rows raised a SQLAlchemy mapper error. Defaults applied: Spanish messages for INVALID_IMAGE/IMAGE_TOO_LARGE; alpha flattened on white for the JPEG original.
 
 ## Next step
 

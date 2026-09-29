@@ -21,10 +21,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/garments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Garment
+         * @description Persist the EXIF-corrected original, then create garment + job in one
+         *     transaction (ING-REQ-001/003). Heavy processing is left to the worker.
+         */
+        post: operations["upload_garment_garments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        /** Body_upload_garment_garments_post */
+        Body_upload_garment_garments_post: {
+            /** File */
+            file: string;
+        };
+        /** ErrorBody */
+        ErrorBody: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * ErrorResponse
+         * @description OpenAPI model of the error envelope (API-REQ-001, API-REQ-017).
+         */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        /**
+         * GarmentCreated
+         * @description `202` body of `POST /garments` (ING-REQ-001).
+         */
+        GarmentCreated: {
+            /** Garment Id */
+            garment_id: string;
+            /** Job Id */
+            job_id: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * JobRead
+         * @description `GET /jobs/{id}` body (ING-REQ-026, API-REQ-013).
+         */
+        JobRead: {
+            status: components["schemas"]["JobStatus"];
+            step: components["schemas"]["JobStep"] | null;
+            /** Progress */
+            progress: number;
+            /** Error */
+            error: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "pending" | "claimed" | "running" | "done" | "failed";
+        /**
+         * JobStep
+         * @enum {string}
+         */
+        JobStep: "preprocess" | "cutout" | "color" | "ai_attributes" | "embedding" | "consolidate";
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
+    };
     responses: never;
     parameters: never;
     requestBodies: never;
@@ -51,6 +167,88 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+        };
+    };
+    upload_garment_garments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_garment_garments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentCreated"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
