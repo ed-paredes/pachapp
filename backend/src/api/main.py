@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.errors import register_error_handlers
 from shared.settings import Settings, get_settings
 
 
@@ -19,6 +20,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     app = FastAPI(title="pachapp API")
+    register_error_handlers(app)
 
     app.add_middleware(
         CORSMiddleware,
