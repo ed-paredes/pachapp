@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -121,6 +122,21 @@ def _processing_conflict(garment_id: str) -> AppError:
     )
 
 
+_BUSY_MARKERS = ("database is locked", "database is busy", "database table is locked")
+
+
+def _is_busy_or_locked(exc: OperationalError) -> bool:
+    """True only for SQLite's busy/locked conditions, which mean "retry later".
+    Anything else (syntax, missing table, disk I/O, ...) is a real defect."""
+    orig = exc.orig
+    code = getattr(orig, "sqlite_errorcode", None)
+    if isinstance(code, int):
+        # The low byte is the primary result code (extended codes add high bits).
+        return (code & 0xFF) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+    message = str(orig).lower()
+    return any(marker in message for marker in _BUSY_MARKERS)
+
+
 def _drop_pending_jobs(session: Session, garment_id: str) -> None:
     """First statement of the delete transaction: as a write it takes SQLite's
     write lock, so from here on the worker cannot claim a job of this garment."""
@@ -135,7 +151,7 @@ def _delete_rows_atomically(session: Session, garment: Garment) -> None:
     """One write transaction: drop pending jobs (taking the write lock), re-check
     that none is claimed/running, then delete the rows. A job the worker claimed
     before the lock, or a busy/locked database, is `GARMENT_PROCESSING` (409) and
-    nothing is deleted."""
+    nothing is deleted. Any other `OperationalError` propagates (500)."""
     garment_id = garment.id
     try:
         _drop_pending_jobs(session, garment_id)
@@ -156,6 +172,8 @@ def _delete_rows_atomically(session: Session, garment: Garment) -> None:
         session.commit()
     except OperationalError as exc:
         session.rollback()
+        if not _is_busy_or_locked(exc):
+            raise
         logger.warning("delete of garment %s hit a busy database: %s", garment_id, exc)
         raise _processing_conflict(garment_id) from exc
 

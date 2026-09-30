@@ -2,29 +2,35 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
+import { EngineSettingsForm } from '@/components/EngineSettingsForm';
 import { useHealth } from '@/hooks/useHealth';
+import { useSettings } from '@/hooks/useSettings';
 
 /**
  * Ajustes (Settings): engine weights, no-repeat days, N complements — no
- * export (see 07's "Conflictos resueltos"). Those settings need
- * `GET/PATCH /settings` (out of scope here, no endpoints beyond `/health`
- * are wired up yet), so they're listed as static, non-editable placeholders.
- * The one real query wired up in this iteration, `/health`, is shown here
- * as a discreet connection status line (UI-REQ-014).
+ * export (see 07's "Conflictos resueltos"). Loaded from `GET /settings` and
+ * saved with `PATCH /settings`; below it, `/health` is shown as a discreet
+ * connection status line (UI-REQ-014).
  */
 export default function SettingsScreen() {
   const health = useHealth();
+  const settings = useSettings();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.section}>
+      <View style={styles.section} testID="settings-engine">
         <Text style={styles.sectionTitle}>Motor de recomendación</Text>
-        <Text style={styles.placeholder}>Pesos del motor (próximamente editable)</Text>
-        <Text style={styles.placeholder}>Días de no repetir (próximamente editable)</Text>
-        <Text style={styles.placeholder}>Número de complementos (próximamente editable)</Text>
+        {settings.isPending ? <LoadingState /> : null}
+        {settings.isError ? (
+          <ErrorState
+            message="No se pudieron cargar los ajustes."
+            onRetry={() => void settings.refetch()}
+          />
+        ) : null}
+        {settings.isSuccess ? <EngineSettingsForm settings={settings.data} /> : null}
       </View>
 
-      <View style={styles.section}>
+      <View style={styles.section} testID="settings-connection">
         <Text style={styles.sectionTitle}>Conexión</Text>
         {health.isPending ? <LoadingState /> : null}
         {health.isError ? (
@@ -53,10 +59,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-  },
-  placeholder: {
-    fontSize: 14,
-    opacity: 0.6,
   },
   connectionOk: {
     fontSize: 14,

@@ -110,6 +110,7 @@ def test_api_scn_005_weights_over_one_are_rejected_and_nothing_changes(
     assert response.status_code == 400
     error = response.json()["error"]
     assert error["code"] == "INVALID_WEIGHTS"
+    assert error["message"].endswith("ahora suman 1,55.")
     assert client.get("/settings").json() == DEFAULTS  # incl. the non-weight field
 
 

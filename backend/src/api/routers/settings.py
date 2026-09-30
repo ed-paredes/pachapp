@@ -98,9 +98,10 @@ def patch_settings(
     if changes.keys() & set(WEIGHT_FIELDS):
         total = sum(changes.get(name, getattr(row, name)) for name in WEIGHT_FIELDS)
         if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE + 1e-9:
+            total_es = f"{total:.2f}".replace(".", ",")  # Spanish decimal comma
             raise AppError(
                 INVALID_WEIGHTS,
-                f"Los cuatro pesos deben sumar 1,0 (±0,01); ahora suman {total:.2f}.",
+                f"Los cuatro pesos deben sumar 1,0 (±0,01); ahora suman {total_es}.",
                 400,
                 {"sum": round(total, 6)},
             )

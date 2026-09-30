@@ -8,6 +8,7 @@ half-working server.
 
 from __future__ import annotations
 
+import mimetypes
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,10 @@ from api.errors import register_error_handlers
 from api.routers import garment_edit, garment_lifecycle, garments, jobs
 from api.routers import settings as settings_router
 from shared.settings import Settings, get_settings
+
+# Thumbnails are WebP; minimal distros (WSL Ubuntu) have no `.webp` entry in
+# the system MIME database, so StaticFiles would send application/octet-stream.
+mimetypes.add_type("image/webp", ".webp")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

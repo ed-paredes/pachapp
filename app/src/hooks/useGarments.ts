@@ -12,6 +12,26 @@ export function useGarments(filters: GarmentFilters = {}) {
   });
 }
 
+/**
+ * Flattens loaded pages into one list, dropping repeated garment ids (first
+ * occurrence wins): offset pagination can return the same garment on two pages
+ * when garments are created between page requests.
+ */
+export function flattenGarmentPages<T extends { id: string }>(
+  pages: { items: T[] }[] | undefined,
+): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const page of pages ?? []) {
+    for (const item of page.items) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 /** Job states in which the worker still owns the garment (list should keep polling). */
 const ACTIVE_JOB_STATUSES = ['pending', 'claimed', 'running'];
 

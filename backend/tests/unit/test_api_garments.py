@@ -159,6 +159,18 @@ def test_images_are_served_statically(client: TestClient) -> None:
     assert Image.open(io.BytesIO(response.content)).size == (20, 20)
 
 
+def test_webp_thumbnails_are_served_as_image_webp(client: TestClient, settings: Settings) -> None:
+    assert settings.images_root is not None
+    thumb = settings.images_root / "thumb" / "t.webp"
+    thumb.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (4, 4)).save(thumb, format="WEBP")
+
+    response = client.get("/images/thumb/t.webp")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+
+
 def test_images_root_is_created_at_startup(settings: Settings) -> None:
     assert settings.images_root is not None
     assert not settings.images_root.exists()
