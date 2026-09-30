@@ -146,7 +146,7 @@ describe('ReviewScreen (Revisión)', () => {
     await renderScreen();
     await screen.findByTestId('review-image');
 
-    fireEvent.press(screen.getByLabelText('Formalidad: 4'));
+    await fireEvent.press(screen.getByLabelText('Formalidad: 4'));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0].body).toEqual({ formality: 4 });
     await waitFor(() =>
@@ -161,7 +161,7 @@ describe('ReviewScreen (Revisión)', () => {
   it('keeps the highlight on the edited field itself until "Revisión terminada"', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
-    fireEvent.press(screen.getByLabelText(`Categoría: ${CATEGORY_LABELS.shoes}`));
+    await fireEvent.press(screen.getByLabelText(`Categoría: ${CATEGORY_LABELS.shoes}`));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0].body).toEqual({ category: 'shoes' });
     await waitFor(() =>
@@ -179,11 +179,11 @@ describe('ReviewScreen (Revisión)', () => {
     await screen.findByTestId('review-image');
     expect(screen.getByLabelText('Estilo: Minimal').props.accessibilityState.disabled).toBe(true);
 
-    fireEvent.press(screen.getByLabelText('Estilo: Classic'.replace('Classic', 'Clásico')));
+    await fireEvent.press(screen.getByLabelText('Estilo: Classic'.replace('Classic', 'Clásico')));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0].body).toEqual({ style_tags: ['casual', 'street'] });
 
-    fireEvent.press(screen.getByLabelText('Temporada: Invierno'));
+    await fireEvent.press(screen.getByLabelText('Temporada: Invierno'));
     await waitFor(() => expect(patches()).toHaveLength(2));
     expect(patches()[1].body).toEqual({ seasons: ['summer', 'winter'] });
   });
@@ -201,7 +201,7 @@ describe('ReviewScreen (Revisión)', () => {
   it('edits colours with a valid PATCH body (descending proportions, sum <= 1)', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
-    fireEvent.press(screen.getByLabelText('Color: rojo'));
+    await fireEvent.press(screen.getByLabelText('Color: rojo'));
     await waitFor(() => expect(patches()).toHaveLength(1));
 
     const sent = (patches()[0].body as { colors: { name: string; proportion: number }[] }).colors;
@@ -223,7 +223,7 @@ describe('ReviewScreen (Revisión)', () => {
     patchStatus = 500;
     await renderScreen();
     await screen.findByTestId('review-image');
-    fireEvent.press(screen.getByLabelText('Formalidad: 5'));
+    await fireEvent.press(screen.getByLabelText('Formalidad: 5'));
     expect(await screen.findByTestId('error-formality')).toBeTruthy();
     expect(screen.getByLabelText('Formalidad: 2').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('Formalidad: 5').props.accessibilityState.selected).toBe(false);
@@ -232,7 +232,7 @@ describe('ReviewScreen (Revisión)', () => {
   it('"Revisión terminada" completes the review and goes back to Armario', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
-    fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
     expect(
       calls.filter((c) => c.method === 'POST' && c.path === '/garments/g1/review/complete'),
@@ -252,7 +252,7 @@ describe('ReviewScreen (Revisión)', () => {
     expect(screen.getByTestId('loading-state-spinner')).toBeTruthy();
     expect(await screen.findByTestId('error-state')).toBeTruthy();
     fail = false;
-    fireEvent.press(screen.getByLabelText('Reintentar'));
+    await fireEvent.press(screen.getByLabelText('Reintentar'));
     expect(await screen.findByTestId('review-image')).toBeTruthy();
   });
 
