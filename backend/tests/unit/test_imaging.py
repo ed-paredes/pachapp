@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import io
+import struct
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageOps
 
 from shared.imaging import (
     ImageTooLargeError,
@@ -85,3 +86,30 @@ def test_make_thumbnail_does_not_upscale_and_keeps_alpha() -> None:
 
     assert thumb.size == (30, 20)
     assert "A" in thumb.getbands()
+
+
+def test_decode_maps_decompression_bomb_to_too_large(monkeypatch: pytest.MonkeyPatch) -> None:
+    """R3-004: Pillow's bomb guard surfaces as ImageTooLargeError, not a 500."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 100)).save(buffer, format="PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+
+    with pytest.raises(ImageTooLargeError):
+        decode_image(buffer.getvalue(), max_long_side=1000)
+
+
+@pytest.mark.parametrize("exc", [KeyError("tag"), TypeError("bad"), struct.error("short")])
+def test_decode_maps_unexpected_decoder_errors_to_invalid(
+    exc: Exception, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R3-004: KeyError/TypeError/struct.error from decoders or EXIF parsing are client errors."""
+    buffer = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(buffer, format="JPEG")
+
+    def boom(*_args: object, **_kwargs: object) -> Image.Image:
+        raise exc
+
+    monkeypatch.setattr(ImageOps, "exif_transpose", boom)
+
+    with pytest.raises(InvalidImageError):
+        decode_image(buffer.getvalue(), max_long_side=100)

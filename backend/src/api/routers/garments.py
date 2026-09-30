@@ -21,6 +21,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["garments"])
 
+# R3-002: hard byte cap on an upload (default 25 MiB, tunable constant; not a
+# setting). The client already resizes to `upload_max_px`, so real uploads are
+# far below this; it only bounds memory for hostile or broken clients.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_READ_CHUNK_BYTES = 1024 * 1024
+
+
+def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
+    """Read the upload in chunks, stopping as soon as `max_bytes` is exceeded."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := file.file.read(_READ_CHUNK_BYTES):
+        total += len(chunk)
+        if total > max_bytes:
+            raise AppError(
+                IMAGE_TOO_LARGE,
+                f"El archivo es demasiado grande (máximo {max_bytes // (1024 * 1024)} MiB).",
+                400,
+                {"max_bytes": max_bytes},
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 @router.post(
     "/garments",
@@ -28,15 +51,18 @@ router = APIRouter(tags=["garments"])
     response_model=GarmentCreated,
     responses={400: {"model": ErrorResponse}},
 )
-async def upload_garment(
+def upload_garment(
     file: UploadFile,
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> GarmentCreated:
     """Persist the EXIF-corrected original, then create garment + job in one
-    transaction (ING-REQ-001/003). Heavy processing is left to the worker."""
+    transaction (ING-REQ-001/003). Heavy processing is left to the worker.
+
+    A plain `def`: FastAPI runs it in the threadpool, so the blocking Pillow,
+    file and SQLAlchemy work never stalls the event loop (R3-001)."""
     assert settings.images_root is not None
-    data = await file.read()
+    data = _read_capped(file, MAX_UPLOAD_BYTES)
     max_long_side = settings.upload_max_px * 2
     try:
         image = decode_image(data, max_long_side=max_long_side)
