@@ -1,12 +1,42 @@
 import { QueryClientProvider } from '@tanstack/react-query';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
+import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
+
+// Keep the splash up until the fonts are ready. Failing to do so only means a
+// brief flash of the system font, so a rejection is ignored.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const ready = fontsLoaded || fontError !== null;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
+
+  // A font error falls through to the system font rather than blocking the app.
+  if (!ready) return null;
+
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.plinth },
+          headerShadowVisible: false,
+          headerTintColor: colors.olive,
+          headerTitleStyle: {
+            fontFamily: fontFamilies.display,
+            fontSize: fontSizes.title,
+            color: colors.charcoal,
+          },
+          contentStyle: { backgroundColor: colors.stone },
+        }}
+      >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="review/[id]" options={{ title: 'Revisión' }} />
         <Stack.Screen name="garments/[id]" options={{ title: 'Detalle de prenda' }} />
