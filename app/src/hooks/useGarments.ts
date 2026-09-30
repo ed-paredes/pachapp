@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
@@ -9,6 +9,39 @@ export function useGarments(filters: GarmentFilters = {}) {
   return useQuery({
     queryKey: queryKeys.garments.list(filters),
     queryFn: async () => unwrap(await apiClient.GET('/garments', { params: { query: filters } })),
+  });
+}
+
+/** Job states in which the worker still owns the garment (list should keep polling). */
+const ACTIVE_JOB_STATUSES = ['pending', 'claimed', 'running'];
+
+/** Armario polls the list every 2 s while any garment is still processing. */
+export const GARMENTS_POLL_INTERVAL_MS = 2000;
+
+/**
+ * `GET /garments` as an infinite list (Armario): `filters.page` is driven by the
+ * query, later pages come from `fetchNextPage`. While any loaded item's job is
+ * pending/claimed/running the list is refetched every 2 s, so thumbnails and
+ * progress appear without a manual refresh; polling stops on its own.
+ */
+export function useInfiniteGarments(filters: Omit<GarmentFilters, 'page'> = {}) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.garments.infinite(filters),
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) =>
+      unwrap(
+        await apiClient.GET('/garments', { params: { query: { ...filters, page: pageParam } } }),
+      ),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((count, page) => count + page.items.length, 0);
+      return last.items.length > 0 && loaded < last.total ? last.page + 1 : undefined;
+    },
+    refetchInterval: (query) => {
+      const processing = query.state.data?.pages.some((page) =>
+        page.items.some((item) => item.job && ACTIVE_JOB_STATUSES.includes(item.job.status)),
+      );
+      return processing ? GARMENTS_POLL_INTERVAL_MS : false;
+    },
   });
 }
 

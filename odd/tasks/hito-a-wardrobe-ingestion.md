@@ -51,7 +51,7 @@ Route per task: delegated direct (writer trigger: each task touches 2+ non-trivi
 - [x] **A8 (B)** `GET/PATCH /settings` (API-REQ-014/015, API-SCN-005); regenerate client.
 - [x] **A9 (A)** App data layer: `useGarments`, `useGarment`, `useJob`, `useSettings` + mutations, query keys, `imageUrl()`.
 - [x] **A10 (A)** Añadir: picker/camera, client resize, upload queue with per-photo progress polling (1 s), Reintentar, "Revisar" link.
-- [ ] **A11 (A)** Armario grid: skeleton, empty, error+retry, review badge, processing placeholder, filters (category, status, needs_review).
+- [x] **A11 (A)** Armario grid: skeleton, empty, error+retry, review badge, processing placeholder, filters (category, status, needs_review).
 - [ ] **A12a (A)** Revisión: cutout + editable chips, low-confidence highlight kept until "Revisión terminada" (UI-REQ-021, UI-SCN-003/003b).
 - [ ] **A12b (A)** Detalle: attributes, usage, status change, invalidation (UI-REQ-016).
 - [ ] **A13 (A)** Ajustes: weights, no_repeat_days, max_accessories, `INVALID_WEIGHTS` error; keep health line.
@@ -81,3 +81,6 @@ Forecast: ~3,500–4,500 authored lines (lockfiles and generated `schema.ts` exc
 ## Next step
 
 Review assessment for `origin/main..HEAD`, then A3 (worker runner).
+
+- F2 implementation (writer, unverified by parent): (1) `garment_edit.py`: the first `colors` edit always writes `ai_correction(field="colors")`, with `ai_value` = JSON null when colours were NULL (column is NOT NULL but JSON null satisfies it; no migration), so `has_color_correction` is true and a retry keeps the user's colours. (2) `garment_lifecycle.py`: delete runs in one write transaction (`_delete_rows_atomically`): first statement deletes the garment's pending jobs (takes SQLite's write lock so the worker cannot claim afterwards), then re-checks claimed/running (rollback + 409 `GARMENT_PROCESSING`), then deletes rows; `OperationalError` (busy/locked) maps to the same 409. Worker already fails a vanished job/garment permanently (test added). (3) `settings.py::_get_or_create` uses `INSERT ... ON CONFLICT DO NOTHING` then re-reads. Tests in `test_api_garment_{edit,lifecycle}.py`, `test_api_settings.py`.
+- A11 implementation (writer, unverified by parent): `useInfiniteGarments` (page param, refetch every 2 s only while a loaded item's job is pending/claimed/running), `GarmentCard`, `lib/labels.ts` (Spanish category labels), Armario screen with chips (category, status, "Pendientes de revisión"), grid 2/3 columns, "Cargar más", pull-to-refresh, skeleton/empty/filtered-empty/error states, tap -> `/garments/{id}`; `tests/wardrobe.test.tsx` replaced (11 tests). Default status filter is active+laundry with no status chip selected; tapping a chip selects it, tapping again returns to the default.
