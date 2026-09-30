@@ -65,12 +65,17 @@ def patch_garment(
             continue
         changed = True
         if field == "colors":
-            # Record the AI value only for the first correction: afterwards the
-            # stored colours are the user's own.
-            if garment.colors is not None and not has_color_correction(session, garment.id):
+            # The first correction leaves the durable "user-owned" marker that the
+            # worker's color step honours on retry. `ai_value` is the pipeline's
+            # colours, or JSON null when there were none (the column is NOT NULL
+            # but a JSON null satisfies it). Later edits add no further row.
+            if not has_color_correction(session, garment.id):
                 session.add(
                     AiCorrection(
-                        garment_id=garment.id, field=field, ai_value=old, corrected_value=new
+                        garment_id=garment.id,
+                        field=field,
+                        ai_value=old,  # type: ignore[arg-type]  # None -> JSON null
+                        corrected_value=new,
                     )
                 )
             garment.color_confidence = USER_CONFIDENCE

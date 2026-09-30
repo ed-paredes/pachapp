@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, col, delete, select
 
 from api.deps import get_session, get_settings_dep
@@ -111,6 +112,54 @@ def retry_garment(garment_id: str, session: Annotated[Session, Depends(get_sessi
     )
 
 
+def _processing_conflict(garment_id: str) -> AppError:
+    return AppError(
+        GARMENT_PROCESSING,
+        "La prenda se está procesando; espera a que termine para eliminarla.",
+        409,
+        {"garment_id": garment_id},
+    )
+
+
+def _drop_pending_jobs(session: Session, garment_id: str) -> None:
+    """First statement of the delete transaction: as a write it takes SQLite's
+    write lock, so from here on the worker cannot claim a job of this garment."""
+    session.exec(
+        delete(Job).where(  # type: ignore[call-overload]
+            col(Job.garment_id) == garment_id, col(Job.status) == JobStatus.pending
+        )
+    )
+
+
+def _delete_rows_atomically(session: Session, garment: Garment) -> None:
+    """One write transaction: drop pending jobs (taking the write lock), re-check
+    that none is claimed/running, then delete the rows. A job the worker claimed
+    before the lock, or a busy/locked database, is `GARMENT_PROCESSING` (409) and
+    nothing is deleted."""
+    garment_id = garment.id
+    try:
+        _drop_pending_jobs(session, garment_id)
+        processing = session.exec(
+            select(col(Job.id))
+            .where(
+                col(Job.garment_id) == garment_id,
+                col(Job.status).in_([JobStatus.claimed, JobStatus.running]),
+            )
+            .limit(1)
+        ).first()
+        if processing is not None:
+            session.rollback()
+            raise _processing_conflict(garment_id)
+        session.exec(delete(AiCorrection).where(col(AiCorrection.garment_id) == garment_id))  # type: ignore[call-overload]
+        session.exec(delete(Job).where(col(Job.garment_id) == garment_id))  # type: ignore[call-overload]
+        session.delete(garment)
+        session.commit()
+    except OperationalError as exc:
+        session.rollback()
+        logger.warning("delete of garment %s hit a busy database: %s", garment_id, exc)
+        raise _processing_conflict(garment_id) from exc
+
+
 @router.delete(
     "/garments/{garment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -137,26 +186,8 @@ def delete_garment(
             409,
             {"garment_id": garment.id},
         )
-    processing = session.exec(
-        select(col(Job.id))
-        .where(
-            col(Job.garment_id) == garment.id,
-            col(Job.status).in_([JobStatus.claimed, JobStatus.running]),
-        )
-        .limit(1)
-    ).first()
-    if processing is not None:
-        raise AppError(
-            GARMENT_PROCESSING,
-            "La prenda se está procesando; espera a que termine para eliminarla.",
-            409,
-            {"garment_id": garment.id},
-        )
     files = [garment.img_original, garment.img_cutout, garment.img_thumb]
-    session.exec(delete(AiCorrection).where(col(AiCorrection.garment_id) == garment.id))  # type: ignore[call-overload]
-    session.exec(delete(Job).where(col(Job.garment_id) == garment.id))  # type: ignore[call-overload]
-    session.delete(garment)
-    session.commit()
+    _delete_rows_atomically(session, garment)
 
     for relative in files:
         if not relative:

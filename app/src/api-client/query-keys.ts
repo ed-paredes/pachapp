@@ -12,6 +12,7 @@ export const queryKeys = {
     all: ['garments'] as const,
     lists: () => ['garments', 'list'] as const,
     list: (filters: GarmentFilters = {}) => ['garments', 'list', filters] as const,
+    infinite: (filters: GarmentFilters = {}) => ['garments', 'list', filters, 'infinite'] as const,
     detail: (id: string) => ['garments', 'detail', id] as const,
   },
   jobs: {

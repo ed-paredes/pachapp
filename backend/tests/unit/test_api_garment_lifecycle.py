@@ -225,6 +225,24 @@ def test_color_step_keeps_user_corrected_colors(client: TestClient, settings: Se
     assert (garment.is_neutral, garment.color_confidence) == (False, 1.0)
 
 
+def test_first_colour_edit_on_null_colours_survives_a_pipeline_rerun(
+    client: TestClient, settings: Settings
+) -> None:
+    garment_id = _seed(client, img_cutout="cutout/c.png")  # colours are NULL
+    _write(settings, "cutout/c.png", _png((20, 30, 80)))
+    edited = client.patch(f"/garments/{garment_id}", json={"colors": [_color("rojo")]})
+    assert edited.status_code == 200
+    factory = create_session_factory(get_engine(client.app))  # type: ignore[arg-type]
+
+    color_step(
+        StepContext(job_id="j", garment_id=garment_id, settings=settings, session_factory=factory)
+    )
+
+    body = client.get(f"/garments/{garment_id}").json()
+    assert body["colors"][0]["name"] == "rojo"  # not overwritten by the pipeline's "marino"
+    assert (body["is_neutral"], body["color_confidence"]) == (False, 1.0)
+
+
 def test_color_step_overwrites_pipeline_colors(client: TestClient, settings: Settings) -> None:
     garment_id = _seed(client, img_cutout="cutout/c.png", colors=[_color("rojo")], is_neutral=False)
     _write(settings, "cutout/c.png", _png((20, 30, 80)))
@@ -373,3 +391,68 @@ def test_delete_pending_job_is_allowed(client: TestClient) -> None:
     _add_job(client, garment_id, status=JobStatus.pending)
 
     assert client.delete(f"/garments/{garment_id}").status_code == 204
+
+
+def test_delete_claimed_between_check_and_delete_is_409_and_keeps_everything(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from api.routers import garment_lifecycle
+
+    garment_id = _seed(client, img_original="original/r.jpg")
+    original = _write(settings, "original/r.jpg")
+    job_id = _add_job(client, garment_id, status=JobStatus.pending)
+    real_drop = garment_lifecycle._drop_pending_jobs
+
+    def worker_claims_first(session: Session, target: str) -> None:
+        with _db(client) as other:  # the worker wins the race just before the delete
+            job = other.get(Job, job_id)
+            assert job is not None
+            job.status = JobStatus.claimed
+            other.add(job)
+            other.commit()
+        real_drop(session, target)
+
+    monkeypatch.setattr(garment_lifecycle, "_drop_pending_jobs", worker_claims_first)
+
+    response = client.delete(f"/garments/{garment_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GARMENT_PROCESSING"
+    assert client.get(f"/garments/{garment_id}").status_code == 200
+    assert original.exists() and _job(client, job_id).status == JobStatus.claimed
+
+
+def test_delete_on_a_busy_database_is_409_not_500(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from api.routers import garment_lifecycle
+
+    garment_id = _seed(client)
+
+    def busy(session: Session, target: str) -> None:
+        raise OperationalError("DELETE", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(garment_lifecycle, "_drop_pending_jobs", busy)
+
+    response = client.delete(f"/garments/{garment_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GARMENT_PROCESSING"
+    assert client.get(f"/garments/{garment_id}").status_code == 200
+
+
+def test_worker_treats_a_vanished_job_as_a_permanent_failure(
+    client: TestClient, settings: Settings
+) -> None:
+    from worker.claim import ClaimedJob
+    from worker.runner import run_job
+
+    garment_id = _seed(client)
+    factory = create_session_factory(get_engine(client.app))  # type: ignore[arg-type]
+    gone = ClaimedJob(id="vanished-job", garment_id=garment_id, attempts=0)
+
+    result = run_job(gone, default_steps(settings, remover_factory=_FakeRemover), settings, factory)
+
+    assert result == JobStatus.failed
