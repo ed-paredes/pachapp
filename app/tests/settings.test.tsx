@@ -208,6 +208,9 @@ describe('SettingsScreen', () => {
         await screen.findByText('Los pesos deben sumar 1,00 (ahora suman 1,60).'),
       ).toBeTruthy();
       expect(fetchCalls('PATCH /settings')).toHaveLength(0);
+
+      await fireEvent.changeText(screen.getByLabelText('Peso de color'), '0.3');
+      expect(screen.queryByText(/Los pesos deben sumar/)).toBeNull();
     });
 
     it('shows the API INVALID_WEIGHTS message inline and keeps the edited values', async () => {

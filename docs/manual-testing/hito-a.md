@@ -632,7 +632,7 @@ Pulsa el engranaje de la cabecera.
 
 1. Esperado: sección **«Motor de recomendación»** con los campos **Peso de
    color, Peso de estilo, Peso de novedad, Peso de preferencia, Días sin repetir,
-   Máximo de complementos** y el texto **«Suma de pesos: 1.00 (debe ser 1,00)»**;
+   Máximo de complementos** y el texto **«Suma de pesos: 1,00 (debe ser 1,00)»**;
    sección **«Conexión»** con **«Conectado al servidor»**. Si la API está
    parada: «No se pudo conectar con el servidor.» con «Reintentar».
 2. Cambia **Peso de color** a `0,4` y **Peso de estilo** a `0,2` (se acepta la
