@@ -27,7 +27,7 @@ from sqlmodel import Session
 from shared.enums import JobStatus, JobStep
 from shared.models import Job
 from shared.settings import Settings
-from worker.claim import ClaimedJob
+from worker.claim import MAX_RETRIES, ClaimedJob
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,6 @@ STEP_PROGRESS: dict[JobStep, int] = {
     JobStep.consolidate: 100,
 }
 STEP_ORDER: tuple[JobStep, ...] = tuple(STEP_PROGRESS)
-
-# Retry budget per job (ING-REQ-022): one retry in total, counted in `job.attempts`.
-MAX_RETRIES = 1
 
 DEFAULT_ERROR = "No se pudo procesar la foto. Inténtalo de nuevo."
 

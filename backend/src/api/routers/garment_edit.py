@@ -14,7 +14,8 @@ from api.errors import ErrorResponse
 from api.routers.garments import garment_detail, get_garment_or_404
 from api.schemas import GarmentDetail, GarmentPatch
 from shared.colors_palette import is_neutral
-from shared.models import AiCorrection, Garment
+from shared.corrections import has_color_correction
+from shared.models import AiCorrection
 from shared.schemas import AiConfidence, AttributeConfidence, Colors
 
 router = APIRouter(tags=["garments"])
@@ -32,15 +33,6 @@ def _plain(value: Any) -> Any:
     if isinstance(value, list):
         return [_plain(item) for item in value]
     return value
-
-
-def _color_from_pipeline(garment: Garment) -> bool:
-    """`colors` counts as pipeline-produced while it is set and has not been
-    user-corrected yet. A user correction pins `color_confidence` to 1.0
-    (DAT-REQ-016), so any other value marks the pipeline's own output."""
-    return garment.colors is not None and (
-        garment.color_confidence is None or garment.color_confidence < USER_CONFIDENCE
-    )
 
 
 @router.patch(
@@ -73,7 +65,9 @@ def patch_garment(
             continue
         changed = True
         if field == "colors":
-            if _color_from_pipeline(garment):
+            # Record the AI value only for the first correction: afterwards the
+            # stored colours are the user's own.
+            if garment.colors is not None and not has_color_correction(session, garment.id):
                 session.add(
                     AiCorrection(
                         garment_id=garment.id, field=field, ai_value=old, corrected_value=new

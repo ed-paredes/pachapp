@@ -21,15 +21,40 @@ from collections.abc import Mapping
 from types import FrameType
 
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import Session
 
 from ml.cache import configure_model_cache
 from shared.db import create_db_engine, create_session_factory
 from shared.enums import JobStep
 from shared.settings import Settings, get_settings
-from worker.claim import claim_next_job, requeue_stuck_jobs
+from worker.claim import claim_next_job, release_orphaned_job, requeue_stuck_jobs
 from worker.runner import Step, default_steps, run_job
 
 logger = logging.getLogger(__name__)
+
+# Delays between best-effort attempts to settle an orphaned job (e.g. while the
+# database is still "locked"); bounded so a dead database cannot wedge the loop.
+ORPHAN_RELEASE_BACKOFF_S: tuple[float, ...] = (0.0, 0.2, 0.5, 1.0)
+
+
+def _release_orphan(
+    factory: sessionmaker[Session], job_id: str, stop_event: threading.Event
+) -> None:
+    """Best-effort: requeue or fail a job whose `run_job` raised, so it never
+    stays `claimed`/`running` in a live worker. If every attempt fails, the job
+    is recovered by `requeue_stuck_jobs` at the next worker start."""
+    for delay in ORPHAN_RELEASE_BACKOFF_S:
+        if delay:
+            stop_event.wait(delay)
+        try:
+            with factory() as session:
+                status = release_orphaned_job(session, job_id)
+            logger.warning("job %s orphaned by a worker error, now %s", job_id, status)
+            return
+        except Exception:
+            logger.exception("could not settle orphaned job %s, will retry", job_id)
+    logger.error("giving up on orphaned job %s; it is recovered at next worker start", job_id)
 
 
 def run(
@@ -63,6 +88,7 @@ def run(
         logger.exception("could not requeue stuck jobs (is the database migrated?)")
 
     while not stop_event.is_set():
+        claimed = None
         try:
             with factory() as session:
                 claimed = claim_next_job(session, worker_id)
@@ -71,6 +97,8 @@ def run(
                 continue
         except Exception:
             logger.exception("worker iteration failed")
+            if claimed is not None:
+                _release_orphan(factory, claimed.id, stop_event)
         stop_event.wait(interval_s)
 
     logger.info("pachapp worker stopped")

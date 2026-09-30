@@ -65,7 +65,14 @@ export interface paths {
         get: operations["get_garment_garments__garment_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Garment
+         * @description API-REQ-012: permanent delete of an accidental upload. Refused with 409
+         *     when the garment is part of an outfit (`GARMENT_HAS_HISTORY`, archive
+         *     instead) or while the worker is processing it (`GARMENT_PROCESSING`).
+         *     Rows go in one transaction; image files are removed best-effort afterwards.
+         */
+        delete: operations["delete_garment_garments__garment_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -99,6 +106,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/garments/{garment_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Garment
+         * @description API-REQ-010: `status = archived` (idempotent).
+         */
+        post: operations["archive_garment_garments__garment_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate Garment
+         * @description API-REQ-010: `status = active` (idempotent).
+         */
+        post: operations["reactivate_garment_garments__garment_id__reactivate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/garments/{garment_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Garment
+         * @description API-REQ-011: only a `failed` latest job can be retried; it goes back to
+         *     `pending` with a fresh retry budget so the worker re-runs the whole pipeline
+         *     (user-corrected colours are kept by the worker's color step).
+         */
+        post: operations["retry_garment_garments__garment_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -114,6 +183,28 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Settings
+         * @description Partial update. If any `weight_*` is present, the four resulting weights
+         *     must sum to 1.0 +- 0.01 or nothing is written (`INVALID_WEIGHTS`, DAT-REQ-011).
+         */
+        patch: operations["patch_settings_settings_patch"];
         trace?: never;
     };
 }
@@ -404,6 +495,55 @@ export interface components {
          */
         Season: "spring" | "summer" | "autumn" | "winter";
         /**
+         * SettingsPatch
+         * @description Partial update (API-REQ-015). Unknown fields are a 422 (`extra="forbid"`);
+         *     an explicit `null` is rejected too, since no setting is nullable.
+         */
+        SettingsPatch: {
+            /** Weight Color */
+            weight_color?: number | null;
+            /** Weight Style */
+            weight_style?: number | null;
+            /** Weight Novelty */
+            weight_novelty?: number | null;
+            /** Weight Preference */
+            weight_preference?: number | null;
+            /** No Repeat Days */
+            no_repeat_days?: number | null;
+            /** Max Accessories */
+            max_accessories?: number | null;
+            /** Duplicate Warning Threshold */
+            duplicate_warning_threshold?: number | null;
+            /** Needs Review Threshold */
+            needs_review_threshold?: number | null;
+            /** Color Review Threshold */
+            color_review_threshold?: number | null;
+        };
+        /**
+         * SettingsRead
+         * @description The singleton `setting` row (API-REQ-014).
+         */
+        SettingsRead: {
+            /** Weight Color */
+            weight_color: number;
+            /** Weight Style */
+            weight_style: number;
+            /** Weight Novelty */
+            weight_novelty: number;
+            /** Weight Preference */
+            weight_preference: number;
+            /** No Repeat Days */
+            no_repeat_days: number;
+            /** Max Accessories */
+            max_accessories: number;
+            /** Duplicate Warning Threshold */
+            duplicate_warning_threshold: number;
+            /** Needs Review Threshold */
+            needs_review_threshold: number;
+            /** Color Review Threshold */
+            color_review_threshold: number;
+        };
+        /**
          * StyleTag
          * @enum {string}
          */
@@ -573,6 +713,53 @@ export interface operations {
             };
         };
     };
+    delete_garment_garments__garment_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_garment_garments__garment_id__patch: {
         parameters: {
             query?: never;
@@ -657,6 +844,135 @@ export interface operations {
             };
         };
     };
+    archive_garment_garments__garment_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivate_garment_garments__garment_id__reactivate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GarmentDetail"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_garment_garments__garment_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                garment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRead"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_job_jobs__job_id__get: {
         parameters: {
             query?: never;
@@ -679,6 +995,68 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRead"];
+                };
+            };
+        };
+    };
+    patch_settings_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRead"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

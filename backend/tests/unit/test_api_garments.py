@@ -179,10 +179,14 @@ def test_openapi_declares_response_models(client: TestClient) -> None:
     assert "JobRead" in spec["components"]["schemas"]
 
 
-def test_upload_over_byte_cap_returns_400_and_stops_reading(
+def test_upload_over_byte_cap_returns_400_before_decoding(
     client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """R3-002: the byte cap is enforced while reading, before any decode."""
+    """R3-002: the byte cap is enforced while reading, before any decode.
+
+    The cap bounds the handler's in-memory copy of the body only: Starlette has
+    already spooled the multipart upload (network and temp disk) before the
+    handler runs, so this does not test that reading stops early on the wire."""
     from api.routers import garments as garments_router
 
     monkeypatch.setattr(garments_router, "MAX_UPLOAD_BYTES", 1024)

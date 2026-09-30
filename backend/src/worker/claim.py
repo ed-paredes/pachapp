@@ -18,6 +18,21 @@ from shared.models import Job
 
 logger = logging.getLogger(__name__)
 
+# Retry budget per job (ING-REQ-022): one retry in total, counted in `job.attempts`.
+MAX_RETRIES = 1
+
+MSG_INTERRUPTED = "El procesamiento se interrumpió repetidamente. Inténtalo de nuevo con otra foto."
+
+# Column values that put a job back in the queue.
+_PENDING_RESET = {
+    "status": JobStatus.pending,
+    "step": None,
+    "progress": 0,
+    "claimed_by": None,
+    "claimed_at": None,
+    "started_at": None,
+}
+
 
 @dataclass(frozen=True)
 class ClaimedJob:
@@ -56,27 +71,61 @@ def claim_next_job(session: Session, worker_id: str) -> ClaimedJob | None:
     return ClaimedJob(id=row.id, garment_id=row.garment_id, attempts=row.attempts)
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
 def requeue_stuck_jobs(session: Session) -> int:
-    """Requeue jobs a previous worker left `claimed`/`running` back to `pending`.
+    """Recover jobs a previous worker left `claimed`/`running`.
 
     Safe only because a single worker runs at a time (VIS-REQ-025); call it
-    once at worker start. Returns how many jobs were requeued.
+    once at worker start. A requeue consumes the per-job retry budget
+    (`attempts`, ING-REQ-022): a job that already used its budget (a poison job
+    that keeps killing the worker) is marked `failed` instead of looping forever.
+    Returns how many jobs were requeued.
     """
-    stmt = (
+    stuck = col(Job.status).in_([JobStatus.claimed, JobStatus.running])
+    failed = session.connection().execute(
         update(Job)
-        .where(col(Job.status).in_([JobStatus.claimed, JobStatus.running]))
-        .values(
-            status=JobStatus.pending,
-            step=None,
-            progress=0,
-            claimed_by=None,
-            claimed_at=None,
-            started_at=None,
-        )
+        .where(stuck, col(Job.attempts) >= MAX_RETRIES)
+        .values(status=JobStatus.failed, error=MSG_INTERRUPTED, finished_at=_now())
         .execution_options(synchronize_session=False)
     )
-    result = session.connection().execute(stmt)
+    requeued = session.connection().execute(
+        update(Job)
+        .where(stuck)
+        .values(attempts=col(Job.attempts) + 1, **_PENDING_RESET)
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
-    count = result.rowcount
-    logger.info("requeued %d stuck job(s) left by a previous worker", count)
-    return count
+    logger.info(
+        "recovered stuck jobs left by a previous worker: %d requeued, %d failed (budget spent)",
+        requeued.rowcount,
+        failed.rowcount,
+    )
+    return requeued.rowcount
+
+
+def release_orphaned_job(session: Session, job_id: str) -> JobStatus | None:
+    """Settle a job whose `run_job` raised after it was claimed, so it does not
+    stay `claimed`/`running` inside a live worker.
+
+    Same policy as `requeue_stuck_jobs`: requeue to `pending` while the retry
+    budget lasts (consuming one attempt), otherwise mark it `failed` with a
+    generic Spanish message. Returns the new status, or None when the job is
+    gone or already settled (terminal/pending), so it is safe to call twice.
+    """
+    job = session.get(Job, job_id)
+    if job is None or job.status not in (JobStatus.claimed, JobStatus.running):
+        return None
+    if job.attempts >= MAX_RETRIES:
+        job.status = JobStatus.failed
+        job.error = MSG_INTERRUPTED
+        job.finished_at = _now()
+    else:
+        job.attempts += 1
+        for key, value in _PENDING_RESET.items():
+            setattr(job, key, value)
+    session.add(job)
+    session.commit()
+    return job.status
