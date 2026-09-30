@@ -245,13 +245,18 @@ def test_colors_already_corrected_writes_no_further_correction(client: TestClien
     assert len(_corrections(client, garment_id)) == 1
 
 
-def test_colors_without_previous_value_writes_no_correction(client: TestClient) -> None:
+def test_colors_without_previous_value_leaves_the_user_owned_marker(client: TestClient) -> None:
     garment_id = _seed(client)
 
     body = client.patch(f"/garments/{garment_id}", json={"colors": [_color("gris")]}).json()
 
-    assert _corrections(client, garment_id) == []
+    (correction,) = _corrections(client, garment_id)
+    assert correction.field == "colors" and correction.ai_value is None
+    assert correction.corrected_value[0]["name"] == "gris"
     assert (body["is_neutral"], body["color_confidence"]) == (True, 1.0)
+
+    client.patch(f"/garments/{garment_id}", json={"colors": [_color("azul")]})
+    assert len(_corrections(client, garment_id)) == 1
 
 
 def test_identical_colors_are_a_no_op(client: TestClient) -> None:

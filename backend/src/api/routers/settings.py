@@ -7,6 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session
 
 from api.deps import get_session
@@ -62,13 +63,14 @@ class SettingsPatch(BaseModel):
 
 
 def _get_or_create(session: Session) -> Setting:
-    """The row is seeded by a migration; tolerate a missing one with defaults."""
+    """The row is seeded by a migration; tolerate a missing one with defaults.
+    Idempotent under races: `INSERT ... ON CONFLICT DO NOTHING`, then read."""
     row = session.get(Setting, 1)
     if row is None:
-        row = Setting()
-        session.add(row)
+        session.connection().execute(sqlite_insert(Setting).values(id=1).on_conflict_do_nothing())
         session.commit()
-        session.refresh(row)
+        row = session.get(Setting, 1)
+        assert row is not None
     return row
 
 

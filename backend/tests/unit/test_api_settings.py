@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from api.deps import get_engine
 from api.main import create_app
@@ -54,6 +54,31 @@ def test_get_creates_defaults_when_row_is_missing(tmp_path: Path) -> None:
     SQLModel.metadata.create_all(get_engine(app))
     with TestClient(app) as bare:
         assert bare.get("/settings").json() == DEFAULTS
+
+
+def test_get_or_create_is_idempotent_when_the_row_appears_concurrently(tmp_path: Path) -> None:
+    from api.routers.settings import _get_or_create
+
+    settings = Settings(_env_file=None, data_dir=tmp_path / "d", ml_embed_revision="r")
+    app = create_app(settings)
+    engine = get_engine(app)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as first, Session(engine) as second:
+        original_get = second.get
+        calls = {"n": 0}
+
+        def stale_get(*args, **kwargs):
+            calls["n"] += 1
+            # The first look-up misses, as if the row were created just after it.
+            return None if calls["n"] == 1 else original_get(*args, **kwargs)
+
+        assert _get_or_create(first).id == 1
+        second.get = stale_get  # type: ignore[method-assign]
+        row = _get_or_create(second)  # conflicts with the row above, must not raise
+        assert row.id == 1 and row.weight_color == DEFAULTS["weight_color"]
+        assert _get_or_create(second).id == 1
+    with Session(engine) as check:
+        assert len(check.exec(select(Setting)).all()) == 1
 
 
 def test_partial_patch_changes_only_given_fields(client: TestClient) -> None:
