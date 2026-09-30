@@ -119,3 +119,7 @@ running in WSL (D13). This typically means:
   `PACHAPP_CORS_ORIGINS`.
 
 See `docs/specs/01-dev-tooling.md` for the full checklist and fallbacks.
+
+## Manual testing
+
+A step-by-step manual testing guide for Hito A (upload a photo, see the garment in the wardrobe), in Spanish, lives in [`docs/manual-testing/hito-a.md`](docs/manual-testing/hito-a.md). It covers setup, the three processes, curl smoke tests, every app screen and the failure cases.
