@@ -77,11 +77,16 @@ export function validateEngineFields(fields: EngineFields): EngineValidation {
   if (WEIGHT_KEYS.every((key) => errors[key] === undefined)) {
     const sum = weightSum(fields) as number;
     if (Math.abs(sum - 1) > WEIGHT_SUM_TOLERANCE) {
-      errors.form = `Los pesos deben sumar 1,00 (ahora suman ${sum.toFixed(2)}).`;
+      errors.form = `Los pesos deben sumar 1,00 (ahora suman ${formatWeight(sum)}).`;
     }
   }
 
   return Object.keys(errors).length > 0
     ? { errors, values: null }
     : { errors, values: values as Record<keyof EngineFields, number> };
+}
+
+/** Formats a weight or weight sum with two decimals and a decimal comma (es). */
+export function formatWeight(value: number): string {
+  return value.toFixed(2).replace('.', ',');
 }

@@ -126,7 +126,7 @@ describe('SettingsScreen', () => {
       expect(screen.getByLabelText('Peso de preferencia').props.value).toBe('0.2');
       expect(screen.getByLabelText('Días sin repetir').props.value).toBe('7');
       expect(screen.getByLabelText('Máximo de complementos').props.value).toBe('2');
-      expect(screen.getByTestId('weight-sum').props.children).toContain('1.00');
+      expect(screen.getByTestId('weight-sum').props.children).toContain('Suma de pesos: 1,00');
     });
 
     it('shows an error with retry when settings fail to load, and recovers', async () => {
@@ -190,6 +190,12 @@ describe('SettingsScreen', () => {
         2,
       );
       expect(fetchCalls('PATCH /settings')).toHaveLength(0);
+
+      await fireEvent.changeText(screen.getByLabelText('Peso de color'), '0.3');
+      expect(screen.queryByText('Introduce un número entre 0 y 1.')).toBeNull();
+      expect(screen.getAllByText('Introduce un número entero igual o mayor que 0.')).toHaveLength(
+        2,
+      );
     });
 
     it('rejects weights that do not sum to 1 before calling the API', async () => {
@@ -199,7 +205,7 @@ describe('SettingsScreen', () => {
       await fireEvent.press(screen.getByRole('button', { name: 'Guardar' }));
 
       expect(
-        await screen.findByText('Los pesos deben sumar 1,00 (ahora suman 1.60).'),
+        await screen.findByText('Los pesos deben sumar 1,00 (ahora suman 1,60).'),
       ).toBeTruthy();
       expect(fetchCalls('PATCH /settings')).toHaveLength(0);
     });

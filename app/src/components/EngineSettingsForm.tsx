@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { usePatchSettings, type SettingsPatch } from '@/hooks/useSettings';
 import {
   fieldsFromSettings,
+  formatWeight,
   validateEngineFields,
   weightSum,
   type EngineFields,
@@ -39,6 +40,9 @@ export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
 
   const change = (key: keyof EngineFields, value: string) => {
     setFields((current) => ({ ...current, [key]: value }));
+    // A corrected field drops its own error and the cross-field sum error;
+    // the remaining errors stay until the next "Guardar".
+    setErrors(({ [key]: _field, form: _form, ...rest }) => rest);
     setSaved(false);
     patch.reset();
   };
@@ -78,7 +82,7 @@ export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
         </View>
       ))}
       <Text style={styles.hint} testID="weight-sum">
-        {sum === null ? 'Suma de pesos: —' : `Suma de pesos: ${sum.toFixed(2)} (debe ser 1,00)`}
+        {sum === null ? 'Suma de pesos: —' : `Suma de pesos: ${formatWeight(sum)} (debe ser 1,00)`}
       </Text>
       {errors.form ? <Text style={styles.error}>{errors.form}</Text> : null}
       {patch.isError ? (
