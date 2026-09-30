@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { getItem, setItem } from '../src/lib/device-storage';
@@ -13,6 +14,17 @@ const mockSetItem = setItem as jest.Mock;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AddScreen = require('../app/(tabs)/add').default;
 
+function renderScreen() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <AddScreen />
+    </QueryClientProvider>,
+  );
+}
+
 describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
   beforeEach(() => {
     mockGetItem.mockReset();
@@ -23,7 +35,7 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
     mockGetItem.mockResolvedValue(null);
     mockSetItem.mockResolvedValue(undefined);
 
-    await render(<AddScreen />);
+    await renderScreen();
 
     await waitFor(() => {
       expect(screen.getByTestId('capture-tips-panel')).toBeTruthy();
@@ -43,7 +55,7 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
   it('does not auto-show the panel again once it was already seen', async () => {
     mockGetItem.mockResolvedValue('true');
 
-    await render(<AddScreen />);
+    await renderScreen();
 
     await waitFor(() => {
       expect(mockGetItem).toHaveBeenCalledWith('pachapp.captureTips.seen');
