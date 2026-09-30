@@ -49,8 +49,8 @@ Route per task: delegated direct (writer trigger: each task touches 2+ non-trivi
 - [x] **A7a (B)** PATCH (+ `ai_correction`, user source, colours) + `POST review/complete`. Done when: API-REQ-006/007/019, API-SCN-002/002b pass.
 - [x] **A7b (B)** archive / reactivate / retry / delete. Done when: API-REQ-010..012, API-SCN-003/004 pass; client regenerated.
 - [x] **A8 (B)** `GET/PATCH /settings` (API-REQ-014/015, API-SCN-005); regenerate client.
-- [ ] **A9 (A)** App data layer: `useGarments`, `useGarment`, `useJob`, `useSettings` + mutations, query keys, `imageUrl()`.
-- [ ] **A10 (A)** Añadir: picker/camera, client resize, upload queue with per-photo progress polling (1 s), Reintentar, "Revisar" link.
+- [x] **A9 (A)** App data layer: `useGarments`, `useGarment`, `useJob`, `useSettings` + mutations, query keys, `imageUrl()`.
+- [x] **A10 (A)** Añadir: picker/camera, client resize, upload queue with per-photo progress polling (1 s), Reintentar, "Revisar" link.
 - [ ] **A11 (A)** Armario grid: skeleton, empty, error+retry, review badge, processing placeholder, filters (category, status, needs_review).
 - [ ] **A12a (A)** Revisión: cutout + editable chips, low-confidence highlight kept until "Revisión terminada" (UI-REQ-021, UI-SCN-003/003b).
 - [ ] **A12b (A)** Detalle: attributes, usage, status change, invalidation (UI-REQ-016).
@@ -75,6 +75,8 @@ Forecast: ~3,500–4,500 authored lines (lockfiles and generated `schema.ts` exc
 - F / A7b / A8 implementation (writer): F = orphan release (`worker/main.py::_release_orphan` + `claim.release_orphaned_job`: best-effort, backoff `ORPHAN_RELEASE_BACKOFF_S`, requeues to pending consuming one attempt while `MAX_RETRIES` lasts, else `failed` with a generic Spanish message; `MAX_RETRIES` moved to `worker/claim.py`), poison job (`requeue_stuck_jobs` increments `attempts`, fails a job whose budget is spent, logs both counts), colours marker = absence of an `ai_correction(field="colors")` row (`shared/corrections.py::has_color_correction`, used by `garment_edit` and the worker colour step), upload byte-cap test renamed. A7b = `api/routers/garment_lifecycle.py` (archive, reactivate, retry -> `JobRead`, delete); added error code `GARMENT_PROCESSING` (409, delete while a job is `claimed`/`running`); the colour step skips writing colours/`color_confidence`/`is_neutral` when a colours correction exists. A8 = `api/routers/settings.py` (`GET`/`PATCH /settings`, models inline; weights in [0,1] and sum 1.0+-0.01 else 400 `INVALID_WEIGHTS`; explicit `null` and unknown fields -> 422; missing singleton row is created with defaults). Client regenerated.
 
 - 2026-09-30: A6 `2425707`, A7a `03cdd04`, review follow-ups F `ea8f6a7` (orphaned/poison jobs, colour-correction marker from `ai_correction` rows), A7b `c7a0ed1`, A8 `5685db7`; each commit passes alone (285 / 322 / 329 / 348 / 365). Backend of Hito A complete. Known gap: a first colours edit on a garment whose colours were null writes no `ai_correction`, so a later edit records the user's own value as `ai_value` — follow-up.
+
+- A9 / A10 implementation (writer, unverified by parent): A9 = `api-client/{errors,query-keys}.ts` (`ApiError` + `unwrap` reading the envelope message), `hooks/{useGarments,useGarmentMutations,useJob,useSettings,useUploadGarment}.ts`, `lib/image-url.ts`, `tests/garment-hooks.test.tsx`. A10 = `lib/photos.ts` (picker + resize to 2048 JPEG), `hooks/useUploadQueue.ts`, `components/UploadItem.tsx`, `(tabs)/add.tsx`, `tests/add-upload.test.tsx`; deps `expo-image-picker ~57.0.20`, `expo-image-manipulator ~57.0.20`. Tests need mutations `gcTime: 0` too or jest does not exit.
 
 ## Next step
 
