@@ -7,6 +7,7 @@ import { UploadItem } from '@/components/UploadItem';
 import { useCaptureTipsSeen } from '@/hooks/useCaptureTipsSeen';
 import { useUploadQueue } from '@/hooks/useUploadQueue';
 import { pickFromCamera, pickFromGallery, type PickResult } from '@/lib/photos';
+import { centeredContentStyle } from '@/components/ContentContainer';
 
 /**
  * Añadir (Add): photo capture + upload/processing progress. Each photo gets
@@ -48,7 +49,7 @@ export default function AddScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, centeredContentStyle]}>
       <View style={styles.header}>
         <Text style={styles.title}>Añadir</Text>
         <Pressable

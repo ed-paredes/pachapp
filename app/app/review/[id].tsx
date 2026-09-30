@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ApiError } from '@/api-client/errors';
+import { centeredContentStyle } from '@/components/ContentContainer';
 import type { components } from '@/api-client/schema';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
@@ -202,7 +203,7 @@ function ReviewForm({
     list.includes(item) ? list.filter((v) => v !== item) : [...list, item];
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, centeredContentStyle]}>
       <View style={styles.imageBox}>
         {uri ? (
           <Image source={{ uri }} style={styles.image} resizeMode="contain" testID="review-image" />

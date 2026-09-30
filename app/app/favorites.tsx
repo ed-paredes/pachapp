@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/EmptyState';
+import { centeredContentStyle } from '@/components/ContentContainer';
 
 /**
  * Favoritos (Favorites): saved outfits, reusable with one tap. Needs
@@ -10,7 +11,7 @@ import { EmptyState } from '@/components/EmptyState';
  */
 export default function FavoritesScreen() {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, centeredContentStyle]}>
       <EmptyState
         title="Aún no tienes outfits favoritos"
         description="Marca un outfit como favorito desde Hoy para verlo aquí."

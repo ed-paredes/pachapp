@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { centeredContentStyle } from '@/components/ContentContainer';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
 import { EngineSettingsForm } from '@/components/EngineSettingsForm';
@@ -17,7 +18,10 @@ export default function SettingsScreen() {
   const settings = useSettings();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, centeredContentStyle]}
+    >
       <View style={styles.section} testID="settings-engine">
         <Text style={styles.sectionTitle}>Motor de recomendación</Text>
         {settings.isPending ? <LoadingState /> : null}

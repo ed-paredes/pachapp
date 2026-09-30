@@ -5,6 +5,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { ApiError } from '@/api-client/errors';
 import { queryKeys } from '@/api-client/query-keys';
+import { centeredContentStyle } from '@/components/ContentContainer';
 import type { components } from '@/api-client/schema';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -126,7 +127,7 @@ function Detail({ garment }: { garment: Garment }) {
   const progress = Math.max(0, Math.min(100, liveJob?.progress ?? 0));
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView contentContainerStyle={[styles.container, centeredContentStyle]}>
       <View style={styles.imageBox}>
         {uri ? (
           <Image source={{ uri }} style={styles.image} resizeMode="contain" testID="detail-image" />

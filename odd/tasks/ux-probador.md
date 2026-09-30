@@ -49,7 +49,7 @@ the garment.
 - [x] **U0 (A)** Theme foundation: `src/theme` tokens (colours, type scale, spacing, radii), load Fraunces +
   Manrope (`@expo-google-fonts/*`, `expo-font`), apply to the stack header and tab bar. Done when: fonts load
   on web and native, typecheck/tests pass, screenshots show the new header/tab bar.
-- [ ] **U1 (A)** Layout: fix the stretched horizontal chip rows; centred max-width container on web;
+- [x] **U1 (A)** Layout: fix the stretched horizontal chip rows; centred max-width container on web;
   responsive grid columns from a minimum card width; plinth-style `GarmentCard`. Done when: phone and
   desktop screenshots of Armario show compact chips and sensibly sized cards.
 - [ ] **U2 (A+B)** Images: `expo-image` everywhere (card, Detalle, Revisión, upload item) with `contain`,

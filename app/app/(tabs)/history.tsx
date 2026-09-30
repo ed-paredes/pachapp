@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { EmptyState } from '@/components/EmptyState';
+import { centeredContentStyle } from '@/components/ContentContainer';
 
 /**
  * Historial (History): calendar + simple stats. Empty-state copy is exact
@@ -10,7 +11,7 @@ import { EmptyState } from '@/components/EmptyState';
  */
 export default function HistoryScreen() {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, centeredContentStyle]}>
       <EmptyState title="Todavía no has registrado ningún outfit" />
     </View>
   );
