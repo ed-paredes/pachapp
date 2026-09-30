@@ -233,6 +233,94 @@ describe('WardrobeScreen (Armario)', () => {
     expect(screen.queryByLabelText('Cargar más')).toBeNull();
   });
 
+  it('drops repeated garment ids across pages, first occurrence wins (offset pagination)', async () => {
+    fetchMock().mockImplementation(async (request: Request) =>
+      new URL(request.url).searchParams.get('page') === '2'
+        ? page([item('a', { category: 'shoes' }), item('b')], 3, 2)
+        : page([item('a')], 3, 1),
+    );
+    await renderScreen();
+    await screen.findByTestId('garment-card-a');
+
+    await fireEvent.press(screen.getByLabelText('Cargar más'));
+
+    expect(await screen.findByTestId('garment-card-b')).toBeTruthy();
+    expect(screen.getAllByTestId('garment-card-a')).toHaveLength(1);
+  });
+
+  it('keeps the grid and offers Reintentar when loading the next page fails', async () => {
+    let failNext = true;
+    fetchMock().mockImplementation(async (request: Request) => {
+      if (new URL(request.url).searchParams.get('page') !== '2') return page([item('a')], 2, 1);
+      return failNext
+        ? json({ error: { code: 'X', message: 'Sin conexión con el servidor.' } }, 500)
+        : page([item('b')], 2, 2);
+    });
+    await renderScreen();
+    await screen.findByTestId('garment-card-a');
+
+    await fireEvent.press(screen.getByLabelText('Cargar más'));
+
+    const banner = await screen.findByTestId('wardrobe-soft-error');
+    expect(within(banner).getByText('Sin conexión con el servidor.')).toBeTruthy();
+    expect(screen.getByTestId('garment-card-a')).toBeTruthy();
+    expect(screen.queryByTestId('error-state')).toBeNull();
+
+    failNext = false;
+    await fireEvent.press(within(banner).getByLabelText('Reintentar'));
+
+    expect(await screen.findByTestId('garment-card-b')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTestId('wardrobe-soft-error')).toBeNull());
+    expect(screen.getByTestId('garment-card-a')).toBeTruthy();
+  });
+
+  it('keeps the grid and shows the error when a background poll fails, then recovers', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+    try {
+      const processing = item('p', {
+        img_thumb: null,
+        job: { id: 'j', status: 'running', step: 'cutout', progress: 30, error: null },
+      });
+      fetchMock()
+        .mockResolvedValueOnce(page([processing]))
+        .mockResolvedValueOnce(json({ error: { code: 'X', message: 'Servidor caído.' } }, 500))
+        .mockResolvedValue(page([item('p')]));
+      await renderScreen();
+      await screen.findByTestId('garment-processing');
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(2100);
+      });
+
+      expect(await screen.findByTestId('wardrobe-soft-error')).toBeTruthy();
+      expect(screen.getByText('Servidor caído.')).toBeTruthy();
+      expect(screen.getByTestId('garment-processing')).toBeTruthy();
+
+      await fireEvent.press(screen.getByLabelText('Reintentar'));
+
+      expect(await screen.findByTestId('garment-thumb')).toBeTruthy();
+      await waitFor(() => expect(screen.queryByTestId('wardrobe-soft-error')).toBeNull());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps the grid and shows the error when a pull-to-refresh fails', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(page([item('a')]))
+      .mockResolvedValue(json({ error: { code: 'X', message: 'No se pudo refrescar.' } }, 500));
+    await renderScreen();
+    await screen.findByTestId('garment-card-a');
+
+    const { refreshControl } = screen.getByTestId('wardrobe-list').props;
+    await act(async () => {
+      refreshControl.props.onRefresh();
+    });
+
+    expect(await screen.findByText('No se pudo refrescar.')).toBeTruthy();
+    expect(screen.getByTestId('garment-card-a')).toBeTruthy();
+  });
+
   it('opens the garment detail when a card is tapped', async () => {
     fetchMock().mockResolvedValue(page([item('abc')]));
     await renderScreen();

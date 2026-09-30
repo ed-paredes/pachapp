@@ -17,7 +17,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { GarmentCard } from '@/components/GarmentCard';
 import { LoadingState } from '@/components/LoadingState';
-import { useInfiniteGarments } from '@/hooks/useGarments';
+import { flattenGarmentPages, useInfiniteGarments } from '@/hooks/useGarments';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/labels';
 
 type Category = components['schemas']['GarmentCategory'];
@@ -68,12 +68,18 @@ export default function WardrobeScreen() {
   };
   const query = useInfiniteGarments(filters);
   const filtered = category !== null || statusChoice !== null || needsReview;
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = flattenGarmentPages(query.data?.pages);
+  // A failed next page / refresh / background poll after the first page loaded.
+  const softError = query.isError && query.data ? query.error : null;
 
   const clearFilters = () => {
     setCategory(null);
     setStatusChoice(null);
     setNeedsReview(false);
+  };
+  const retrySoftError = () => {
+    if (query.isFetchNextPageError) void query.fetchNextPage();
+    else void query.refetch();
   };
   const refresh = async () => {
     setRefreshing(true);
@@ -124,6 +130,7 @@ export default function WardrobeScreen() {
   } else {
     body = (
       <FlatList
+        testID="wardrobe-list"
         key={columns}
         data={items}
         keyExtractor={(item) => item.id}
@@ -199,6 +206,21 @@ export default function WardrobeScreen() {
           onPress={() => setNeedsReview(!needsReview)}
         />
       </ScrollView>
+      {softError ? (
+        <View style={styles.banner} accessibilityRole="alert" testID="wardrobe-soft-error">
+          <Text style={styles.bannerText}>
+            {softError.message || 'No se pudo actualizar el armario.'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reintentar"
+            onPress={retrySoftError}
+            style={styles.bannerAction}
+          >
+            <Text style={styles.actionText}>Reintentar</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={styles.body}>{body}</View>
     </View>
   );
@@ -244,6 +266,18 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   list: { padding: PADDING - GAP / 2, gap: GAP },
   row: { alignItems: 'flex-start' },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: PADDING,
+    marginVertical: 6,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#FEF3F2',
+  },
+  bannerText: { flex: 1, fontSize: 13, color: '#B42318' },
+  bannerAction: { padding: 4 },
   emptyBox: { flex: 1 },
   action: { alignSelf: 'center', marginVertical: 16, padding: 8 },
   actionText: { fontSize: 16, fontWeight: '600', color: '#208AEF' },

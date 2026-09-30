@@ -178,11 +178,18 @@ describe('AddScreen upload flow', () => {
     expect(mockPush).toHaveBeenCalledWith('/review/g1');
   });
 
-  it('failed shows the job error and Reintentar calls the retry endpoint', async () => {
-    const retry = jest.fn(() => job('pending', null, 0));
+  it('failed shows the job error and Reintentar resumes processing', async () => {
+    let retried = false;
+    const retry = jest.fn(() => {
+      retried = true;
+      return job('pending', null, 0);
+    });
     routeFetch({
       'POST /garments': json({ garment_id: 'g1', job_id: 'j1' }, 202),
-      'GET /jobs/j1': job('failed', 'cutout', 30, 'No se pudo recortar la prenda.'),
+      'GET /jobs/j1': () =>
+        retried
+          ? job('running', 'cutout', 30)
+          : job('failed', 'cutout', 30, 'No se pudo recortar la prenda.'),
       'POST /garments/g1/retry': retry,
     });
     ({ client } = await renderScreen());
@@ -194,7 +201,13 @@ describe('AddScreen upload flow', () => {
 
     expect(await screen.findByText('No se pudo recortar la prenda.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Reintentar a.jpg' }));
+
     await waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
+    // The job is refetched and the item goes back to processing with progress.
+    expect(await screen.findByText('Recortando')).toBeTruthy();
+    expect(screen.getByRole('progressbar').props.accessibilityValue.now).toBe(30);
+    expect(screen.queryByText('No se pudo recortar la prenda.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reintentar a.jpg' })).toBeNull();
   });
 
   it('shows the API error inline when the upload is rejected (400)', async () => {
