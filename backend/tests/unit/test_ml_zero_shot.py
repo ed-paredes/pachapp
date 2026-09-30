@@ -9,6 +9,7 @@ import pytest
 
 from ml.taxonomy import TAXONOMY
 from ml.zero_shot import (
+    REVIEW_TRIGGER_ATTRIBUTES,
     ZeroShotClassifier,
     ensemble_embedding,
     formality_from_probs,
@@ -99,6 +100,67 @@ def test_ambiguous_image_flags_review(clf: ZeroShotClassifier) -> None:
     result = clf.classify(img)
     assert result.needs_review
     assert "category" in result.low_confidence
+
+
+@pytest.fixture
+def basis_clf() -> ZeroShotClassifier:
+    """Classifier whose label embeddings are orthonormal basis vectors (disjoint
+    per attribute), so an image embedding can be composed exactly."""
+    clf = ZeroShotClassifier(FakeEmbedder())
+    offset = 0
+    for attr, embs in clf._label_embs.items():
+        n = len(embs)
+        clf._label_embs[attr] = np.eye(DIM, dtype=np.float32)[offset : offset + n]
+        offset += n
+    return clf
+
+
+def _image(clf: ZeroShotClassifier, **picks: list[int]) -> np.ndarray:
+    """Image embedding = normalized sum of the chosen label vectors per attribute."""
+    return l2_normalize(sum(clf.label_embeddings(a)[i] for a, idx in picks.items() for i in idx))
+
+
+def test_trigger_attributes_constant() -> None:
+    assert REVIEW_TRIGGER_ATTRIBUTES == ("category", "pattern")
+
+
+def test_clear_attributes_do_not_flag(basis_clf: ZeroShotClassifier) -> None:
+    result = basis_clf.classify(_image(basis_clf, category=[0], pattern=[0], material=[0]))
+    assert "category" not in result.low_confidence
+    assert "pattern" not in result.low_confidence
+
+
+def test_low_material_alone_does_not_set_needs_review(basis_clf: ZeroShotClassifier) -> None:
+    # Strong category/pattern; material split between two labels.
+    img = _image(basis_clf, category=[0] * 4, pattern=[0] * 4, material=[0, 1])
+    result = basis_clf.classify(img)
+    assert "category" not in result.low_confidence
+    assert "pattern" not in result.low_confidence
+    assert "material" in result.low_confidence  # still reported
+    assert result.predictions["material"].confidence < 0.7  # value + confidence kept
+    assert not result.needs_review
+
+
+def test_low_formality_alone_does_not_set_needs_review(basis_clf: ZeroShotClassifier) -> None:
+    img = _image(basis_clf, category=[0] * 4, pattern=[0] * 4, formality=[0, 4])
+    result = basis_clf.classify(img)
+    assert "formality" in result.low_confidence
+    assert "category" not in result.low_confidence
+    assert "pattern" not in result.low_confidence
+    assert not result.needs_review
+
+
+def test_low_pattern_sets_needs_review(basis_clf: ZeroShotClassifier) -> None:
+    result = basis_clf.classify(_image(basis_clf, category=[0] * 4, pattern=[0, 1]))
+    assert "pattern" in result.low_confidence
+    assert "category" not in result.low_confidence
+    assert result.needs_review
+
+
+def test_low_category_sets_needs_review(basis_clf: ZeroShotClassifier) -> None:
+    result = basis_clf.classify(_image(basis_clf, category=[0, 1], pattern=[0] * 4))
+    assert "category" in result.low_confidence
+    assert result.needs_review
 
 
 def test_formality_weighted_mean_rounding_and_confidence() -> None:

@@ -21,7 +21,20 @@ Device = str  # "cpu" | "cuda" | "mps"
 CUDA_PROVIDER_OPTIONS: dict[str, str] = {
     "cudnn_conv_algo_search": "HEURISTIC",
     "arena_extend_strategy": "kSameAsRequested",
+    # Do not let cuDNN pick algorithms that need the largest workspace.
+    "cudnn_conv_use_max_workspace": "0",
 }
+
+# Hard cap for onnxruntime's CUDA arena when running the fp16 BiRefNet-lite
+# model. Without a cap the arena grows to fill the free VRAM (~5.5 GB measured
+# on the 6 GB reference GPU) although the model peaks at ~3.3 GB at 1024 px
+# (a 3 GiB cap fails with an ORT out-of-memory error). Once SigLIP (torch,
+# ~1 GB) and the desktop share the GPU, the uncapped arena spills to shared
+# system memory and `session.run` slows down 5-10x (0.6 s -> 3-6 s, measured by
+# reserving VRAM in the same process); capped it stays ~0.6 s. 4 GiB leaves
+# headroom over the measured peak. Only valid for that model: fp32 or the
+# non-lite variants need more and would fail with out-of-memory.
+LITE_FP16_GPU_MEM_LIMIT_BYTES = 4 * 1024**3
 
 
 def select_device(
@@ -85,16 +98,17 @@ def resolve_device(requested: str) -> Device:
     )
 
 
-def onnxruntime_providers(device: Device) -> list[Any]:
+def onnxruntime_providers(device: Device, *, gpu_mem_limit: int | None = None) -> list[Any]:
     """Ordered onnxruntime execution providers for `rembg`'s BiRefNet session,
     matching the resolved torch device. onnxruntime has no MPS provider, so
     `mps` (like `cpu`) runs BiRefNet on CPU. The CUDA provider is a
-    `(name, options)` tuple, which onnxruntime accepts in `providers`."""
+    `(name, options)` tuple, which onnxruntime accepts in `providers`;
+    `gpu_mem_limit` (bytes) adds a hard cap on its memory arena."""
     if device == "cuda":
-        return [
-            ("CUDAExecutionProvider", dict(CUDA_PROVIDER_OPTIONS)),
-            "CPUExecutionProvider",
-        ]
+        options = dict(CUDA_PROVIDER_OPTIONS)
+        if gpu_mem_limit is not None:
+            options["gpu_mem_limit"] = str(gpu_mem_limit)
+        return [("CUDAExecutionProvider", options), "CPUExecutionProvider"]
     return ["CPUExecutionProvider"]
 
 

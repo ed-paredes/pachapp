@@ -188,6 +188,8 @@ Para cada atributo de una sola etiqueta (`category`, `subcategory` vía categor�
 
 **VIS-REQ-016.** El worker DEBE marcar el atributo como de baja confianza (dispara `needs_review`, ver más abajo) cuando el top-1 de `p` sea `< setting.needs_review_threshold` (VIS-REQ-006) **o** cuando `top-1 − top-2 < PACHAPP_ML_MARGIN_THRESHOLD` — la regla de margen es nueva respecto a `02-data-model.md` DAT-REQ-002 y se define aquí en detalle.
 
+En la iteración 1 esta regla dispara `needs_review` únicamente para `category` y `pattern`. `material` y `formality` se guardan con su valor y su confianza en `ai_confidence` (y siguen apareciendo como de baja confianza en la evaluación), pero no disparan `needs_review` hasta que exista kNN o calibración (decisión del usuario, 2026-09-29; motivo: con la regla literal ~90 % de las prendas de la evaluación pública quedaban marcadas, casi todas por `material`/`formality`, cuyas probabilidades zero-shot no están calibradas). `subcategory` y `style_tags` tampoco lo disparan.
+
 Casos especiales:
 
 **VIS-REQ-017.** `formality` (ordinal) DEBE calcularse como la media ponderada de las probabilidades (o de los vecinos si el kNN está activo), redondeada al entero más cercano en `[1, 5]`; su confianza es `1 − desviación_típica / 2`.
@@ -224,6 +226,8 @@ Respecto a `02-data-model.md` (detalle de la adaptación; los requisitos normati
 **VIS-REQ-026.** Objetivo de rendimiento por prenda, de principio a fin del pipeline de visión (cutout + zero-shot + embedding, sin contar un eventual respaldo LLM): `< 10 s` en CPU (2 vCPU / 4 GB, objetivo de referencia de SPEC-ML) y `< 2 s` con GPU o Apple Silicon. En la máquina de referencia de arriba, con torch CUDA instalado, aplica el objetivo de `< 2 s`; con la variante CPU de torch (ver pregunta abierta), aplica el de `< 10 s`.
 
 > **Decisión (2026-09-29, usuario): modelo de recorte por defecto = `birefnet-general-lite` en fp16.** En la RTX 2060 6 GB, BiRefNet fp32 a 1024 px supera la VRAM libre (~5,5 GB) y el controlador desborda a memoria compartida. Medido en régimen estable, por imagen (solo ORT): `birefnet-general` fp32 14 s (4,2 s con `cudnn_conv_algo_search=HEURISTIC` y `arena_extend_strategy=kSameAsRequested`); `birefnet-general` fp16 9 s; `birefnet-general-lite` fp32 6,5 s; `birefnet-general-lite` fp16 0,66 s, con máscaras IoU ≥ 0,9998 frente a fp32. Solo la variante lite fp16 cumple `< 2 s`. La calidad se confirma con la puerta de 18/20 recortes limpios (paso 2).
+
+> **Nota de rendimiento (2026-09-29).** Con SigLIP (torch) residente en la misma GPU, el recorte pasó de ~0,6 s a 2,3–3,2 s por prenda de forma intermitente: el arena CUDA de onnxruntime crece hasta llenar la VRAM libre (~5,5 GB) aunque el modelo lite fp16 solo necesita ~3,3 GB de pico a 1024 px, y cuando SigLIP y el escritorio de Windows ocupan parte de la VRAM el controlador desborda a memoria compartida. Con VRAM reservada a propósito en el mismo proceso (1,6 GB) `session.run` pasaba de 0,6 s a 5,6 s. Se fija un tope duro `gpu_mem_limit = 4 GiB` (solo para `birefnet-general-lite` en fp16; con 3 GiB falla por falta de memoria) y `cudnn_conv_use_max_workspace=0`: el recorte queda en ~0,6 s por prenda incluso con VRAM ocupada, con máscaras idénticas byte a byte. `python -m ml.eval --pipeline` solapa el pre/post-procesado en CPU con la inferencia en GPU (misma salida, +7–12 % de prendas/s en lote).
 
 ## Despliegue
 

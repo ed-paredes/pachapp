@@ -1,8 +1,11 @@
 """CLI: evaluate the zero-shot pipeline on labeled photos (08-local-vision.md
 VIS-REQ-028/VIS-REQ-030, step 3 gate: >= 85 % `category` accuracy without kNN).
 
-Usage: `python -m ml.eval [EVAL_DIR] [--no-cutout] [--limit N]` (wired up as
-`make ml-eval`). `EVAL_DIR` defaults to `PACHAPP_ML_EVAL_DIR`; it holds
+Usage: `python -m ml.eval [EVAL_DIR] [--no-cutout] [--limit N] [--pipeline]
+[--min-category-accuracy F]` (wired up as `make ml-eval`). `EVAL_DIR` defaults to
+`PACHAPP_ML_EVAL_DIR`. Exit codes: 0 ok, 1 setup error (missing dir, bad labels,
+no photos), 2 `--min-category-accuracy` gate not met (report is still printed).
+The directory holds
 `*.jpg/*.jpeg/*.png` photos plus a `labels.json`:
 
     {"<filename>": {"category": "top", "subcategory": "t-shirt",
@@ -27,7 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ml.cache import configure_model_cache
-from ml.zero_shot import REVIEW_ATTRIBUTES
+from ml.zero_shot import REVIEW_ATTRIBUTES, REVIEW_TRIGGER_ATTRIBUTES
 from shared.enums import GarmentCategory, GarmentPattern
 from shared.settings import get_settings
 
@@ -60,6 +63,7 @@ class Prediction:
     cutout_s: float = 0.0
     embed_s: float = 0.0  # embed + classify
     empty_cutout: bool = False
+    wall_s: float = 0.0  # wall-clock share of this garment (load + cutout + embed), for throughput
 
 
 def find_images(eval_dir: Path) -> list[Path]:
@@ -83,11 +87,15 @@ def parse_labels(raw: object, available_files: Sequence[str]) -> dict[str, Label
         if unknown:
             raise EvalError(f"{name}: unknown label keys: {', '.join(sorted(unknown))}")
         category = entry.get("category")
+        if category is not None and not isinstance(category, str):
+            raise EvalError(f"{name}: category must be a string, got {category!r}")
         if category is not None and category not in categories:
             raise EvalError(
                 f"{name}: unknown category {category!r} (allowed: {sorted(categories)})"
             )
         pattern = entry.get("pattern")
+        if pattern is not None and not isinstance(pattern, str):
+            raise EvalError(f"{name}: pattern must be a string, got {pattern!r}")
         if pattern is not None and pattern not in patterns:
             raise EvalError(f"{name}: unknown pattern {pattern!r} (allowed: {sorted(patterns)})")
         formality = entry.get("formality")
@@ -112,6 +120,8 @@ def load_labels(eval_dir: Path, images: Sequence[Path]) -> dict[str, Label]:
         raw = json.loads(labels_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise EvalError(f"labels.json is not valid JSON: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise EvalError(f"labels.json is not valid UTF-8: {exc}") from exc
     return parse_labels(raw, [p.name for p in images])
 
 
@@ -190,7 +200,11 @@ def misclassified(labels: dict[str, Label], preds: Sequence[Prediction]) -> list
 
 
 def format_report(
-    labels: dict[str, Label], preds: Sequence[Prediction], *, cutout_enabled: bool = True
+    labels: dict[str, Label],
+    preds: Sequence[Prediction],
+    *,
+    cutout_enabled: bool = True,
+    pipelined: bool = False,
 ) -> str:
     out = [f"Photos evaluated: {len(preds)} ({len(labels)} labeled)", "", "Accuracy per attribute:"]
     for attr in LABELED_ATTRIBUTES:
@@ -220,22 +234,40 @@ def format_report(
     out += [
         "",
         f"needs_review: {review}/{n} ({100 * review / n:.1f} %)" if n else "needs_review: n/a",
+        "  (trigger attributes: " + ", ".join(REVIEW_TRIGGER_ATTRIBUTES) + ")",
     ]
 
     by_attr = {a: sum(a in p.low_confidence for p in preds) for a in REVIEW_ATTRIBUTES}
     out.append(
-        "  low-confidence by attribute: " + ", ".join(f"{a} {c}" for a, c in by_attr.items())
+        "  low-confidence by attribute: "
+        + ", ".join(
+            f"{a} {c}" + ("" if a in REVIEW_TRIGGER_ATTRIBUTES else " (no review)")
+            for a, c in by_attr.items()
+        )
     )
 
     cut_mean, cut_med = timing_stats([p.cutout_s for p in preds])
     emb_mean, emb_med = timing_stats([p.embed_s for p in preds])
     tot_mean, tot_med = timing_stats([p.cutout_s + p.embed_s for p in preds])
+    cut_label = "cutout wait (pipelined)" if pipelined else "cutout"
     out += ["", "Time per garment (excluding first / warm-up), seconds:"]
-    out.append(f"  cutout:         mean {cut_mean:.3f}  median {cut_med:.3f}")
-    out.append(f"  embed+classify: mean {emb_mean:.3f}  median {emb_med:.3f}")
-    out.append(f"  total:          mean {tot_mean:.3f}  median {tot_med:.3f}")
+    out.append(f"  {cut_label + ':':<26}mean {cut_mean:.3f}  median {cut_med:.3f}")
+    out.append(f"  {'embed+classify:':<26}mean {emb_mean:.3f}  median {emb_med:.3f}")
+    out.append(f"  {'total:':<26}mean {tot_mean:.3f}  median {tot_med:.3f}")
+    if pipelined:
+        out.append(
+            "  (--pipeline: cutout time is the wait for the next pipelined result, not a"
+            " per-photo latency; not comparable with a sequential report)"
+        )
     if not cutout_enabled:
         out.append("  (cutout disabled: --no-cutout)")
+
+    wall_mean, _ = timing_stats([p.wall_s for p in preds])
+    if wall_mean > 0:
+        out.append(
+            f"Throughput (wall, excluding first): {1 / wall_mean:.2f} garments/s "
+            f"({wall_mean:.3f} s/garment)"
+        )
 
     out.append(f"Empty cutouts (fell back to full image): {sum(p.empty_cutout for p in preds)}")
     wrong = misclassified(labels, preds)
@@ -244,8 +276,37 @@ def format_report(
     return "\n".join(out)
 
 
+def _to_prediction(
+    path: Path, result, *, empty: bool, cutout_s: float, embed_s: float, wall_s: float
+) -> Prediction:
+    p = result.predictions
+    formality = p["formality"].value
+    assert isinstance(formality, int)
+    return Prediction(
+        filename=path.name,
+        category=str(p["category"].value),
+        category_confidence=p["category"].confidence,
+        subcategory=str(p["subcategory"].value),
+        pattern=str(p["pattern"].value),
+        formality=formality,
+        needs_review=result.needs_review or empty,
+        low_confidence=tuple(result.low_confidence),
+        cutout_s=cutout_s,
+        embed_s=embed_s,
+        empty_cutout=empty,
+        wall_s=wall_s,
+    )
+
+
+def _load(path: Path):  # pragma: no cover - needs PIL files
+    from PIL import Image
+
+    with Image.open(path) as opened:
+        return opened.copy()
+
+
 def _evaluate(
-    images: Sequence[Path], *, use_cutout: bool, settings
+    images: Sequence[Path], *, use_cutout: bool, pipeline: bool, settings
 ) -> list[Prediction]:  # pragma: no cover - needs real models
     from PIL import Image
 
@@ -256,53 +317,106 @@ def _evaluate(
     embedder = get_embedder(settings)
     classifier = ZeroShotClassifier(embedder, margin_threshold=settings.ml_margin_threshold)
     remover = BiRefNetRemover(settings) if use_cutout else None
-    preds = []
+    preds: list[Prediction] = []
+
+    def classify(path: Path, img, *, empty: bool, cutout_s: float, wall_start: float) -> None:
+        t1 = time.perf_counter()
+        result = classifier.classify(embedder.embed_image(img))
+        t2 = time.perf_counter()
+        preds.append(
+            _to_prediction(
+                path,
+                result,
+                empty=empty,
+                cutout_s=cutout_s,
+                embed_s=t2 - t1,
+                wall_s=t2 - wall_start,
+            )
+        )
+        print(f"[{len(preds)}/{len(images)}] {path.name}: {preds[-1].category}", flush=True)
+
+    if remover is not None and pipeline:
+        # Same results as the sequential path; photo N+1 is decoded/normalized and
+        # photo N-1 post-processed on worker threads while the GPU runs photo N.
+        # `cutout_s` is then the time the consumer waited for the next cutout.
+        cutouts = iter(remover.remove_many(images, load=_load))
+        for path in images:
+            t0 = time.perf_counter()
+            out = next(cutouts)
+            empty = isinstance(out, EmptyCutoutError)
+            if isinstance(out, Exception) and not empty:
+                raise out  # e.g. an undecodable photo: abort like the sequential path
+            # Empty cutout: fall back to the full image, reloaded from disk because
+            # the pipeline's own copy of the decoded photo is not handed back.
+            img = out if isinstance(out, Image.Image) else _load(path)
+            classify(path, img, empty=empty, cutout_s=time.perf_counter() - t0, wall_start=t0)
+        return preds
+
     for path in images:
-        with Image.open(path) as opened:
-            img = opened.copy()
-        empty = False
         t0 = time.perf_counter()
+        img = _load(path)
+        empty = False
         if remover is not None:
             try:
                 img = remover.remove(img)
             except EmptyCutoutError:
                 empty = True
-        t1 = time.perf_counter()
-        result = classifier.classify(embedder.embed_image(img))
-        t2 = time.perf_counter()
-        p = result.predictions
-        formality = p["formality"].value
-        assert isinstance(formality, int)
-        preds.append(
-            Prediction(
-                filename=path.name,
-                category=str(p["category"].value),
-                category_confidence=p["category"].confidence,
-                subcategory=str(p["subcategory"].value),
-                pattern=str(p["pattern"].value),
-                formality=formality,
-                needs_review=result.needs_review or empty,
-                low_confidence=tuple(result.low_confidence),
-                cutout_s=t1 - t0,
-                embed_s=t2 - t1,
-                empty_cutout=empty,
-            )
-        )
-        print(f"[{len(preds)}/{len(images)}] {path.name}: {preds[-1].category}", flush=True)
+        classify(path, img, empty=empty, cutout_s=time.perf_counter() - t0, wall_start=t0)
     return preds
+
+
+def _positive_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid integer: {value!r}") from None
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {number}")
+    return number
+
+
+def _unit_fraction(value: str) -> float:
+    try:
+        number = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid number: {value!r}") from None
+    if not 0.0 <= number <= 1.0:
+        raise argparse.ArgumentTypeError(f"must be between 0 and 1, got {number}")
+    return number
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ml.eval", description=__doc__)
     parser.add_argument("eval_dir", nargs="?", type=Path, default=None)
     parser.add_argument("--no-cutout", action="store_true", help="skip background removal")
-    parser.add_argument("--limit", type=int, default=None, help="evaluate only the first N photos")
+    parser.add_argument(
+        "--pipeline",
+        action="store_true",
+        help="overlap CPU work with GPU inference (same predictions, batch throughput)",
+    )
+    parser.add_argument(
+        "--limit", type=_positive_int, default=None, help="evaluate only the first N photos (>= 1)"
+    )
+    parser.add_argument(
+        "--min-category-accuracy",
+        type=_unit_fraction,
+        default=None,
+        metavar="FRACTION",
+        help="gate: exit 2 (after the report) when category accuracy is below FRACTION (0-1)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.WARNING)
     settings = get_settings()
     eval_dir = args.eval_dir or settings.ml_eval_dir
-    assert eval_dir is not None and settings.ml_cache_dir is not None
+    if eval_dir is None:
+        print(
+            "error: no eval directory (pass EVAL_DIR or set PACHAPP_ML_EVAL_DIR)", file=sys.stderr
+        )
+        return 1
+    if settings.ml_cache_dir is None:
+        print("error: PACHAPP_ML_CACHE_DIR is not configured", file=sys.stderr)
+        return 1
     eval_dir = Path(eval_dir).expanduser()
 
     try:
@@ -319,9 +433,40 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     configure_model_cache(settings.ml_cache_dir)
-    preds = _evaluate(images, use_cutout=not args.no_cutout, settings=settings)
+    preds = _evaluate(
+        images, use_cutout=not args.no_cutout, pipeline=args.pipeline, settings=settings
+    )
     print()
-    print(format_report(labels, preds, cutout_enabled=not args.no_cutout))
+    print(
+        format_report(
+            labels,
+            preds,
+            cutout_enabled=not args.no_cutout,
+            pipelined=args.pipeline and not args.no_cutout,
+        )
+    )
+    return _check_gate(labels, preds, args.min_category_accuracy)
+
+
+def _check_gate(
+    labels: dict[str, Label], preds: Sequence[Prediction], minimum: float | None
+) -> int:
+    """0 when there is no gate or it is met, 2 otherwise (message on stderr)."""
+    if minimum is None:
+        return 0
+    correct, total = accuracy(labels, preds, "category")
+    if total == 0:
+        print("gate failed: no photo has a category label", file=sys.stderr)
+        return 2
+    value = correct / total
+    if value < minimum:
+        print(
+            f"gate failed: category accuracy {100 * value:.1f} % is below the required "
+            f"{100 * minimum:.1f} %",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"gate passed: category accuracy {100 * value:.1f} % >= {100 * minimum:.1f} %")
     return 0
 
 

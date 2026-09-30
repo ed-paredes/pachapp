@@ -115,6 +115,7 @@ percentage and timings. The folder holds `*.jpg/*.jpeg/*.png` plus a
 `{"a.jpg": {"category": "top", "subcategory": "t-shirt", "pattern": "solid", "formality": 2}}`
 (`null` = unlabeled). The gate is at least 85 % `category` accuracy without kNN.
 Direct use: `cd backend && uv run python -m ml.eval [DIR] [--no-cutout] [--limit N]`.
+Add `--min-category-accuracy 0.85` to exit with code 2 (after the report) when category accuracy is below the gate.
 
 ## Phone / LAN access (manual)
 
