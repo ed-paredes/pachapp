@@ -75,3 +75,28 @@ def test_session_factory_produces_working_sessions(tmp_path: Path) -> None:
 
     with session_factory() as session:
         assert session.execute(text("SELECT 1")).scalar() == 1
+
+
+def test_orm_rows_and_relationships_can_be_created(tmp_path: Path) -> None:
+    """Regression: with `from __future__ import annotations`, sqlmodel could not
+    map the `Relationship` annotations, so creating any ORM row raised a mapper
+    error. Existing tests only used raw SQL, which hid it."""
+    from sqlmodel import SQLModel, select
+
+    from shared.models import Garment, Job
+
+    settings = _settings(tmp_path)
+    engine = create_db_engine(settings)
+    SQLModel.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as session:
+        garment = Garment(img_original="original/g1.jpg")
+        session.add(garment)
+        session.flush()
+        session.add(Job(garment_id=garment.id))
+        session.commit()
+
+    with session_factory() as session:
+        stored = session.exec(select(Garment)).one()
+        assert [job.garment_id for job in stored.jobs] == [stored.id]

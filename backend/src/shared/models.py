@@ -16,8 +16,6 @@ Conventions (see the spec's "Convenciones" section):
 DAT-REQ-001: enums are imported from `shared.enums`, never redefined here.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from datetime import date as _Date
 from enum import StrEnum
@@ -115,9 +113,9 @@ class Garment(SQLModel, table=True):
     wear_count: int = Field(default=0, nullable=False)
     last_worn_at: _Date | None = Field(default=None, nullable=True)
 
-    outfit_items: list[OutfitItem] = Relationship(back_populates="garment")
-    jobs: list[Job] = Relationship(back_populates="garment")
-    ai_corrections: list[AiCorrection] = Relationship(back_populates="garment")
+    outfit_items: list["OutfitItem"] = Relationship(back_populates="garment")
+    jobs: list["Job"] = Relationship(back_populates="garment")
+    ai_corrections: list["AiCorrection"] = Relationship(back_populates="garment")
 
 
 class Outfit(SQLModel, table=True):
@@ -136,8 +134,8 @@ class Outfit(SQLModel, table=True):
     name: str | None = Field(default=None, nullable=True)
     explanation: str | None = Field(default=None, nullable=True)
 
-    items: list[OutfitItem] = Relationship(back_populates="outfit")
-    wear_logs: list[WearLog] = Relationship(back_populates="outfit")
+    items: list["OutfitItem"] = Relationship(back_populates="outfit")
+    wear_logs: list["WearLog"] = Relationship(back_populates="outfit")
 
 
 class OutfitItem(SQLModel, table=True):
@@ -155,8 +153,8 @@ class OutfitItem(SQLModel, table=True):
     # Stacking order for rendering; NULL for `accessory` rows (DAT-REQ-006).
     layer: int | None = Field(default=None, nullable=True)
 
-    outfit: Outfit = Relationship(back_populates="items")
-    garment: Garment = Relationship(back_populates="outfit_items")
+    outfit: "Outfit" = Relationship(back_populates="items")
+    garment: "Garment" = Relationship(back_populates="outfit_items")
 
 
 class WearLog(SQLModel, table=True):
@@ -169,7 +167,7 @@ class WearLog(SQLModel, table=True):
     outfit_id: str = Field(foreign_key="outfit.id", nullable=False)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
-    outfit: Outfit = Relationship(back_populates="wear_logs")
+    outfit: "Outfit" = Relationship(back_populates="wear_logs")
 
 
 class Job(SQLModel, table=True):
@@ -194,7 +192,7 @@ class Job(SQLModel, table=True):
     finished_at: datetime | None = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
-    garment: Garment = Relationship(back_populates="jobs")
+    garment: "Garment" = Relationship(back_populates="jobs")
 
 
 class Setting(SQLModel, table=True):
@@ -231,4 +229,4 @@ class AiCorrection(SQLModel, table=True):
     )
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
-    garment: Garment = Relationship(back_populates="ai_corrections")
+    garment: "Garment" = Relationship(back_populates="ai_corrections")
