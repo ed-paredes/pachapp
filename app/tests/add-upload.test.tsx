@@ -131,6 +131,25 @@ describe('AddScreen upload flow', () => {
     expect(mockResize).toHaveBeenCalledWith({ width: 2048 });
   });
 
+  it('warns on low-resolution photos but still uploads them', async () => {
+    routeFetch({
+      'POST /garments': () => json({ garment_id: 'g1', job_id: 'j1' }, 202),
+      'GET /jobs/j1': job('running', 'cutout', 30),
+    });
+    ({ client } = await renderScreen());
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [asset('small.jpg', 417, 300), asset('big.jpg', 3000, 2000)],
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Elegir de la galería' }));
+
+    await waitFor(() => expect(screen.getAllByRole('progressbar').length).toBeGreaterThan(0));
+    const notes = screen.getAllByTestId('low-res-note');
+    expect(notes).toHaveLength(1);
+    expect(screen.getByText(/Foto de baja resolución: se verá borrosa/)).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('Recortando').length).toBe(2));
+  });
+
   it('lets the user add more photos while others are processing', async () => {
     let created = 0;
     routeFetch({

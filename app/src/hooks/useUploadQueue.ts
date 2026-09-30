@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { ApiError } from '@/api-client/errors';
-import { preparePhoto, type PickedAsset } from '@/lib/photos';
+import { isLowResolution, preparePhoto, type PickedAsset } from '@/lib/photos';
 
 import { useUploadGarment, type UploadPhoto } from './useUploadGarment';
 
@@ -13,6 +13,8 @@ export type QueueItem = {
   garmentId?: string;
   jobId?: string;
   error?: string;
+  /** The picked photo is small (long side < 800 px); upload still proceeds. */
+  lowRes?: boolean;
   /** Prepared photo, kept so a failed upload can be retried. */
   photo?: UploadPhoto;
 };
@@ -64,7 +66,10 @@ export function useUploadQueue() {
         counter.current += 1;
         const key = `photo-${counter.current}`;
         const name = asset.fileName ?? `Foto ${counter.current}`;
-        setItems((current) => [...current, { key, name, phase: 'preparing' }]);
+        setItems((current) => [
+          ...current,
+          { key, name, phase: 'preparing', lowRes: isLowResolution(asset) },
+        ]);
         void (async () => {
           try {
             await send(key, await preparePhoto(asset, index));

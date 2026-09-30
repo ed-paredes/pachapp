@@ -1,5 +1,6 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { GarmentImage } from '@/components/GarmentImage';
 import type { components } from '@/api-client/schema';
 import { imageUrl } from '@/lib/image-url';
 import { categoryLabel } from '@/lib/labels';
@@ -38,16 +39,7 @@ export function GarmentCard({ item, onPress }: GarmentCardProps) {
       testID={`garment-card-${item.id}`}
     >
       <View style={styles.imageBox}>
-        {uri ? (
-          <Image
-            source={{ uri }}
-            style={styles.image}
-            resizeMode="contain"
-            testID="garment-thumb"
-          />
-        ) : (
-          <Placeholder job={item.job} />
-        )}
+        {uri ? <GarmentImage uri={uri} testID="garment-thumb" /> : <Placeholder job={item.job} />}
         {item.needs_review ? (
           <View style={styles.badge} testID="review-badge">
             <Text style={styles.badgeText}>Revisar</Text>
@@ -96,7 +88,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   imageBox: { aspectRatio: 1, borderRadius: radii.sm, overflow: 'hidden' },
-  image: { width: '100%', height: '100%' },
   placeholder: {
     flex: 1,
     alignItems: 'center',

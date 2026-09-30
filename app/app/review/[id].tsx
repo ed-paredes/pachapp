@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ApiError } from '@/api-client/errors';
 import { centeredContentStyle } from '@/components/ContentContainer';
 import type { components } from '@/api-client/schema';
 import { Chip } from '@/components/Chip';
+import { HeroImage } from '@/components/GarmentImage';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -204,11 +205,7 @@ function ReviewForm({
 
   return (
     <ScrollView contentContainerStyle={[styles.container, centeredContentStyle]}>
-      <View style={styles.imageBox}>
-        {uri ? (
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" testID="review-image" />
-        ) : null}
-      </View>
+      {uri ? <HeroImage uri={uri} testID="review-image" /> : null}
       {garment.needs_review ? (
         <View style={styles.badge} testID="review-badge">
           <Text style={styles.badgeText}>Pendiente de revisión</Text>
@@ -488,8 +485,6 @@ function TextField({
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 12 },
-  imageBox: { aspectRatio: 1, borderRadius: 10, backgroundColor: '#F1F5F9', overflow: 'hidden' },
-  image: { width: '100%', height: '100%' },
   badge: {
     alignSelf: 'flex-start',
     paddingVertical: 2,

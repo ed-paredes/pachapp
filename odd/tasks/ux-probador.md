@@ -52,7 +52,7 @@ the garment.
 - [x] **U1 (A)** Layout: fix the stretched horizontal chip rows; centred max-width container on web;
   responsive grid columns from a minimum card width; plinth-style `GarmentCard`. Done when: phone and
   desktop screenshots of Armario show compact chips and sensibly sized cards.
-- [ ] **U2 (A+B)** Images: `expo-image` everywhere (card, Detalle, Revisión, upload item) with `contain`,
+- [x] **U2 (A+B)** Images: `expo-image` everywhere (card, Detalle, Revisión, upload item) with `contain`,
   caching and a soft placeholder; never render beyond a sensible size (hero image max ~45 % of viewport
   height and ~520 px wide); backend `thumb_px` default 400 -> 640; Añadir warns when a photo's long side is
   < 800 px. Done when: screenshots show sharp, bounded images; backend/app tests pass.
@@ -112,6 +112,8 @@ strategy **stacked-to-main** (used for Hito A and T3). Slices ~ one task per PR.
   all screens); plugins installed at the owner's request: playwright, frontend-design, context7 (user scope);
   Chromium headless shell downloaded (no missing system libs).
 - 2026-09-30: U0/U1 implementation (writer, unverified by parent): `src/theme` tokens + Fraunces/Manrope via `useFonts` in the root layout, themed stack header and tab bar, `ContentContainer` (max 1100), wardrobe grid columns from min card width 168, compact non-growing chip rows, plinth `GarmentCard`, olive `Chip`; screenshots in scratchpad `pw/after/u0u1-*.png`.
+- 2026-09-30: parent verified U0 `5bb730b` and U1 `d9fdf8a` alone (prettier, eslint, tsc, jest 74/74) and looked at the writer's screenshots (compact chips; 6 columns desktop, 2 phone; plinth tiles; Fraunces header). Review of b6cfcdb..d9fdf8a granted by the owner but START refused (`invalid_request`: untracked files appeared from the in-flight U2 writer); no review record created; will review U0-U2 together after U2 is committed.
+- 2026-10-01: U2 implementation (writer, unverified by parent): backend `thumb_px` 400 -> 640 (settings, .env.example, spec 01, test); app `GarmentImage`/`HeroImage` on expo-image (`contain`, memory-disk cache, reduced-motion-aware cross-fade, plinth placeholder) in card, Detalle and Revisión; hero capped at 45 % window height and 520 dp via pure `fitWithin` (no upscaling past intrinsic size, unit-tested); low-resolution (< 800 px long side) note on the Añadir upload item with jest test; visual QA on throwaway stack with u2netp cutouts (BiRefNet on CPU was OOM-killed, GPU left to the owner's worker); screenshots in scratchpad `pw/after/u2-*.png`.
 
 ## Next step
 

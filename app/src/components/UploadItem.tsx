@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRetryGarment } from '@/hooks/useGarmentMutations';
 import { useJob } from '@/hooks/useJob';
 import type { QueueItem } from '@/hooks/useUploadQueue';
+import { LOW_RES_NOTE } from '@/lib/photos';
 
 const STEP_LABELS: Record<string, string> = {
   preprocess: 'Preparando',
@@ -30,6 +31,7 @@ export function UploadItem({ item, onRetryUpload, onDismiss }: UploadItemProps) 
   return (
     <View style={styles.card} testID={`upload-item-${item.key}`}>
       <Text style={styles.name}>{item.name}</Text>
+      {item.lowRes ? <LowResNote /> : null}
       {failed ? (
         <>
           <Text style={styles.error}>{item.error}</Text>
@@ -92,6 +94,7 @@ function ProcessingItem({
   return (
     <View style={styles.card} testID={`upload-item-${item.key}`}>
       <Text style={styles.name}>{item.name}</Text>
+      {item.lowRes ? <LowResNote /> : null}
       <Text style={styles.status}>{status}</Text>
       {data?.status === 'failed' ? (
         <>
@@ -129,6 +132,14 @@ function ProcessingItem({
   );
 }
 
+function LowResNote() {
+  return (
+    <Text style={styles.warning} testID="low-res-note">
+      {LOW_RES_NOTE}
+    </Text>
+  );
+}
+
 function ProgressBar({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
@@ -147,6 +158,7 @@ const styles = StyleSheet.create({
   card: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#d0d5dd', gap: 8 },
   name: { fontSize: 15, fontWeight: '600' },
   status: { fontSize: 13, opacity: 0.7 },
+  warning: { fontSize: 13, color: '#8A6A3B' },
   error: { fontSize: 13, color: '#b42318' },
   track: { height: 6, borderRadius: 3, backgroundColor: '#e4e7ec', overflow: 'hidden' },
   fill: { height: 6, backgroundColor: '#208AEF' },
