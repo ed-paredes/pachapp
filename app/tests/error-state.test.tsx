@@ -7,7 +7,7 @@ describe('ErrorState', () => {
     const onRetry = jest.fn();
     await render(<ErrorState onRetry={onRetry} />);
 
-    fireEvent.press(screen.getByRole('button', { name: 'Reintentar' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Reintentar' }));
 
     expect(onRetry).toHaveBeenCalledTimes(1);
   });

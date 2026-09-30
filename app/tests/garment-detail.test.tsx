@@ -140,7 +140,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
 
   it('marks as laundry via PATCH and invalidates list and detail', async () => {
     const { spy } = await renderScreen();
-    fireEvent.press(await screen.findByLabelText('Marcar como lavando'));
+    await fireEvent.press(await screen.findByLabelText('Marcar como lavando'));
     await waitFor(() =>
       expect(calls.filter((c) => c.method === 'PATCH').map((c) => c.body)).toEqual([
         { status: 'laundry' },
@@ -158,9 +158,9 @@ describe('GarmentDetailScreen (Detalle)', () => {
 
   it('archives and reactivates', async () => {
     const { spy } = await renderScreen();
-    fireEvent.press(await screen.findByLabelText('Archivar'));
+    await fireEvent.press(await screen.findByLabelText('Archivar'));
     await waitFor(() => expect(posts('/garments/g1/archive')).toHaveLength(1));
-    fireEvent.press(await screen.findByLabelText('Reactivar'));
+    await fireEvent.press(await screen.findByLabelText('Reactivar'));
     await waitFor(() => expect(posts('/garments/g1/reactivate')).toHaveLength(1));
     expect(invalidatedKeys(spy)).toContain(JSON.stringify(['garments', 'detail', 'g1']));
   });
@@ -169,7 +169,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
     garment = { ...baseGarment(), needs_review: true };
     await renderScreen();
     expect(await screen.findByTestId('review-badge')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Revisar'));
+    await fireEvent.press(screen.getByLabelText('Revisar'));
     expect(mockPush).toHaveBeenCalledWith('/review/g1');
   });
 
@@ -191,7 +191,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
     };
     await renderScreen();
     expect(await screen.findByText('No se pudo recortar')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Reintentar procesamiento'));
+    await fireEvent.press(screen.getByLabelText('Reintentar procesamiento'));
     await waitFor(() => expect(posts('/garments/g1/retry')).toHaveLength(1));
   });
 
@@ -210,7 +210,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
 
   it('asks for confirmation before deleting, then leaves for Armario', async () => {
     await renderScreen();
-    fireEvent.press(await screen.findByLabelText('Eliminar'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar'));
     expect(await screen.findByTestId('delete-confirm')).toBeTruthy();
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
 
@@ -218,7 +218,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
     await waitFor(() => expect(screen.queryByTestId('delete-confirm')).toBeNull());
 
     await fireEvent.press(screen.getByLabelText('Eliminar'));
-    fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
     expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
   });
@@ -236,8 +236,8 @@ describe('GarmentDetailScreen (Detalle)', () => {
         409,
       );
     await renderScreen();
-    fireEvent.press(await screen.findByLabelText('Eliminar'));
-    fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
     expect(await screen.findByTestId('action-error')).toHaveTextContent(
       'La prenda aparece en outfits; archívala en su lugar.',
     );
