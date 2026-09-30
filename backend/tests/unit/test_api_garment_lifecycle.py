@@ -443,6 +443,49 @@ def test_delete_on_a_busy_database_is_409_not_500(
     assert client.get(f"/garments/{garment_id}").status_code == 200
 
 
+def test_delete_with_a_non_busy_operational_error_propagates(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from api.routers import garment_lifecycle
+
+    garment_id = _seed(client)
+
+    def broken(session: Session, target: str) -> None:
+        raise OperationalError("DELETE", {}, Exception("no such table: job"))
+
+    monkeypatch.setattr(garment_lifecycle, "_drop_pending_jobs", broken)
+
+    with pytest.raises(OperationalError):
+        client.delete(f"/garments/{garment_id}")
+    assert client.get(f"/garments/{garment_id}").status_code == 200
+
+
+def test_delete_maps_sqlite_busy_error_codes_to_409(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    from sqlalchemy.exc import OperationalError
+
+    from api.routers import garment_lifecycle
+
+    garment_id = _seed(client)
+    orig = sqlite3.OperationalError("opaque message")
+    orig.sqlite_errorcode = sqlite3.SQLITE_LOCKED  # type: ignore[attr-defined]
+
+    def locked(session: Session, target: str) -> None:
+        raise OperationalError("DELETE", {}, orig)
+
+    monkeypatch.setattr(garment_lifecycle, "_drop_pending_jobs", locked)
+
+    response = client.delete(f"/garments/{garment_id}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "GARMENT_PROCESSING"
+
+
 def test_worker_treats_a_vanished_job_as_a_permanent_failure(
     client: TestClient, settings: Settings
 ) -> None:
