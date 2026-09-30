@@ -51,6 +51,10 @@ def main() -> None:
     bg_file = Path(str(getattr(bg_session.inner_session, "_model_path", "unknown")))
     warm_ms = _time_warm_inference(bg_session)
     embedder = get_embedder(settings)
+    from ml.zero_shot import ZeroShotClassifier
+
+    # Embeds every taxonomy prompt once (VIS-REQ-011): fails fast on a bad taxonomy.
+    classifier = ZeroShotClassifier(embedder, margin_threshold=settings.ml_margin_threshold)
 
     elapsed = time.monotonic() - start
     print("Vision models ready:")
@@ -60,6 +64,7 @@ def main() -> None:
     print(f"  bg warm:       {warm_ms:.0f} ms/image (synthetic 1024x1024)")
     print(f"  embed model:   {embedder.model_id}")
     print(f"  embedding dim: {embedder.dim}")
+    print(f"  taxonomy:      {classifier.prompt_count} prompts embedded")
     print(f"  cache dir:     {settings.ml_cache_dir}")
     print(f"  elapsed:       {elapsed:.1f}s")
 

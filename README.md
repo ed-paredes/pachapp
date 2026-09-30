@@ -107,6 +107,15 @@ about 20 eval photos; at least 18 cutouts should be clean. Pass another folder
 with `make ml-cutouts` after editing the target, or run
 `cd backend && uv run python -m ml.cutout_preview INPUT_DIR --out OUTPUT_DIR`.
 
+`make ml-eval` is the step-3 gate: it runs cutout -> embed -> zero-shot over the
+photos in `PACHAPP_ML_EVAL_DIR` (or `make ml-eval EVAL_DIR=/path`) and prints
+per-attribute accuracy, the category confusion matrix, the `needs_review`
+percentage and timings. The folder holds `*.jpg/*.jpeg/*.png` plus a
+`labels.json` such as
+`{"a.jpg": {"category": "top", "subcategory": "t-shirt", "pattern": "solid", "formality": 2}}`
+(`null` = unlabeled). The gate is at least 85 % `category` accuracy without kNN.
+Direct use: `cd backend && uv run python -m ml.eval [DIR] [--no-cutout] [--limit N]`.
+
 ## Phone / LAN access (manual)
 
 To open the app on a phone via Expo Go, the phone needs to reach the API

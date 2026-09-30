@@ -41,7 +41,7 @@ APP := cd app &&
 NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
-	typecheck migrate migrate-new gen-client ml-preload ml-cutouts
+	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -114,3 +114,6 @@ ml-preload: ## Download and validate the vision models
 
 ml-cutouts: ## Write BiRefNet cutouts of the eval photos for inspection
 	$(BACKEND) uv run python -m ml.cutout_preview
+
+ml-eval: ## Evaluate zero-shot accuracy on labeled eval photos (EVAL_DIR=... to override)
+	$(BACKEND) uv run python -m ml.eval $(EVAL_DIR)
