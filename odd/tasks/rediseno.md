@@ -33,6 +33,7 @@ from 880 px — on web and on phones.
   `@expo/vector-icons` (not in the allowed deps); darker text/border variants where the palette fails AA
   (`ink3` 2.51:1 on bg, accent text 4.37:1, warn on warnSoft 3.52:1, ok on okSoft 4.13:1, `line` borders
   1.22:1) — backgrounds unchanged; radial gradients real on web, linear approximation on native.
+- 2026-10-01: owner accepted the additive `useUploadQueue.previewUri` field (P4) — keep it.
 - Every UI task loads `frontend-design` + `ux-copy` while building, and `design-critique` +
   `accessibility-review` on screenshots before closing (owner, 2026-10-01).
 
@@ -96,4 +97,4 @@ work-unit commit; consent prompts are batched for the owner at the end (owner as
 - 2026-10-01: P6 done (writer): `7f9cc30` plural colour agreement in `garmentName`, Historial truthful at zero usage ("Aún sin estrenar", no 0 % KPI, lone list full width), `23d0927` docs (UI-REQ-020 capture wording, factual redesign note in 07-app-ui, README "App design"), `a8eaf5f` visible 3 px focus ring on web (`WebFocusRing`), "Abrir ajustes" 22 -> 44 px, AddChip 44 px. jest 217/217 x3 (no flake). Critique + a11y on every screen at 390/360/1440 + 200 % zoom + keyboard: majors fixed; contrast AA verified with real tokens. QA set: +6 clean product photos from `clothing-dataset-small` (24 garments). Left for the owner: Hoy empty-state copy (UI-REQ-005) is untrue with garments and no engine. Minor left: duplicate "Todas" counters (23 vs 24), "Sin estrenar" repeated in Historial, capture tip shown twice in Añadir, Segmented tab roles without tabpanels, lowercase subcategory values in Revisión, SeasonPicker 38 px (read-only), `useUploadQueue.previewUri` (additive, presentation-only hook change). Not run: native iOS/Android.
 ## Next step
 
-Owner: (1) Hoy empty-state copy; (2) accept or revert the `previewUri` hook change; (3) native review consents per slice (base `3fa04c3`: ux-probador tail `413ce76..04aaac5`, then P1 `d6cb70f..ab9e2be`, P2, P3, P4, P5+P6); (4) push + stacked PRs (stacked-to-main: ux-probador first, then the redesign slices). Then back to ux-probador U5/R1, the outfit engine (fills Hoy) and history API (fills Historial).
+Owner: (1) Hoy empty-state copy; (2) ~~previewUri~~ accepted; (3) native review consents per slice (base `3fa04c3`: ux-probador tail `413ce76..04aaac5`, then P1 `d6cb70f..ab9e2be`, P2, P3, P4, P5+P6); (4) push + stacked PRs (stacked-to-main: ux-probador first, then the redesign slices). Then back to ux-probador U5/R1, the outfit engine (fills Hoy) and history API (fills Historial).
