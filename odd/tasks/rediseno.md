@@ -55,7 +55,7 @@ from 880 px — on web and on phones.
 
 ## Tasks
 
-- [ ] **P1** Theme merge + base components (`src/components/ui/`) + `FloatingTabBar` + tab header; deps
+- [x] **P1** Theme merge + base components (`src/components/ui/`) + `FloatingTabBar` + tab header; deps
   `expo-linear-gradient`, `expo-blur`. Route: delegated writer (writer trigger: 20+ files).
 - [ ] **P2** Armario + Detalle. Route: delegated writer.
 - [ ] **P3** Hoy (presentational components behind optional props; empty state). Route: delegated writer.
@@ -88,6 +88,7 @@ work-unit commit; consent prompts are batched for the owner at the end (owner as
 - 2026-10-01: material copied to `docs/redesign/`; mapping (delegated explorer) of mockup, code and API done;
   plan shown to the owner; worktree + QA stack ready.
 
+- 2026-10-01: P1 done (writer): `d6cb70f` tokens merged (aliases re-pointed; AA text variants `ink3Text` #6F665B, `accentText` #A24D2A, `okText`, `infoText`, `warnText` #7F5614, `lineStrong` #8C8377, ratios asserted in `tests/theme.test.ts`; radii sm 12/md 18/lg 28; spacing xl 20/xxl 28/screen 16; max width 1120; TWO_COLUMNS 880; MIN_CARD_WIDTH 190; shadows; `tint()`; Fraunces 400 + italic), `c4ead5f` base components in `src/components/ui/` (+ ToastProvider, `useReducedMotion`), `ab9e2be` FloatingTabBar + AppHeader (expo-blur, expo-linear-gradient installed). prettier/lint/tsc clean, jest 134/134. Notes for P2-P5: redesign 34 dp title is `textStyles.pageTitle` (existing `title` kept); tab scenes get a temporary `sceneStyle.paddingBottom` in `(tabs)/_layout.tsx` -> remove per screen when it moves to `Screen`; `GarmentImage`/`HeroImage` take optional `tintColor`; brass badge now warnSoft + warnText; jest uses the worklets resolver. Parent spot check: tabs-layout test passes; screenshots `pw/redesign/p1-*` match the mockup header and floating bar. Review assess (base `3fa04c3`, committed only): medium, 2,922 lines incl. ux-probador tail + docs, review due -> consent batched for the owner at the end.
 ## Next step
 
-P1.
+P2 (Armario + Detalle).
