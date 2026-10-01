@@ -17,9 +17,10 @@ import { queryKeys } from '@/api-client/query-keys';
 import type { components } from '@/api-client/schema';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
-import { BackButton, GarmentHero } from '@/components/GarmentHero';
+import { GarmentHero } from '@/components/GarmentHero';
 import { IconSymbol } from '@/components/IconSymbol';
 import { LoadingState } from '@/components/LoadingState';
+import { StateShell, useGoBack } from '@/components/StateShell';
 import {
   AddChip,
   Button,
@@ -87,12 +88,6 @@ function lookup<T extends string>(labels: Record<T, string>, key: string): strin
   return labels[key as T] ?? key;
 }
 
-/** Back to where the user came from; Armario when the page was opened directly. */
-function useGoBack() {
-  const router = useRouter();
-  return () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/wardrobe'));
-}
-
 /**
  * Detalle de prenda (GarmentDetail): cutout hero, usage, read-only attributes and the status
  * actions (UI-REQ-016). Editing lives in Revisión.
@@ -126,20 +121,6 @@ export default function GarmentDetailScreen() {
     );
   }
   return <Detail garment={garment.data as Garment} />;
-}
-
-/** Loading / error / not-found: the stack header is hidden, so these keep a way back. */
-function StateShell({ state }: { state: ReactNode }) {
-  const goBack = useGoBack();
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.shell, { paddingTop: insets.top + spacing.md }]}>
-      <View style={styles.shellBack}>
-        <BackButton onPress={goBack} />
-      </View>
-      {state}
-    </View>
-  );
 }
 
 function Detail({ garment }: { garment: Garment }) {
@@ -489,8 +470,6 @@ const centered: ViewStyle = { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignS
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   content: { ...centered, paddingHorizontal: spacing.screen },
-  shell: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.screen },
-  shellBack: { alignItems: 'flex-start' },
   page: { gap: spacing.xxl },
   pageTwo: { flexDirection: 'row', alignItems: 'stretch' },
   column: { flex: 1 },

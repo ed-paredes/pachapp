@@ -40,7 +40,8 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="review/[id]" options={{ title: 'Revisión' }} />
+          {/* Revisión draws its own back button, like Detalle. */}
+          <Stack.Screen name="review/[id]" options={{ headerShown: false }} />
           {/* Detalle draws its own back button over the hero. */}
           <Stack.Screen name="garments/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />

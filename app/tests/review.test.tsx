@@ -1,12 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 import { buildColors } from '../src/lib/palette';
 import { CATEGORY_LABELS } from '../src/lib/labels';
 
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ replace: mockReplace, push: jest.fn() }),
+  useRouter: () => ({ replace: mockReplace, push: jest.fn(), canGoBack: () => false }),
   useLocalSearchParams: () => ({ id: 'g1' }),
 }));
 
@@ -100,9 +102,16 @@ async function renderScreen() {
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <ReviewScreen />
-    </QueryClientProvider>,
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 0, left: 0, right: 0, bottom: 0 },
+      }}
+    >
+      <QueryClientProvider client={client}>
+        <ReviewScreen />
+      </QueryClientProvider>
+    </SafeAreaProvider>,
   );
 }
 
@@ -375,6 +384,33 @@ describe('ReviewScreen (Revisión)', () => {
     await fireEvent.press(screen.getByLabelText('Revisión terminada'));
     expect(await screen.findByTestId('complete-error')).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('titles the page with the composed name and offers a way back', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+
+    expect(screen.getByRole('header', { name: 'Camiseta negra de algodón' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Volver' }));
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe');
+  });
+
+  it('shows empty values as "+ Añadir" chips, never "Sin definir"', async () => {
+    garment = { ...baseGarment(), needs_review: false, material: null };
+    await renderScreen();
+    await screen.findByTestId('review-image');
+
+    expect(screen.getByLabelText('Material, sin definir')).toBeTruthy();
+    expect(screen.getByText('+ Añadir')).toBeTruthy();
+    expect(screen.queryByText('Sin definir')).toBeNull();
+  });
+
+  it('names the chosen formality level under the level chips', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Formalidad');
+
+    expect(screen.getByText('Informal')).toBeTruthy();
   });
 
   it('shows loading, then an error with retry, and a 404 state', async () => {
