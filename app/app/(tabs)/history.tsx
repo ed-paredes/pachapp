@@ -72,8 +72,12 @@ export default function HistoryScreen() {
 
   const usage = active.data ? wardrobeUsage(active.data.items, active.data.total) : null;
   const kpis: HistoryKpi[] = [];
+  // Nothing worn yet: a "0%" says nothing (Hoy hides it too), so only the unworn count shows.
+  const anyWorn = (usage?.worn ?? 0) > 0;
   if (usage) {
-    kpis.push({ id: 'usage', value: `${usage.percent}%`, label: 'del armario usado' });
+    if (anyWorn) {
+      kpis.push({ id: 'usage', value: `${usage.percent}%`, label: 'del armario usado' });
+    }
     kpis.push({
       id: 'unworn',
       value: String(usage.total - usage.worn),
@@ -109,6 +113,7 @@ export default function HistoryScreen() {
       kpis={kpis}
       mostWorn={mostWorn}
       secondChance={secondChance}
+      secondChanceTitle={anyWorn ? 'Dales otra oportunidad' : 'Aún sin estrenar'}
       onOpenGarment={(id) => router.push(`/garments/${id}`)}
     />
   );

@@ -28,6 +28,8 @@ type HistoryViewProps = {
   mostWorn: RankItem[];
   /** "Dales otra oportunidad"; the card is hidden when empty. */
   secondChance: RankItem[];
+  /** Title of the second list; "Dales otra oportunidad" only makes sense with real history. */
+  secondChanceTitle?: string;
   onOpenGarment: (id: string) => void;
   /** Adds the "Sugerir" button to the second list (needs the outfit engine). */
   onSuggest?: (id: string) => void;
@@ -42,6 +44,7 @@ export function HistoryView({
   calendar,
   mostWorn,
   secondChance,
+  secondChanceTitle = 'Dales otra oportunidad',
   onOpenGarment,
   onSuggest,
 }: HistoryViewProps) {
@@ -95,15 +98,12 @@ export function HistoryView({
             ) : null}
             {secondChance.length > 0 ? (
               <RankCard
-                title="Dales otra oportunidad"
+                title={secondChanceTitle}
                 items={secondChance}
                 onOpen={onOpenGarment}
                 onSuggest={onSuggest}
                 testID="rank-second-chance"
               />
-            ) : null}
-            {wide && (mostWorn.length === 0 || secondChance.length === 0) ? (
-              <View style={styles.spacer} />
             ) : null}
           </View>
         ) : null}
@@ -118,7 +118,6 @@ const styles = StyleSheet.create({
   kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   lists: { gap: spacing.md },
   listsWide: { flexDirection: 'row', alignItems: 'flex-start' },
-  spacer: { flex: 1 },
   empty: {
     flexDirection: 'row',
     alignItems: 'center',

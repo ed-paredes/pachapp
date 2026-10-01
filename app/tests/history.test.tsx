@@ -118,11 +118,17 @@ describe('HistoryScreen (Historial)', () => {
   });
 
   it('hides the most-worn card while nothing has been worn', async () => {
-    mockApi({ usage: [item('a'), item('b')] });
+    mockApi({ usage: [item('a'), item('b')], unworn: [item('a'), item('b')] });
     await renderScreen();
-    await screen.findByText('0%');
+    await screen.findByTestId('kpi-unworn');
 
     expect(screen.queryByText('Las que más usas')).toBeNull();
+    // Truthful at zero: no "0%" KPI, only the unworn count and an honest list title.
+    expect(screen.queryByTestId('kpi-usage')).toBeNull();
+    expect(screen.queryByText('0%')).toBeNull();
+    expect(screen.getByTestId('kpi-unworn')).toHaveTextContent('2prendas sin estrenar');
+    expect(screen.queryByText('Dales otra oportunidad')).toBeNull();
+    expect(await screen.findByText('Aún sin estrenar')).toBeTruthy();
   });
 
   it('offers unworn garments, then ones worn long ago, with no suggest button', async () => {
