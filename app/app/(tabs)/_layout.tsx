@@ -39,6 +39,8 @@ export default function TabsLayout() {
         name="wardrobe"
         options={{
           title: 'Armario',
+          // Armario is built on `Screen`, which pads itself for the floating bar.
+          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'tshirt.fill', android: 'checkroom', web: 'checkroom' }}

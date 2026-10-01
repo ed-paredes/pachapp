@@ -1,5 +1,7 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { colors, radii } from '@/theme';
+
 type LoadingStateProps = {
   /**
    * `spinner` (default) is a centered activity indicator, used for
@@ -23,7 +25,7 @@ export function LoadingState({ variant = 'spinner', gridItems = 6 }: LoadingStat
 
   return (
     <View style={styles.spinnerContainer} testID="loading-state-spinner">
-      <ActivityIndicator size="large" />
+      <ActivityIndicator size="large" color={colors.ink2} />
     </View>
   );
 }
@@ -42,8 +44,8 @@ const styles = StyleSheet.create({
   },
   gridCell: {
     width: '30%',
-    aspectRatio: 1,
-    borderRadius: 8,
-    backgroundColor: '#E2E8F0',
+    aspectRatio: 4 / 5,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface2,
   },
 });
