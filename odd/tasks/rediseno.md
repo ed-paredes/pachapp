@@ -57,7 +57,7 @@ from 880 px — on web and on phones.
 
 - [x] **P1** Theme merge + base components (`src/components/ui/`) + `FloatingTabBar` + tab header; deps
   `expo-linear-gradient`, `expo-blur`. Route: delegated writer (writer trigger: 20+ files).
-- [ ] **P2** Armario + Detalle. Route: delegated writer.
+- [x] **P2** Armario + Detalle. Route: delegated writer.
 - [ ] **P3** Hoy (presentational components behind optional props; empty state). Route: delegated writer.
 - [ ] **P4** Añadir (upload zone, steps, tips card, processing on the existing per-photo polling). Route:
   delegated writer.
@@ -89,6 +89,7 @@ work-unit commit; consent prompts are batched for the owner at the end (owner as
   plan shown to the owner; worktree + QA stack ready.
 
 - 2026-10-01: P1 done (writer): `d6cb70f` tokens merged (aliases re-pointed; AA text variants `ink3Text` #6F665B, `accentText` #A24D2A, `okText`, `infoText`, `warnText` #7F5614, `lineStrong` #8C8377, ratios asserted in `tests/theme.test.ts`; radii sm 12/md 18/lg 28; spacing xl 20/xxl 28/screen 16; max width 1120; TWO_COLUMNS 880; MIN_CARD_WIDTH 190; shadows; `tint()`; Fraunces 400 + italic), `c4ead5f` base components in `src/components/ui/` (+ ToastProvider, `useReducedMotion`), `ab9e2be` FloatingTabBar + AppHeader (expo-blur, expo-linear-gradient installed). prettier/lint/tsc clean, jest 134/134. Notes for P2-P5: redesign 34 dp title is `textStyles.pageTitle` (existing `title` kept); tab scenes get a temporary `sceneStyle.paddingBottom` in `(tabs)/_layout.tsx` -> remove per screen when it moves to `Screen`; `GarmentImage`/`HeroImage` take optional `tintColor`; brass badge now warnSoft + warnText; jest uses the worklets resolver. Parent spot check: tabs-layout test passes; screenshots `pw/redesign/p1-*` match the mockup header and floating bar. Review assess (base `3fa04c3`, committed only): medium, 2,922 lines incl. ux-probador tail + docs, review due -> consent batched for the owner at the end.
+- 2026-10-01: P2 done (writer): `bd19c2f` Armario (eyebrow totals, category FilterChips + status Segmented with counters via `useGarments` page_size 1, review Banner replaces the filter chip: 1 pending -> `/review/[id]`, several -> removable "Solo pendientes de revisión" filter; default active+laundry kept with no segment highlighted; 4:5 tinted cards with state pills, composed name `src/lib/garment-name.ts`, wear count, ColorDots; "+ Añadir prenda" tile; "Nada por aquí"), `41d7d90` Detalle (`GarmentHero` radial gradient on web / linear on native, two columns >= 880 with sticky hero on web, StatRow, Atributos card with AddChip, action tiles, toasts; `formatLastWorn`). prettier/lint/tsc clean, jest 163/163 (one unreproduced wardrobe flake on the first run). Hidden for lack of data: search, favourites, "Crear outfit", "Más usadas". Parent check (screenshots `pw/redesign/p2-*` + a11y props): matches the mockup; follow-ups to P3: FilterChip/Segmented minHeight 40 -> 44, status Segmented clipped at 390 px. QA cutouts keep part of the photo background (eval photos + BiRefNet-lite; U5 territory) -> consider cleaner product photos from `clothing-dataset-small` in P6.
 ## Next step
 
-P2 (Armario + Detalle).
+P3 (Hoy) + P2 follow-ups.
