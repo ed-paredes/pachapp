@@ -1,23 +1,33 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { CaptureTipsPanel } from '@/components/CaptureTipsPanel';
-import { IconSymbol } from '@/components/IconSymbol';
+import { AddSteps } from '@/components/add/AddSteps';
+import { CaptureTipsPanel } from '@/components/add/CaptureTipsPanel';
+import { UploadZone } from '@/components/add/UploadZone';
 import { UploadItem } from '@/components/UploadItem';
+import { Button, Eyebrow, Screen, Title } from '@/components/ui';
 import { useCaptureTipsSeen } from '@/hooks/useCaptureTipsSeen';
 import { useUploadQueue } from '@/hooks/useUploadQueue';
 import { pickFromCamera, pickFromGallery, type PickResult } from '@/lib/photos';
-import { centeredContentStyle } from '@/components/ContentContainer';
+import { TWO_COLUMNS, colors, fontFamilies, spacing } from '@/theme';
+
+const HELP = {
+  ios: 'questionmark.circle',
+  android: 'help',
+  web: 'help',
+} as const;
 
 /**
  * Añadir (Add): photo capture + upload/processing progress. Each photo gets
  * its own polled progress item (UI-REQ-006/017/018); when a job is done the
  * item invites to "Revisar" (UI-REQ-019) without navigating on its own, so
- * several photos can be chained. Also hosts the capture-tips panel
- * (UI-REQ-020 / UI-SCN-007) — shown automatically the first time,
+ * several photos can be chained. Also hosts the capture-tips card
+ * (UI-REQ-020 / UI-SCN-007) — expanded automatically the first time,
  * dismissible, and re-openable via the help icon.
  */
 export default function AddScreen() {
+  const { width } = useWindowDimensions();
+  const wide = width >= TWO_COLUMNS;
   const { seen, markSeen } = useCaptureTipsSeen();
   // `null` means "no manual override yet": visibility then follows whether
   // the panel has already been seen on this device. Deriving it this way
@@ -48,89 +58,81 @@ export default function AddScreen() {
     markSeen();
   };
 
-  return (
-    <View style={[styles.container, centeredContentStyle]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Añadir</Text>
-        <Pressable
-          onPress={openTips}
-          accessibilityRole="button"
-          accessibilityLabel="Ver consejos de captura"
-          hitSlop={8}
-        >
-          <IconSymbol
-            name={{ ios: 'questionmark.circle.fill', android: 'help', web: 'help' }}
-            size={24}
-          />
-        </Pressable>
-      </View>
-      <View style={styles.actions}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Hacer foto"
-          onPress={() => pick(pickFromCamera)}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Hacer foto</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Elegir de la galería"
-          onPress={() => pick(pickFromGallery)}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Elegir de la galería</Text>
-        </Pressable>
-      </View>
-      {pickError ? <Text style={styles.error}>{pickError}</Text> : null}
-      {items.length === 0 ? (
-        <Text style={styles.description}>
-          Añade fotos de tus prendas. Puedes seguir añadiendo mientras se procesan las anteriores.
-        </Text>
-      ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {items.map((item) => (
-            <UploadItem
-              key={item.key}
-              item={item}
-              onRetryUpload={retryUpload}
-              onDismiss={dismiss}
-            />
-          ))}
-        </ScrollView>
-      )}
-      <CaptureTipsPanel visible={tipsVisible} onDismiss={closeTips} />
+  const tips = <CaptureTipsPanel visible={tipsVisible} onDismiss={closeTips} />;
+  const zone = (
+    <UploadZone
+      onCamera={() => pick(pickFromCamera)}
+      onGallery={() => pick(pickFromGallery)}
+      error={pickError}
+    />
+  );
+  const list = items.length ? (
+    <View style={styles.list} testID="upload-list">
+      {items.map((item) => (
+        <UploadItem key={item.key} item={item} onRetryUpload={retryUpload} onDismiss={dismiss} />
+      ))}
     </View>
+  ) : null;
+
+  return (
+    <Screen>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Eyebrow>Nueva prenda</Eyebrow>
+          <Title accent="armario">Añade a tu armario</Title>
+          <Text style={styles.subtitle}>
+            Una prenda por foto: la recortamos y detectamos su categoría y sus colores.
+          </Text>
+        </View>
+        <Button
+          icon={HELP}
+          variant="secondary"
+          accessibilityLabel="Ver consejos de captura"
+          onPress={openTips}
+        />
+      </View>
+      {wide ? (
+        <View style={styles.columns}>
+          <View style={styles.main}>
+            {zone}
+            {list}
+          </View>
+          <View style={styles.side}>
+            <AddSteps />
+            {tips}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.stack}>
+          {tipsVisible ? tips : null}
+          {zone}
+          {list}
+          <AddSteps />
+          {tipsVisible ? null : tips}
+        </View>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    gap: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  button: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: '#208AEF',
-  },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  error: { fontSize: 14, color: '#b42318' },
-  list: { gap: 12 },
-  description: {
+  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  headerText: { flex: 1, gap: 6 },
+  subtitle: {
+    fontFamily: fontFamilies.body,
     fontSize: 15,
-    opacity: 0.7,
+    lineHeight: 22,
+    color: colors.ink2,
+    maxWidth: 520,
   },
+  stack: { gap: spacing.xl, marginTop: spacing.xl },
+  columns: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    marginTop: spacing.xl,
+    alignItems: 'flex-start',
+  },
+  main: { flex: 1.2, gap: spacing.xl },
+  side: { flex: 1, gap: spacing.md },
+  list: { gap: spacing.md },
 });

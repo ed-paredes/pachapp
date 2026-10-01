@@ -15,6 +15,8 @@ export type QueueItem = {
   error?: string;
   /** The picked photo is small (long side < 800 px); upload still proceeds. */
   lowRes?: boolean;
+  /** Local URI of the picked photo, shown as a preview until the cutout exists. */
+  previewUri?: string;
   /** Prepared photo, kept so a failed upload can be retried. */
   photo?: UploadPhoto;
 };
@@ -68,7 +70,7 @@ export function useUploadQueue() {
         const name = asset.fileName ?? `Foto ${counter.current}`;
         setItems((current) => [
           ...current,
-          { key, name, phase: 'preparing', lowRes: isLowResolution(asset) },
+          { key, name, phase: 'preparing', lowRes: isLowResolution(asset), previewUri: asset.uri },
         ]);
         void (async () => {
           try {
