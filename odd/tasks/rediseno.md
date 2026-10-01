@@ -1,0 +1,93 @@
+# Rediseño — new visual system from the owner's mockup
+
+Feature branch `feat/rediseno` (worktree `~/pachapp-worktrees/rediseno`), stacked on `feat/ux-probador` `04aaac5`.
+Source material (owner, 2026-10-01): `docs/redesign/` — `prompt.md` (rules and phases), `diseño.md` (design
+system spec), `maqueta.html` (navigable mockup: visual reference), `tokens.js` (token proposal + `tint()`).
+The prompt names them `DISENO.md` / `tokens.ts`; same files.
+
+## Objective
+
+Redesign the app's presentation after the mockup: warm linen surfaces, Fraunces + Manrope, garments as real
+cutouts on a tint of their own colour, a floating pill tab bar, one primary action per screen, two columns
+from 880 px — on web and on phones.
+
+## Rules (from `docs/redesign/prompt.md`)
+
+1. Presentation only: no changes to data logic, TanStack Query hooks, API client or generated types. Data the
+   API does not provide is hidden or prepared behind an optional prop, never invented (list below).
+2. Merge `tokens.js` into `src/theme` keeping its structure and names; no second theme; Manrope stays.
+3. Base components per `diseño.md` §3, typed, `StyleSheet`; no UI libraries or Tailwind. New deps allowed only:
+   `expo-linear-gradient`, `expo-blur`, `react-native-reanimated` (already installed), via `npx expo install`.
+4. Garments are the real cutouts (`expo-image`, `contentFit="contain"`) on `tint(dominant colour)`.
+5. Web and phone: two columns from 880 px; wardrobe grid columns from `useWindowDimensions`.
+6. A11y: `accessibilityRole` + `accessibilityLabel` on icon-only buttons, touch targets >= 44 px, legible contrast.
+7. UI copy in Spanish, as in the mockup.
+8. Each phase: `tsc`, ESLint, tests pass; tests broken by copy/structure changes are updated without losing
+   coverage; compare the web build with the mockup.
+
+## Owner decisions
+
+- 2026-10-01: redesign prioritised over UX Probador (D1/U4/U6 superseded there; U5 and R1 stay there).
+- 2026-10-01: run all phases and report at the end (no stop between phases).
+- 2026-10-01 (parent defaults, owner did not object): icons from the existing `IconSymbol` (expo-symbols), no
+  `@expo/vector-icons` (not in the allowed deps); darker text/border variants where the palette fails AA
+  (`ink3` 2.51:1 on bg, accent text 4.37:1, warn on warnSoft 3.52:1, ok on okSoft 4.13:1, `line` borders
+  1.22:1) — backgrounds unchanged; radial gradients real on web, linear approximation on native.
+- Every UI task loads `frontend-design` + `ux-copy` while building, and `design-critique` +
+  `accessibility-review` on screenshots before closing (owner, 2026-10-01).
+
+## Behaviour kept where the mockup conflicts (rule 1 + specs `docs/specs/07-app-ui.md`)
+
+- Armario default filter stays active + laundry; review stays reachable (banner replaces the filter chip).
+- Añadir keeps per-photo progress, "Revisar" per photo, and the first-time capture-tips panel (UI-REQ-020)
+  restyled as the "Consejo" card; no batch "Añadir N prendas".
+- Detalle keeps processing / failed / retry / delete-confirmation states; "Editar" goes to Revisión.
+- Tab a11y labels ("Hoy, tab, 1 of 4"...) and the "Abrir ajustes" header button stay (UI-REQ-002/003, tests).
+
+## Mockup data the API does not provide (hide or optional prop)
+
+- Outfit engine (planned, not implemented): look of the day, look name, match %, "why" reasons, "Otra
+  sugerencia", "Me lo pongo", "Otras opciones", "Crear outfit con esta prenda".
+- History (planned, not implemented): calendar, KPIs + trends, "Sugerir". Derivable now: most used
+  (`sort=wear_count`), forgotten (`last_worn_at`).
+- Missing: weather, cost per use (no price), text search (no `q`), garment name (composed from
+  subcategory/category + colour + material), garment favourites, multi-garment detection / staging, avatar.
+
+## Tasks
+
+- [ ] **P1** Theme merge + base components (`src/components/ui/`) + `FloatingTabBar` + tab header; deps
+  `expo-linear-gradient`, `expo-blur`. Route: delegated writer (writer trigger: 20+ files).
+- [ ] **P2** Armario + Detalle. Route: delegated writer.
+- [ ] **P3** Hoy (presentational components behind optional props; empty state). Route: delegated writer.
+- [ ] **P4** Añadir (upload zone, steps, tips card, processing on the existing per-photo polling). Route:
+  delegated writer.
+- [ ] **P5** Historial (derivable lists + empty state), then Revisión and Ajustes with the same system.
+  Route: delegated writer.
+- [ ] **P6** Final visual QA (phone 390x844, desktop 1440x900, every screen vs mockup), critique + a11y,
+  fixes; open list of mockup items not shown.
+
+## Checks
+
+TDD: off (no project/session TDD configuration). Runner: app `npm test` (jest). Per phase in `app/`:
+`npx prettier --check .`, `npm run lint`, `npm run typecheck`, `npm test`; Playwright screenshots against the
+QA stack.
+
+QA stack (throwaway, outside the repo): env `.env.uxqa` (gitignored) -> data `~/pachapp-data-uxqa`, API
+`:8096` (`make run ENV_FILE=.env.uxqa`), Expo web `:8095`; 18 garments from
+`~/pachapp-data/eval/public-garments` processed by the worker (BiRefNet), attributes set by PATCH (the worker
+does not classify yet: A15): 15 active, 2 laundry, 1 archived, 5 needs_review.
+
+## Delivery
+
+Forecast ~4,000-6,000 authored lines -> over budget; `ask-on-risk` with the owner's cached chain strategy
+**stacked-to-main**; slices ~ one phase per PR, stacked on `feat/ux-probador`. Native review: assessed per
+work-unit commit; consent prompts are batched for the owner at the end (owner asked not to be interrupted).
+
+## Progress
+
+- 2026-10-01: material copied to `docs/redesign/`; mapping (delegated explorer) of mockup, code and API done;
+  plan shown to the owner; worktree + QA stack ready.
+
+## Next step
+
+P1.
