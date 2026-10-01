@@ -198,8 +198,11 @@ function ReviewForm({
   // Only one collapsed-by-default row is open at a time; doubtful fields are always open.
   const [expanded, setExpanded] = useState<FieldName | null>(null);
   const [choosingColors, setChoosingColors] = useState(false);
-  // The open free-text field registers here so typed-but-unsaved text can be committed on demand.
-  const flushText = useRef<FlushText | null>(null);
+  // Every mounted free-text field registers here so typed-but-unsaved text can be committed on
+  // demand (two fields can be open at once when both are doubtful).
+  const flushers = useRef(new Set<FlushText>());
+  const flushText = async () =>
+    (await Promise.all([...flushers.current].map((flush) => flush()))).every(Boolean);
 
   const value = <K extends keyof Draft>(field: K): Garment[K & keyof Garment] =>
     (field in draft ? draft[field] : garment[field as keyof Garment]) as Garment[K & keyof Garment];
@@ -232,7 +235,7 @@ function ReviewForm({
   const finish = async () => {
     setCompleteError(null);
     // Text still being typed is saved first; if that fails the review stays open with its error.
-    if (!(await (flushText.current?.() ?? true))) return;
+    if (!(await flushText())) return;
     try {
       await complete.mutateAsync();
       router.replace('/(tabs)/wardrobe');
@@ -327,7 +330,7 @@ function ReviewForm({
           <TextField
             label="Subcategoría"
             value={(value('subcategory') as string | null) ?? ''}
-            flushRef={flushText}
+            flushers={flushers}
             onSave={(text) => save('subcategory', { subcategory: text }, text)}
           />
         );
@@ -446,7 +449,7 @@ function ReviewForm({
             <TextField
               label="Material"
               value={(value('material') as string | null) ?? ''}
-              flushRef={flushText}
+              flushers={flushers}
               onSave={(text) => save('material', { material: text }, text)}
             />
             <ChipRow>
@@ -534,7 +537,7 @@ function ReviewForm({
                     accessibilityLabel={`${FIELD_LABELS[name]}, ${summary(name)}`}
                     accessibilityState={{ expanded: open }}
                     onPress={() => {
-                      void flushText.current?.();
+                      void flushText();
                       setExpanded(open ? null : name);
                       if (name === 'colors') setChoosingColors(false);
                     }}
@@ -616,18 +619,18 @@ type FlushText = () => Promise<boolean>;
 
 /**
  * Free-text control: saves on blur / submit when the text changed and is not empty. It also
- * registers `flushRef` so the screen can commit it before finishing or collapsing the row.
+ * registers in `flushers` so the screen can commit it before finishing or collapsing a row.
  */
 function TextField({
   label,
   value,
   onSave,
-  flushRef,
+  flushers,
 }: {
   label: string;
   value: string;
   onSave: (text: string) => Promise<boolean>;
-  flushRef: MutableRefObject<FlushText | null>;
+  flushers: MutableRefObject<Set<FlushText>>;
 }) {
   // `null` = untouched: show the saved value; otherwise the text being typed.
   const [edit, setEdit] = useState<string | null>(null);
@@ -640,9 +643,10 @@ function TextField({
   };
 
   useEffect(() => {
-    flushRef.current = commit;
+    const registry = flushers.current;
+    registry.add(commit);
     return () => {
-      if (flushRef.current === commit) flushRef.current = null;
+      registry.delete(commit);
     };
   });
 

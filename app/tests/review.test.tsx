@@ -220,6 +220,20 @@ describe('ReviewScreen (Revisión)', () => {
     expect(order.indexOf('PATCH')).toBeLessThan(order.indexOf('POST'));
   });
 
+  it('saves pending text in any open field, not only the last one rendered', async () => {
+    // Subcategoría, Formalidad and Material are all doubtful, so all three are open at once.
+    garment = { ...baseGarment(), subcategory: null, formality: null, material: null };
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await fireEvent.changeText(screen.getByLabelText('Subcategoría'), 'polo');
+    // A chip save re-renders the screen while Subcategoría keeps its unsaved text.
+    await fireEvent.press(screen.getByLabelText('Formalidad: 4'));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
+    expect(patches().map((c) => c.body)).toEqual([{ formality: 4 }, { subcategory: 'polo' }]);
+  });
+
   it('saves pending text when another row is opened', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
