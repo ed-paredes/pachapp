@@ -26,6 +26,7 @@ import {
   STYLE_ORDER,
 } from '@/lib/labels';
 import { buildColors, MAX_COLORS, PALETTE_NAMES, paletteHex } from '@/lib/palette';
+import { colors as theme, fontFamilies, fontSizes, lineHeights, radii, spacing } from '@/theme';
 
 type Garment = components['schemas']['GarmentDetail'];
 
@@ -33,6 +34,8 @@ const DEFAULT_NEEDS_REVIEW_THRESHOLD = 0.7;
 const DEFAULT_COLOR_REVIEW_THRESHOLD = 0.7;
 const MAX_STYLE_TAGS = 3;
 const LEVELS = [1, 2, 3, 4, 5];
+/** The review screen spends less of the window on the image so the fields to check fit above the fold. */
+const REVIEW_HERO_HEIGHT_RATIO = 0.24;
 const SAVE_ERROR = 'No se pudo guardar el cambio. Inténtalo de nuevo.';
 
 type FieldName =
@@ -56,6 +59,50 @@ const AI_FIELDS: Exclude<FieldName, 'colors'>[] = [
   'warmth',
   'material',
 ];
+
+/** Order in which the fields are listed, both under "Por revisar" and in the summary rows. */
+const FIELD_ORDER: FieldName[] = [
+  'category',
+  'subcategory',
+  'colors',
+  'pattern',
+  'formality',
+  'style_tags',
+  'seasons',
+  'warmth',
+  'material',
+];
+
+const FIELD_LABELS: Record<FieldName, string> = {
+  category: 'Categoría',
+  subcategory: 'Subcategoría',
+  colors: 'Colores',
+  pattern: 'Estampado',
+  formality: 'Formalidad',
+  style_tags: 'Estilos',
+  seasons: 'Temporadas',
+  warmth: 'Abrigo',
+  material: 'Material',
+};
+
+/** Hints shown inside the editor when the label alone is not enough. */
+const FIELD_HINTS: Partial<Record<FieldName, string>> = {
+  formality: '1 = informal, 5 = formal',
+  style_tags: `Hasta ${MAX_STYLE_TAGS}`,
+  warmth: '1 = fresco, 5 = muy abrigado',
+};
+
+/** Fields that close their row once one value is saved (single choice or free text). */
+const COLLAPSE_AFTER_SAVE = new Set<FieldName>([
+  'category',
+  'subcategory',
+  'pattern',
+  'formality',
+  'warmth',
+  'material',
+]);
+
+const EMPTY_SUMMARY = 'Sin definir';
 
 function isEmpty(value: unknown): boolean {
   return (
@@ -92,7 +139,8 @@ function computeHighlights(
 }
 
 /**
- * Revisión (Review): cutout + one editable control per attribute + the single
+ * Revisión (Review): cutout, the doubtful fields expanded under "Por revisar", every other
+ * field as a one-line summary that expands in place, and the single sticky
  * "Revisión terminada" button (UI-REQ-021, D19).
  */
 export default function ReviewScreen() {
@@ -147,6 +195,9 @@ function ReviewForm({
   const [draft, setDraft] = useState<Draft>({});
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [completeError, setCompleteError] = useState<string | null>(null);
+  // Only one collapsed-by-default row is open at a time; doubtful fields are always open.
+  const [expanded, setExpanded] = useState<FieldName | null>(null);
+  const [choosingColors, setChoosingColors] = useState(false);
 
   const value = <K extends keyof Draft>(field: K): Garment[K & keyof Garment] =>
     (field in draft ? draft[field] : garment[field as keyof Garment]) as Garment[K & keyof Garment];
@@ -157,6 +208,9 @@ function ReviewForm({
     setDraft((current) => ({ ...current, [field]: shown }));
     try {
       await patch.mutateAsync(body);
+      if (COLLAPSE_AFTER_SAVE.has(field)) {
+        setExpanded((current) => (current === field ? null : current));
+      }
     } catch {
       setErrors((current) => ({ ...current, [field]: SAVE_ERROR }));
     } finally {
@@ -184,14 +238,8 @@ function ReviewForm({
   const warmth = value('warmth');
   const styleTags = (value('style_tags') ?? []) as string[];
   const seasons = (value('seasons') ?? []) as string[];
-  const colors = value('colors');
-  const colorNames = (colors ?? []).map((entry) => entry.name);
-
-  const field = (name: FieldName, label: string, children: ReactNode) => (
-    <Field name={name} label={label} highlighted={highlights.has(name)} error={errors[name]}>
-      {children}
-    </Field>
-  );
+  const garmentColors = value('colors');
+  const colorNames = (garmentColors ?? []).map((entry) => entry.name);
 
   const toggleColor = (name: string) => {
     const next = colorNames.includes(name)
@@ -203,251 +251,351 @@ function ReviewForm({
   const toggleIn = (list: string[], item: string) =>
     list.includes(item) ? list.filter((v) => v !== item) : [...list, item];
 
-  return (
-    <ScrollView contentContainerStyle={[styles.container, centeredContentStyle]}>
-      {uri ? <HeroImage uri={uri} testID="review-image" /> : null}
-      {garment.needs_review ? (
-        <View style={styles.badge} testID="review-badge">
-          <Text style={styles.badgeText}>Pendiente de revisión</Text>
-        </View>
-      ) : null}
+  /** One-line text for a collapsed row. */
+  const summary = (name: FieldName): string => {
+    const join = (items: string[]) => (items.length ? items.join(', ') : EMPTY_SUMMARY);
+    switch (name) {
+      case 'category':
+        return category ? CATEGORY_LABELS[category] : EMPTY_SUMMARY;
+      case 'subcategory':
+        return (value('subcategory') as string | null) || EMPTY_SUMMARY;
+      case 'colors':
+        return join(colorNames);
+      case 'pattern':
+        return pattern ? PATTERN_LABELS[pattern] : EMPTY_SUMMARY;
+      case 'formality':
+        return formality ? `${formality} de 5` : EMPTY_SUMMARY;
+      case 'style_tags':
+        return join(styleTags.map((tag) => STYLE_LABELS[tag as keyof typeof STYLE_LABELS] ?? tag));
+      case 'seasons':
+        return join(
+          seasons.map((season) => SEASON_LABELS[season as keyof typeof SEASON_LABELS] ?? season),
+        );
+      case 'warmth':
+        return warmth ? `${warmth} de 5` : EMPTY_SUMMARY;
+      case 'material':
+        return (value('material') as string | null) || EMPTY_SUMMARY;
+    }
+  };
 
-      {field(
-        'category',
-        'Categoría',
-        <ChipRow>
-          {CATEGORY_ORDER.map((key) => (
-            <Chip
-              key={key}
-              group="Categoría"
-              label={CATEGORY_LABELS[key]}
-              selected={category === key}
-              onPress={() => category !== key && void save('category', { category: key }, key)}
-            />
-          ))}
-        </ChipRow>,
-      )}
+  const levels = (
+    group: string,
+    current: number | null | undefined,
+    field: 'formality' | 'warmth',
+  ) => (
+    <ChipRow>
+      {LEVELS.map((level) => (
+        <Chip
+          key={level}
+          group={group}
+          label={String(level)}
+          selected={current === level}
+          onPress={() => current !== level && void save(field, { [field]: level }, level)}
+        />
+      ))}
+    </ChipRow>
+  );
 
-      {field(
-        'subcategory',
-        'Subcategoría',
-        <TextField
-          label="Subcategoría"
-          value={(value('subcategory') as string | null) ?? ''}
-          onSave={(text) => void save('subcategory', { subcategory: text }, text)}
-        />,
-      )}
-
-      {field(
-        'colors',
-        'Colores',
-        <>
-          <View style={styles.swatchRow} testID="color-swatches">
-            {(colors ?? []).map((entry) => (
-              <View key={entry.name} style={styles.swatch}>
-                <View style={[styles.swatchDot, { backgroundColor: entry.hex }]} />
-                <Text style={styles.swatchText}>
-                  {entry.name} {Math.round(entry.proportion * 100)}%
-                </Text>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.hint}>
-            Elige hasta {MAX_COLORS} colores; el primero es el dominante.
-          </Text>
+  const editor = (name: FieldName): ReactNode => {
+    switch (name) {
+      case 'category':
+        return (
           <ChipRow>
-            {PALETTE_NAMES.map((name) => {
-              const selected = colorNames.includes(name);
+            {CATEGORY_ORDER.map((key) => (
+              <Chip
+                key={key}
+                group="Categoría"
+                label={CATEGORY_LABELS[key]}
+                selected={category === key}
+                onPress={() => category !== key && void save('category', { category: key }, key)}
+              />
+            ))}
+          </ChipRow>
+        );
+      case 'subcategory':
+        return (
+          <TextField
+            label="Subcategoría"
+            value={(value('subcategory') as string | null) ?? ''}
+            onSave={(text) => void save('subcategory', { subcategory: text }, text)}
+          />
+        );
+      case 'colors':
+        return (
+          <>
+            <View style={styles.swatchList} testID="color-swatches">
+              {(garmentColors ?? []).map((entry) => (
+                <View key={entry.name} style={styles.swatch}>
+                  <View style={[styles.swatchDot, { backgroundColor: entry.hex }]} />
+                  <Text style={styles.swatchText}>
+                    {entry.name} {Math.round(entry.proportion * 100)} %
+                  </Text>
+                </View>
+              ))}
+              {!garmentColors?.length ? (
+                <Text style={styles.swatchText}>{EMPTY_SUMMARY}</Text>
+              ) : null}
+            </View>
+            {choosingColors ? (
+              <>
+                <Text style={styles.hint}>
+                  Elige hasta {MAX_COLORS} colores; el primero es el dominante.
+                </Text>
+                <ChipRow>
+                  {PALETTE_NAMES.map((paletteName) => {
+                    const selected = colorNames.includes(paletteName);
+                    return (
+                      <Pressable
+                        key={paletteName}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Color: ${paletteName}`}
+                        accessibilityState={{ selected }}
+                        disabled={
+                          (selected && colorNames.length === 1) ||
+                          (!selected && colorNames.length >= MAX_COLORS)
+                        }
+                        onPress={() => toggleColor(paletteName)}
+                        style={[styles.paletteChip, selected && styles.paletteChipSelected]}
+                      >
+                        <View
+                          style={[styles.swatchDot, { backgroundColor: paletteHex(paletteName) }]}
+                        />
+                        <Text style={styles.chipLabel}>{paletteName}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ChipRow>
+                <LinkButton
+                  label="Listo con los colores"
+                  onPress={() => setChoosingColors(false)}
+                />
+              </>
+            ) : (
+              <LinkButton label="Cambiar colores" onPress={() => setChoosingColors(true)} />
+            )}
+          </>
+        );
+      case 'pattern':
+        return (
+          <ChipRow>
+            {PATTERN_ORDER.map((key) => (
+              <Chip
+                key={key}
+                group="Estampado"
+                label={PATTERN_LABELS[key]}
+                selected={pattern === key}
+                onPress={() => pattern !== key && void save('pattern', { pattern: key }, key)}
+              />
+            ))}
+          </ChipRow>
+        );
+      case 'formality':
+        return levels('Formalidad', formality, 'formality');
+      case 'style_tags':
+        return (
+          <ChipRow>
+            {STYLE_ORDER.map((key) => {
+              const selected = styleTags.includes(key);
+              const next = toggleIn(styleTags, key) as components['schemas']['StyleTag'][];
               return (
-                <Pressable
-                  key={name}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Color: ${name}`}
-                  accessibilityState={{ selected }}
-                  disabled={
-                    (selected && colorNames.length === 1) ||
-                    (!selected && colorNames.length >= MAX_COLORS)
-                  }
-                  onPress={() => toggleColor(name)}
-                  style={[styles.paletteChip, selected && styles.paletteChipSelected]}
-                >
-                  <View style={[styles.swatchDot, { backgroundColor: paletteHex(name) }]} />
-                  <Text style={styles.chipLabel}>{name}</Text>
-                </Pressable>
+                <Chip
+                  key={key}
+                  group="Estilo"
+                  label={STYLE_LABELS[key]}
+                  selected={selected}
+                  disabled={!selected && styleTags.length >= MAX_STYLE_TAGS}
+                  onPress={() => void save('style_tags', { style_tags: next }, next)}
+                />
               );
             })}
           </ChipRow>
-        </>,
-      )}
-
-      {field(
-        'pattern',
-        'Estampado',
-        <ChipRow>
-          {PATTERN_ORDER.map((key) => (
-            <Chip
-              key={key}
-              group="Estampado"
-              label={PATTERN_LABELS[key]}
-              selected={pattern === key}
-              onPress={() => pattern !== key && void save('pattern', { pattern: key }, key)}
-            />
-          ))}
-        </ChipRow>,
-      )}
-
-      {field(
-        'formality',
-        'Formalidad (1 = informal, 5 = formal)',
-        <ChipRow>
-          {LEVELS.map((level) => (
-            <Chip
-              key={level}
-              group="Formalidad"
-              label={String(level)}
-              selected={formality === level}
-              onPress={() =>
-                formality !== level && void save('formality', { formality: level }, level)
-              }
-            />
-          ))}
-        </ChipRow>,
-      )}
-
-      {field(
-        'style_tags',
-        `Estilos (máx. ${MAX_STYLE_TAGS})`,
-        <ChipRow>
-          {STYLE_ORDER.map((key) => {
-            const selected = styleTags.includes(key);
-            const next = toggleIn(styleTags, key) as components['schemas']['StyleTag'][];
-            return (
-              <Chip
-                key={key}
-                group="Estilo"
-                label={STYLE_LABELS[key]}
-                selected={selected}
-                disabled={!selected && styleTags.length >= MAX_STYLE_TAGS}
-                onPress={() => void save('style_tags', { style_tags: next }, next)}
-              />
-            );
-          })}
-        </ChipRow>,
-      )}
-
-      {field(
-        'seasons',
-        'Temporadas',
-        <ChipRow>
-          {SEASON_ORDER.map((key) => {
-            const next = toggleIn(seasons, key) as components['schemas']['Season'][];
-            return (
-              <Chip
-                key={key}
-                group="Temporada"
-                label={SEASON_LABELS[key]}
-                selected={seasons.includes(key)}
-                onPress={() => void save('seasons', { seasons: next }, next)}
-              />
-            );
-          })}
-        </ChipRow>,
-      )}
-
-      {field(
-        'warmth',
-        'Abrigo (1 = fresco, 5 = muy abrigado)',
-        <ChipRow>
-          {LEVELS.map((level) => (
-            <Chip
-              key={level}
-              group="Abrigo"
-              label={String(level)}
-              selected={warmth === level}
-              onPress={() => warmth !== level && void save('warmth', { warmth: level }, level)}
-            />
-          ))}
-        </ChipRow>,
-      )}
-
-      {field(
-        'material',
-        'Material',
-        <>
-          <TextField
-            label="Material"
-            value={(value('material') as string | null) ?? ''}
-            onSave={(text) => void save('material', { material: text }, text)}
-          />
+        );
+      case 'seasons':
+        return (
           <ChipRow>
-            {MATERIAL_SUGGESTIONS.map((suggestion) => (
-              <Chip
-                key={suggestion}
-                group="Material"
-                label={suggestion}
-                selected={value('material') === suggestion}
-                onPress={() =>
-                  value('material') !== suggestion &&
-                  void save('material', { material: suggestion }, suggestion)
-                }
-              />
-            ))}
+            {SEASON_ORDER.map((key) => {
+              const next = toggleIn(seasons, key) as components['schemas']['Season'][];
+              return (
+                <Chip
+                  key={key}
+                  group="Temporada"
+                  label={SEASON_LABELS[key]}
+                  selected={seasons.includes(key)}
+                  onPress={() => void save('seasons', { seasons: next }, next)}
+                />
+              );
+            })}
           </ChipRow>
-        </>,
-      )}
+        );
+      case 'warmth':
+        return levels('Abrigo', warmth, 'warmth');
+      case 'material':
+        return (
+          <>
+            <TextField
+              label="Material"
+              value={(value('material') as string | null) ?? ''}
+              onSave={(text) => void save('material', { material: text }, text)}
+            />
+            <ChipRow>
+              {MATERIAL_SUGGESTIONS.map((suggestion) => (
+                <Chip
+                  key={suggestion}
+                  group="Material"
+                  label={suggestion}
+                  selected={value('material') === suggestion}
+                  onPress={() =>
+                    value('material') !== suggestion &&
+                    void save('material', { material: suggestion }, suggestion)
+                  }
+                />
+              ))}
+            </ChipRow>
+          </>
+        );
+    }
+  };
 
-      {completeError ? (
-        <Text style={styles.error} testID="complete-error">
-          {completeError}
-        </Text>
-      ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Revisión terminada"
-        onPress={() => void finish()}
-        style={styles.done}
-      >
-        <Text style={styles.doneText}>Revisión terminada</Text>
-      </Pressable>
-    </ScrollView>
-  );
-}
+  const errorText = (name: FieldName) =>
+    errors[name] ? (
+      <Text style={styles.error} testID={`error-${name}`}>
+        {errors[name]}
+      </Text>
+    ) : null;
 
-function Field({
-  name,
-  label,
-  highlighted,
-  error,
-  children,
-}: {
-  name: FieldName;
-  label: string;
-  highlighted: boolean;
-  error?: string;
-  children: ReactNode;
-}) {
+  const reviewFields = FIELD_ORDER.filter((name) => highlights.has(name));
+  const otherFields = FIELD_ORDER.filter((name) => !highlights.has(name));
+
   return (
-    <View testID={`field-${name}`} style={[styles.field, highlighted && styles.fieldHighlighted]}>
-      <View style={styles.fieldHeader}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        {highlighted ? (
-          <Text style={styles.doubt} testID={`highlight-${name}`}>
-            Revisar
-          </Text>
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.scroll}
+        testID="review-scroll"
+        contentContainerStyle={[styles.container, centeredContentStyle]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {uri ? (
+          <HeroImage
+            uri={uri}
+            testID="review-image"
+            maxHeightRatio={REVIEW_HERO_HEIGHT_RATIO}
+            compact
+          />
         ) : null}
+
+        {reviewFields.length || garment.needs_review ? (
+          <View style={styles.groupHeader}>
+            <Text style={styles.groupTitle} accessibilityRole="header">
+              {reviewFields.length ? 'Por revisar' : 'Ficha de la prenda'}
+            </Text>
+            {garment.needs_review ? (
+              <View style={styles.badge} testID="review-badge">
+                <Text style={styles.badgeText}>Pendiente de revisión</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {reviewFields.map((name) => (
+          <View key={name} testID={`field-${name}`} style={styles.reviewField}>
+            <View style={styles.fieldHeader}>
+              <Text style={styles.reviewLabel}>{FIELD_LABELS[name]}</Text>
+              <Text style={styles.doubt} testID={`highlight-${name}`}>
+                Revisar
+              </Text>
+            </View>
+            {FIELD_HINTS[name] ? <Text style={styles.hint}>{FIELD_HINTS[name]}</Text> : null}
+            {editor(name)}
+            {errorText(name)}
+          </View>
+        ))}
+
+        {otherFields.length ? (
+          <View style={styles.rows}>
+            {reviewFields.length ? <Text style={styles.restTitle}>Resto de la ficha</Text> : null}
+            {otherFields.map((name) => {
+              const open = expanded === name;
+              return (
+                <View key={name} testID={`field-${name}`} style={styles.row}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${FIELD_LABELS[name]}, ${summary(name)}`}
+                    accessibilityState={{ expanded: open }}
+                    onPress={() => {
+                      setExpanded(open ? null : name);
+                      if (name === 'colors') setChoosingColors(false);
+                    }}
+                    style={styles.rowHeader}
+                  >
+                    <Text style={styles.rowLabel}>{FIELD_LABELS[name]}</Text>
+                    {name === 'colors' && !open ? (
+                      <View style={styles.rowDots}>
+                        {(garmentColors ?? []).map((entry) => (
+                          <View
+                            key={entry.name}
+                            style={[styles.swatchDot, { backgroundColor: entry.hex }]}
+                          />
+                        ))}
+                      </View>
+                    ) : null}
+                    <Text style={styles.rowValue} numberOfLines={1}>
+                      {summary(name)}
+                    </Text>
+                    <Text style={[styles.chevron, open && styles.chevronOpen]}>›</Text>
+                  </Pressable>
+                  {open ? (
+                    <View style={styles.rowEditor}>
+                      {FIELD_HINTS[name] ? (
+                        <Text style={styles.hint}>{FIELD_HINTS[name]}</Text>
+                      ) : null}
+                      {editor(name)}
+                    </View>
+                  ) : null}
+                  {errorText(name)}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <View style={[styles.footerInner, centeredContentStyle]}>
+          {completeError ? (
+            <Text style={styles.error} testID="complete-error">
+              {completeError}
+            </Text>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Revisión terminada"
+            onPress={() => void finish()}
+            style={({ pressed }) => [styles.done, pressed && styles.donePressed]}
+          >
+            <Text style={styles.doneText}>Revisión terminada</Text>
+          </Pressable>
+        </View>
       </View>
-      {children}
-      {error ? (
-        <Text style={styles.error} testID={`error-${name}`}>
-          {error}
-        </Text>
-      ) : null}
     </View>
   );
 }
 
 function ChipRow({ children }: { children: ReactNode }) {
   return <View style={styles.chipRow}>{children}</View>;
+}
+
+function LinkButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={8}
+      style={styles.link}
+    >
+      <Text style={styles.linkText}>{label}</Text>
+    </Pressable>
+  );
 }
 
 /** Free-text control: saves on blur / submit when the text changed and is not empty. */
@@ -477,60 +625,167 @@ function TextField({
       onChangeText={setEdit}
       onBlur={commit}
       onSubmitEditing={commit}
-      placeholder="Sin definir"
+      placeholder={EMPTY_SUMMARY}
+      placeholderTextColor={theme.muted}
       style={styles.input}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12 },
-  badge: {
-    alignSelf: 'flex-start',
-    paddingVertical: 2,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#F79009',
+  screen: { flex: 1, backgroundColor: theme.stone },
+  scroll: { flex: 1 },
+  container: { padding: spacing.lg, gap: spacing.md },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginTop: spacing.xs,
   },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  field: { gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' },
-  fieldHighlighted: { borderColor: '#F79009', backgroundColor: '#FFF7E6' },
-  fieldHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  fieldLabel: { fontSize: 14, fontWeight: '600' },
-  doubt: { fontSize: 12, fontWeight: '700', color: '#B54708' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  groupTitle: {
+    fontFamily: fontFamilies.display,
+    fontSize: fontSizes.title,
+    lineHeight: lineHeights.title,
+    color: theme.charcoal,
+  },
+  badge: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
+    backgroundColor: theme.brass,
+  },
+  badgeText: {
+    color: theme.onBrass,
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.caption,
+    lineHeight: lineHeights.caption,
+  },
+  reviewField: {
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingVertical: spacing.xs,
+    borderLeftWidth: 3,
+    borderLeftColor: theme.brass,
+  },
+  fieldHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  reviewLabel: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.body,
+    lineHeight: lineHeights.body,
+    color: theme.charcoal,
+  },
+  doubt: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.caption,
+    color: theme.muted,
+  },
+  restTitle: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.small,
+    color: theme.muted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  rows: { borderTopWidth: 1, borderTopColor: theme.hairline },
+  row: { borderBottomWidth: 1, borderBottomColor: theme.hairline },
+  rowHeader: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  rowLabel: {
+    width: 112,
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.small,
+    color: theme.muted,
+  },
+  rowDots: { flexDirection: 'row', gap: 4 },
+  rowValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.small,
+    color: theme.charcoal,
+  },
+  chevron: { fontSize: fontSizes.title, lineHeight: lineHeights.title, color: theme.muted },
+  chevronOpen: { transform: [{ rotate: '90deg' }] },
+  rowEditor: { gap: spacing.sm, paddingBottom: spacing.md },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  swatchList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   swatch: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatchDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 1, borderColor: '#D0D5DD' },
-  swatchText: { fontSize: 13 },
-  hint: { fontSize: 12, opacity: 0.7 },
+  swatchDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.hairline,
+  },
+  swatchText: {
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.small,
+    color: theme.charcoal,
+  },
+  hint: { fontFamily: fontFamilies.body, fontSize: fontSizes.caption, color: theme.muted },
   paletteChip: {
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 16,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
+    borderColor: theme.hairline,
+    backgroundColor: theme.plinth,
   },
-  paletteChipSelected: { borderColor: '#208AEF', borderWidth: 2 },
-  chipLabel: { fontSize: 13 },
+  paletteChipSelected: { borderColor: theme.olive, borderWidth: 2 },
+  chipLabel: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.small,
+    color: theme.charcoal,
+  },
+  link: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  linkText: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.small,
+    color: theme.olive,
+    textDecorationLine: 'underline',
+  },
   input: {
+    minHeight: 44,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    fontSize: 15,
+    borderColor: theme.hairline,
+    borderRadius: radii.sm,
+    backgroundColor: theme.plinth,
+    paddingHorizontal: spacing.md,
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.body,
+    color: theme.charcoal,
   },
-  error: { fontSize: 13, color: '#B42318' },
+  error: {
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.small,
+    color: theme.error,
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: theme.hairline,
+    backgroundColor: theme.stone,
+  },
+  footerInner: { padding: spacing.lg, gap: spacing.sm },
   done: {
-    marginTop: 8,
-    paddingVertical: 14,
-    borderRadius: 10,
+    minHeight: 48,
+    borderRadius: radii.sm,
     alignItems: 'center',
-    backgroundColor: '#208AEF',
+    justifyContent: 'center',
+    backgroundColor: theme.olive,
   },
-  doneText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  donePressed: { opacity: 0.85 },
+  doneText: {
+    color: theme.onOlive,
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.body,
+  },
 });
