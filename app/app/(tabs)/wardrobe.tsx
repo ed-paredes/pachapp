@@ -187,12 +187,7 @@ export default function WardrobeScreen() {
           />
         ))}
       </ScrollView>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.row}
-        contentContainerStyle={styles.chips}
-      >
+      <View style={styles.statusRow}>
         <Segmented
           accessibilityLabel="Estado"
           options={segmentOptions}
@@ -208,7 +203,7 @@ export default function WardrobeScreen() {
             testID="review-filter"
           />
         ) : null}
-      </ScrollView>
+      </View>
       {pendingReview > 0 ? (
         <Banner
           testID="review-banner"
@@ -321,6 +316,8 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 6, paddingTop: spacing.md },
   // A horizontal ScrollView must not grow: on web it would otherwise stretch to fill the column.
   row: { flexGrow: 0, flexShrink: 0 },
+  // Status control: the segments shrink to the screen width, so no horizontal scroll here.
+  statusRow: { gap: spacing.sm, alignItems: 'flex-start' },
   chips: { gap: spacing.sm, alignItems: 'center', paddingVertical: 2 },
   gridRow: { gap: GAP },
   emptyBox: { alignItems: 'center', gap: spacing.lg, paddingVertical: spacing.xxl },
