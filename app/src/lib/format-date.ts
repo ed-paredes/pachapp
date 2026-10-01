@@ -20,3 +20,33 @@ export function formatLastWorn(iso: string | null, now: Date = new Date()): stri
     ? `${date.getDate()} ${month}`
     : `${month} ${date.getFullYear()}`;
 }
+
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MONTH_NAMES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+/** "Jueves, 1 de octubre" (es-ES, capitalised; hand-built so it does not depend on `Intl`). */
+export function formatToday(now: Date = new Date()): string {
+  const weekday = WEEKDAYS[now.getDay()];
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
+}
+
+/** "Buenos días" until noon, "Buenas tardes" until 8 pm, "Buenas noches" otherwise. */
+export function greeting(now: Date = new Date()): string {
+  const hour = now.getHours();
+  if (hour >= 6 && hour < 12) return 'Buenos días';
+  if (hour >= 12 && hour < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+}
