@@ -12,7 +12,7 @@ type CaptureTipsPanelProps = {
 
 const TIPS = [
   'Fotografía una sola prenda por foto.',
-  'Extiéndela sobre un fondo liso o cuélgala en una percha.',
+  'Extiéndela sobre una superficie lisa, sin percha.',
   'Usa luz natural siempre que puedas.',
 ];
 
