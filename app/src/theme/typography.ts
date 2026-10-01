@@ -3,6 +3,9 @@ import type { TextStyle } from 'react-native';
 /** Loaded font family names (see `fontAssets` in `fonts.ts`). */
 export const fontFamilies = {
   display: 'Fraunces_600SemiBold',
+  /** Light-weight Fraunces for page titles, hero text and numbers. */
+  displayRegular: 'Fraunces_400Regular',
+  displayItalic: 'Fraunces_400Regular_Italic',
   body: 'Manrope_400Regular',
   bodyMedium: 'Manrope_500Medium',
   bodySemiBold: 'Manrope_600SemiBold',
@@ -28,7 +31,20 @@ export const lineHeights = {
   display: 42,
 } as const;
 
-type TextVariant = 'caption' | 'small' | 'body' | 'title' | 'headline' | 'display';
+type TextVariant =
+  | 'caption'
+  | 'small'
+  | 'body'
+  | 'title'
+  | 'headline'
+  | 'display'
+  // Redesign scale. `pageTitle` is the redesign "title" (34 dp); `title` keeps its 20 dp meaning.
+  | 'hero'
+  | 'pageTitle'
+  | 'section'
+  | 'stat'
+  | 'eyebrow'
+  | 'label';
 
 /** Ready-made text styles. Titles use Fraunces, everything else Manrope. */
 export const textStyles: Record<TextVariant, TextStyle> = {
@@ -62,4 +78,26 @@ export const textStyles: Record<TextVariant, TextStyle> = {
     fontSize: fontSizes.display,
     lineHeight: lineHeights.display,
   },
+  hero: {
+    fontFamily: fontFamilies.displayRegular,
+    fontSize: 44,
+    lineHeight: 46,
+    letterSpacing: -0.9,
+  },
+  pageTitle: {
+    fontFamily: fontFamilies.displayRegular,
+    fontSize: 34,
+    lineHeight: 37,
+    letterSpacing: -0.6,
+  },
+  section: { fontFamily: fontFamilies.display, fontSize: 20, lineHeight: 26 },
+  stat: { fontFamily: fontFamilies.displayRegular, fontSize: 28, lineHeight: 30 },
+  eyebrow: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  label: { fontFamily: fontFamilies.bodyMedium, fontSize: 13.5, lineHeight: 18 },
 };

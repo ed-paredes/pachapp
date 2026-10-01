@@ -2,9 +2,13 @@
 export const radii = {
   /** Badges and small marks. */
   xs: 4,
-  /** Buttons, inputs. */
-  sm: 8,
-  /** Chips. */
+  /** Season squares, calendar cells, inputs. */
+  sm: 12,
+  /** Cards and garment images. */
+  md: 18,
+  /** Large canvases and upload zones. */
+  lg: 28,
+  /** Chips, buttons, pills. */
   pill: 999,
   /** Garment plinth tiles. */
   tile: 14,
