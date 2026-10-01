@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { AppHeader, FloatingTabBar, useTabBarSpace } from '@/components/ui';
+import { AppHeader, FloatingTabBar } from '@/components/ui';
 import { colors } from '@/theme';
 
 /**
@@ -10,24 +10,19 @@ import { colors } from '@/theme';
  * Ajustes are stack screens reached from here or from within a tab.
  */
 export default function TabsLayout() {
-  const legacyInset = useTabBarSpace();
   return (
     <Tabs
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         header: () => <AppHeader />,
-        // The bar floats over the scenes, so they need room below their content. Screens built on
-        // `Screen` pad themselves; this inset covers the ones that are not migrated yet (P2-P5
-        // remove it as they move to `Screen`).
-        sceneStyle: { backgroundColor: colors.bg, paddingBottom: legacyInset },
+        // Every scene is built on `Screen`, which pads itself for the floating bar.
+        sceneStyle: { backgroundColor: colors.bg },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Hoy',
-          // Hoy is built on `Screen`, which pads itself for the floating bar.
-          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'house.fill', android: 'home', web: 'home' }}
@@ -41,8 +36,6 @@ export default function TabsLayout() {
         name="wardrobe"
         options={{
           title: 'Armario',
-          // Armario is built on `Screen`, which pads itself for the floating bar.
-          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'tshirt.fill', android: 'checkroom', web: 'checkroom' }}
@@ -56,8 +49,6 @@ export default function TabsLayout() {
         name="add"
         options={{
           title: 'Añadir',
-          // Añadir is built on `Screen`, which pads itself for the floating bar.
-          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'plus', android: 'add', web: 'add' }}
