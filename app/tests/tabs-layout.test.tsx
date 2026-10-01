@@ -7,7 +7,8 @@ describe('tabs layout', () => {
 
     expect(testingLibrary.screen.getAllByText('Hoy').length).toBeGreaterThan(0);
     expect(testingLibrary.screen.getAllByText('Armario').length).toBeGreaterThan(0);
-    expect(testingLibrary.screen.getAllByText('Añadir').length).toBeGreaterThan(0);
+    // Añadir is a round accent button with no visible label; it is reachable by its accessible name.
+    expect(testingLibrary.screen.queryByText('Añadir')).toBeNull();
     expect(testingLibrary.screen.getAllByText('Historial').length).toBeGreaterThan(0);
 
     // Exactness: every tab button is labelled "<title>, tab, N of <total>",

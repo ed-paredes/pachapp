@@ -1,27 +1,8 @@
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Tabs } from 'expo-router';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors, fontFamilies, fontSizes } from '@/theme';
-
-/**
- * Header icon that opens Ajustes (UI-REQ-002: "Ajustes desde un icono de
- * cabecera"). 07 doesn't say which tab carries it, so it's placed on every
- * tab's header for consistent access from anywhere in the bottom tabs.
- */
-function SettingsHeaderButton() {
-  return (
-    <Link href="/settings" asChild>
-      <Pressable accessibilityRole="button" accessibilityLabel="Abrir ajustes" hitSlop={8}>
-        <IconSymbol
-          name={{ ios: 'gearshape.fill', android: 'settings', web: 'settings' }}
-          size={22}
-          color={colors.charcoal}
-        />
-      </Pressable>
-    </Link>
-  );
-}
+import { AppHeader, FloatingTabBar, useTabBarSpace } from '@/components/ui';
+import { colors } from '@/theme';
 
 /**
  * Bottom tabs (UI-REQ-002): exactly Hoy, Armario, Añadir, Historial, reused
@@ -29,33 +10,16 @@ function SettingsHeaderButton() {
  * Ajustes are stack screens reached from here or from within a tab.
  */
 export default function TabsLayout() {
+  const legacyInset = useTabBarSpace();
   return (
     <Tabs
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        headerRight: () => <SettingsHeaderButton />,
-        headerRightContainerStyle: { paddingRight: 16 },
-        headerStyle: { backgroundColor: colors.plinth },
-        headerShadowVisible: false,
-        headerTitleStyle: {
-          fontFamily: fontFamilies.display,
-          fontSize: fontSizes.title,
-          color: colors.charcoal,
-        },
-        sceneStyle: { backgroundColor: colors.stone },
-        tabBarActiveTintColor: colors.olive,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: {
-          fontFamily: fontFamilies.bodyMedium,
-          fontSize: fontSizes.caption,
-          lineHeight: 14,
-          marginBottom: 2,
-          // The web bar is 49 dp tall; without this the label is squeezed to 10 px and clipped.
-          flexShrink: 0,
-        },
-        tabBarStyle: {
-          backgroundColor: colors.plinth,
-          borderTopColor: colors.hairline,
-        },
+        header: () => <AppHeader />,
+        // The bar floats over the scenes, so they need room below their content. Screens built on
+        // `Screen` pad themselves; this inset covers the ones that are not migrated yet (P2-P5
+        // remove it as they move to `Screen`).
+        sceneStyle: { backgroundColor: colors.bg, paddingBottom: legacyInset },
       }}
     >
       <Tabs.Screen
@@ -65,7 +29,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'house.fill', android: 'home', web: 'home' }}
-              size={Math.min(size, 20)}
+              size={size}
               color={color}
             />
           ),
@@ -78,7 +42,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'tshirt.fill', android: 'checkroom', web: 'checkroom' }}
-              size={Math.min(size, 20)}
+              size={size}
               color={color}
             />
           ),
@@ -90,8 +54,8 @@ export default function TabsLayout() {
           title: 'Añadir',
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
-              name={{ ios: 'plus.circle.fill', android: 'add_circle', web: 'add_circle' }}
-              size={Math.min(size, 20)}
+              name={{ ios: 'plus', android: 'add', web: 'add' }}
+              size={size}
               color={color}
             />
           ),
@@ -104,7 +68,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'clock.arrow.circlepath', android: 'history', web: 'history' }}
-              size={Math.min(size, 20)}
+              size={size}
               color={color}
             />
           ),

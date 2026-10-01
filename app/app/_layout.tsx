@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
+import { ToastProvider } from '@/components/ui';
 import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
 
 // Keep the splash up until the fonts are ready. Failing to do so only means a
@@ -24,25 +25,27 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.plinth },
-          headerShadowVisible: false,
-          headerTintColor: colors.olive,
-          headerTitleStyle: {
-            fontFamily: fontFamilies.display,
-            fontSize: fontSizes.title,
-            color: colors.charcoal,
-          },
-          contentStyle: { backgroundColor: colors.stone },
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="review/[id]" options={{ title: 'Revisión' }} />
-        <Stack.Screen name="garments/[id]" options={{ title: 'Detalle de prenda' }} />
-        <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
-        <Stack.Screen name="settings" options={{ title: 'Ajustes' }} />
-      </Stack>
+      <ToastProvider>
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.plinth },
+            headerShadowVisible: false,
+            headerTintColor: colors.olive,
+            headerTitleStyle: {
+              fontFamily: fontFamilies.display,
+              fontSize: fontSizes.title,
+              color: colors.charcoal,
+            },
+            contentStyle: { backgroundColor: colors.stone },
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="review/[id]" options={{ title: 'Revisión' }} />
+          <Stack.Screen name="garments/[id]" options={{ title: 'Detalle de prenda' }} />
+          <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
+          <Stack.Screen name="settings" options={{ title: 'Ajustes' }} />
+        </Stack>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
