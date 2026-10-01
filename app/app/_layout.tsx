@@ -45,7 +45,8 @@ export default function RootLayout() {
           {/* Detalle draws its own back button over the hero. */}
           <Stack.Screen name="garments/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
-          <Stack.Screen name="settings" options={{ title: 'Ajustes' }} />
+          {/* Ajustes draws its own back button and title, like Revisión. */}
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
         </Stack>
       </ToastProvider>
     </QueryClientProvider>

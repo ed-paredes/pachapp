@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { Button } from '@/components/ui';
 
 import { usePatchSettings, type SettingsPatch } from '@/hooks/useSettings';
 import {
@@ -10,6 +12,7 @@ import {
   type EngineFields,
   type EngineSettings,
 } from '@/lib/engine-settings';
+import { colors, fontFamilies, radii, spacing } from '@/theme';
 
 const FIELDS: { key: keyof EngineFields; label: string; hint?: string }[] = [
   { key: 'weight_color', label: 'Peso de color', hint: '0 a 1' },
@@ -64,24 +67,26 @@ export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
 
   return (
     <View style={styles.form}>
-      {FIELDS.map(({ key, label, hint }) => (
-        <View key={key} style={styles.field}>
-          <Text style={styles.label}>{label}</Text>
-          <TextInput
-            accessibilityLabel={label}
-            value={fields[key]}
-            onChangeText={(value) => change(key, value)}
-            keyboardType={WEIGHT_KEYS.includes(key) ? 'decimal-pad' : 'number-pad'}
-            style={[styles.input, errors[key] ? styles.inputError : null]}
-          />
-          {errors[key] ? (
-            <Text style={styles.error}>{errors[key]}</Text>
-          ) : hint ? (
-            <Text style={styles.hint}>{hint}</Text>
-          ) : null}
-        </View>
-      ))}
-      <Text style={styles.hint} testID="weight-sum">
+      <View style={styles.grid}>
+        {FIELDS.map(({ key, label, hint }) => (
+          <View key={key} style={styles.field}>
+            <Text style={styles.label}>{label}</Text>
+            <TextInput
+              accessibilityLabel={label}
+              value={fields[key]}
+              onChangeText={(value) => change(key, value)}
+              keyboardType={WEIGHT_KEYS.includes(key) ? 'decimal-pad' : 'number-pad'}
+              style={[styles.input, errors[key] ? styles.inputError : null]}
+            />
+            {errors[key] ? (
+              <Text style={styles.error}>{errors[key]}</Text>
+            ) : hint ? (
+              <Text style={styles.hint}>{hint}</Text>
+            ) : null}
+          </View>
+        ))}
+      </View>
+      <Text style={styles.sum} testID="weight-sum">
         {sum === null ? 'Suma de pesos: —' : `Suma de pesos: ${formatWeight(sum)} (debe ser 1,00)`}
       </Text>
       {errors.form ? <Text style={styles.error}>{errors.form}</Text> : null}
@@ -91,42 +96,38 @@ export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
         </Text>
       ) : null}
       {saved ? <Text style={styles.ok}>Ajustes guardados</Text> : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Guardar"
-        disabled={patch.isPending}
-        onPress={save}
-        style={[styles.button, patch.isPending ? styles.buttonDisabled : null]}
-      >
-        <Text style={styles.buttonText}>{patch.isPending ? 'Guardando…' : 'Guardar'}</Text>
-      </Pressable>
+      <View style={styles.action}>
+        <Button
+          label={patch.isPending ? 'Guardando…' : 'Guardar'}
+          accessibilityLabel="Guardar"
+          disabled={patch.isPending}
+          onPress={save}
+        />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: 12 },
-  field: { gap: 4 },
-  label: { fontSize: 14, fontWeight: '600' },
+  form: { gap: spacing.lg },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
+  field: { flexGrow: 1, flexBasis: 240, gap: 6 },
+  label: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: colors.ink },
   input: {
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    borderColor: colors.lineStrong,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    fontFamily: fontFamilies.body,
     fontSize: 16,
+    color: colors.ink,
   },
-  inputError: { borderColor: '#B42318' },
-  hint: { fontSize: 12, opacity: 0.6 },
-  error: { fontSize: 13, color: '#B42318' },
-  ok: { fontSize: 14, color: '#1a7f37' },
-  button: {
-    alignSelf: 'flex-start',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: '#208AEF',
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#fff', fontWeight: '600' },
+  inputError: { borderColor: colors.danger, borderWidth: 2 },
+  hint: { fontFamily: fontFamilies.body, fontSize: 13, lineHeight: 18, color: colors.ink2 },
+  sum: { fontFamily: fontFamilies.bodyMedium, fontSize: 13.5, color: colors.ink2 },
+  error: { fontFamily: fontFamilies.body, fontSize: 13.5, lineHeight: 19, color: colors.danger },
+  ok: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: colors.okText },
+  action: { alignSelf: 'flex-start' },
 });
