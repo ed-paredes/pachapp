@@ -18,7 +18,6 @@ export function AddChip({ label = '+ Añadir', accessibilityLabel, onPress }: Ad
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      hitSlop={{ top: 4, bottom: 4 }}
       onPress={onPress}
       style={(state) => [styles.chip, pressFeedback(state)]}
     >
@@ -29,7 +28,7 @@ export function AddChip({ label = '+ Añadir', accessibilityLabel, onPress }: Ad
 
 const styles = StyleSheet.create({
   chip: {
-    minHeight: 36,
+    minHeight: 44,
     alignSelf: 'flex-start',
     justifyContent: 'center',
     paddingHorizontal: 12,

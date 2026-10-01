@@ -1,26 +1,28 @@
 import { Link } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconSymbol } from '@/components/IconSymbol';
 import { CONTENT_MAX_WIDTH, colors, fontFamilies, radii, spacing } from '@/theme';
 
-import type { PressState } from './feedback';
-
 /**
  * Header icon that opens Ajustes (UI-REQ-002: "Ajustes desde un icono de cabecera"). It sits in
  * the header of every tab for consistent access from anywhere in the bottom tabs.
  */
 function SettingsButton() {
+  const [active, setActive] = useState(false);
   return (
     <Link href="/settings" asChild>
+      {/* `Link asChild` drops a style callback and rejects a style array: flatten it. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Abrir ajustes"
-        style={({ hovered, pressed }: PressState) => [
-          styles.round,
-          (hovered || pressed) && styles.roundActive,
-        ]}
+        onHoverIn={() => setActive(true)}
+        onHoverOut={() => setActive(false)}
+        onPressIn={() => setActive(true)}
+        onPressOut={() => setActive(false)}
+        style={StyleSheet.flatten([styles.round, active && styles.roundActive])}
       >
         <IconSymbol
           name={{ ios: 'gearshape', android: 'settings', web: 'settings' }}

@@ -5,7 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
-import { ToastProvider } from '@/components/ui';
+import { ToastProvider, WebFocusRing } from '@/components/ui';
 import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
 
 // Keep the splash up until the fonts are ready. Failing to do so only means a
@@ -26,6 +26,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        <WebFocusRing />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.plinth },
