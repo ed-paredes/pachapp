@@ -1,6 +1,9 @@
 /** @type {import('jest').Config} */
 module.exports = {
   preset: 'jest-expo',
+  // Reanimated needs its worklets runtime; this resolver picks the JS (non-native) implementation
+  // so animated components render under Jest.
+  resolver: 'react-native-worklets/jest/resolver',
   testMatch: ['<rootDir>/tests/**/*.test.[jt]s?(x)'],
   setupFiles: ['<rootDir>/jest.setup.js'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup-after-env.js'],
