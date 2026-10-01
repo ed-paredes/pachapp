@@ -206,6 +206,53 @@ describe('ReviewScreen (Revisión)', () => {
     expect(patches()[0].body).toEqual({ material: 'lana merino' });
   });
 
+  it('saves pending text before "Revisión terminada" completes the review', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    await fireEvent.changeText(screen.getByLabelText('Material'), 'lana merino');
+    // No blur or submit: the footer button is tapped while the field is still focused.
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
+    expect(patches()).toHaveLength(1);
+    expect(patches()[0].body).toEqual({ material: 'lana merino' });
+    const order = calls.map((c) => c.method);
+    expect(order.indexOf('PATCH')).toBeLessThan(order.indexOf('POST'));
+  });
+
+  it('saves pending text when another row is opened', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    await fireEvent.changeText(screen.getByLabelText('Material'), 'lana merino');
+    await openRow('Formalidad');
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(patches()[0].body).toEqual({ material: 'lana merino' });
+  });
+
+  it('does not save unchanged text when finishing', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(patches()).toHaveLength(0);
+  });
+
+  it('does not complete the review when saving pending text fails', async () => {
+    patchStatus = 500;
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    await fireEvent.changeText(screen.getByLabelText('Material'), 'lana merino');
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    expect(await screen.findByTestId('error-material')).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(
+      calls.filter((c) => c.method === 'POST' && c.path === '/garments/g1/review/complete'),
+    ).toHaveLength(0);
+  });
+
   it('edits colours with a valid PATCH body (descending proportions, sum <= 1)', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
