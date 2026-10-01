@@ -70,6 +70,7 @@ const settings = {
 type Call = { method: string; path: string; body: unknown };
 let calls: Call[];
 let patchStatus: number;
+let patchGate: Promise<void> | null;
 
 async function handle(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -84,6 +85,7 @@ async function handle(request: Request): Promise<Response> {
   if (request.method === 'GET' && url.pathname === '/settings') return json(settings);
   if (request.method === 'GET' && url.pathname === '/garments/g1') return json(garment);
   if (request.method === 'PATCH' && url.pathname === '/garments/g1') {
+    if (patchGate) await patchGate;
     if (patchStatus !== 200) {
       return json({ error: { code: 'X', message: 'boom', details: null } }, patchStatus);
     }
@@ -127,6 +129,7 @@ describe('ReviewScreen (Revisión)', () => {
     garment = baseGarment();
     calls = [];
     patchStatus = 200;
+    patchGate = null;
     mockReplace.mockClear();
     globalThis.fetch = jest.fn((input: Request) => handle(input)) as unknown as typeof fetch;
   });
@@ -260,6 +263,45 @@ describe('ReviewScreen (Revisión)', () => {
     await fireEvent.press(screen.getByLabelText('Revisión terminada'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(patches()).toHaveLength(0);
+  });
+
+  it('waits for a save started by blur before completing the review', async () => {
+    let release = () => {};
+    patchGate = new Promise<void>((resolve) => (release = resolve));
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    const input = screen.getByLabelText('Material');
+    await fireEvent.changeText(input, 'lana merino');
+    await fireEvent(input, 'blur');
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    release();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
+    expect(patches()).toHaveLength(1);
+    const order = calls.map((c) => c.method);
+    expect(order.indexOf('PATCH')).toBeLessThan(order.indexOf('POST'));
+  });
+
+  it('keeps the review open when a save started by blur fails', async () => {
+    let release = () => {};
+    patchGate = new Promise<void>((resolve) => (release = resolve));
+    patchStatus = 500;
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Material');
+    const input = screen.getByLabelText('Material');
+    await fireEvent.changeText(input, 'lana merino');
+    await fireEvent(input, 'blur');
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    release();
+    expect(await screen.findByTestId('error-material')).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    expect(patches()).toHaveLength(1);
   });
 
   it('does not complete the review when saving pending text fails', async () => {

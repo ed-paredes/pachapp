@@ -760,14 +760,30 @@ function TextField({
   onSave: (text: string) => Promise<boolean>;
   flushers: MutableRefObject<Set<FlushText>>;
 }) {
-  // `null` = untouched: show the saved value; otherwise the text being typed.
+  // `null` = untouched: show the saved value; otherwise the text being typed. `typed` mirrors it
+  // synchronously so a commit from a stale closure (blur then tap) never sends the text twice.
   const [edit, setEdit] = useState<string | null>(null);
+  const typed = useRef<string | null>(null);
+  // The save a blur/submit already started: flushing waits for it instead of resolving early.
+  const saving = useRef<Promise<boolean> | null>(null);
+
+  const change = (text: string) => {
+    typed.current = text;
+    setEdit(text);
+  };
 
   const commit: FlushText = async () => {
-    if (edit === null) return true;
-    const trimmed = edit.trim();
+    const text = typed.current;
+    if (text === null) return saving.current ?? true;
+    const trimmed = text.trim();
+    typed.current = null;
     setEdit(null);
-    return trimmed && trimmed !== value ? onSave(trimmed) : true;
+    if (!trimmed || trimmed === value) return saving.current ?? true;
+    const save = onSave(trimmed).finally(() => {
+      if (saving.current === save) saving.current = null;
+    });
+    saving.current = save;
+    return save;
   };
 
   useEffect(() => {
@@ -782,7 +798,7 @@ function TextField({
     <TextInput
       accessibilityLabel={label}
       value={edit ?? value}
-      onChangeText={setEdit}
+      onChangeText={change}
       onBlur={() => void commit()}
       onSubmitEditing={() => void commit()}
       placeholder={placeholder}
