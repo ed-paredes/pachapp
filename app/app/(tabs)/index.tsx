@@ -46,6 +46,14 @@ export default function TodayScreen() {
     page_size: USAGE_PAGE_SIZE,
   });
 
+  // Wardrobe size reuses the two queries above: the no-proposal state must not flash the wrong copy.
+  const wardrobeSize: number | 'loading' | 'unknown' =
+    laundry.isError || active.isError
+      ? 'unknown'
+      : laundry.data && active.data
+        ? laundry.data.total + active.data.total
+        : 'loading';
+
   const laundryTotal = laundry.data?.total ?? 0;
   const laundryTip: TodayTip | undefined =
     laundryTotal > 0
@@ -74,7 +82,9 @@ export default function TodayScreen() {
       proposal={proposal}
       laundryTip={laundryTip}
       usageTip={usageTip}
+      wardrobeSize={wardrobeSize}
       onAddGarment={() => router.push('/(tabs)/add')}
+      onOpenWardrobe={() => router.push('/(tabs)/wardrobe')}
     />
   );
 }

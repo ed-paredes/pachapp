@@ -40,7 +40,7 @@ Login/sesión (aplazado), exportación de datos (aplazada, ver Conflictos), try-
 
 **UI-REQ-004.** Armario: estado de carga con skeleton de cuadrícula; estado vacío con copy en español invitando a "Añadir" la primera prenda; insignia visible en las miniaturas de prendas con `needs_review = true`.
 
-**UI-REQ-005.** Hoy: spinner mientras `POST /outfits/generate` está en curso; estado de error con botón de reintento si la generación falla; estado vacío ("Aún no tienes suficientes prendas para generar un outfit") cuando `proposals` vuelve vacío (ENG-REQ-022).
+**UI-REQ-005.** Hoy: spinner mientras `POST /outfits/generate` está en curso; estado de error con botón de reintento si la generación falla; estado vacío ("Aún no tienes suficientes prendas para generar un outfit") cuando `proposals` vuelve vacío (ENG-REQ-022). Mientras no haya propuestas disponibles: con el armario vacío, el estado vacío invita a añadir prendas; con prendas en el armario, un estado "Tus propuestas diarias llegan pronto" que indica cuántas prendas hay y enlaza a Armario.
 
 **UI-REQ-006.** Añadir: cada foto en curso de subida/procesado muestra su propia barra de progreso independiente, derivada del polling de `GET /jobs/{id}` (`job.progress`/`job.step`); el usuario puede encadenar varias fotos seguidas sin esperar a que termine el procesado de la anterior.
 
