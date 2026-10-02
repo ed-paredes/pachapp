@@ -17,6 +17,13 @@ type GarmentImageProps = {
   accessibilityLabel?: string;
 };
 
+type HeroImageProps = GarmentImageProps & {
+  /** Share of the window height the image may use; defaults to `HERO_MAX_HEIGHT_RATIO`. */
+  maxHeightRatio?: number;
+  /** Tighter padding around the image, for screens where the fields below matter more. */
+  compact?: boolean;
+};
+
 /** Quiet, cached, cross-fading image that always keeps its aspect ratio (`contain`). */
 export function GarmentImage({ uri, testID, accessibilityLabel }: GarmentImageProps) {
   const duration = useImageTransition();
@@ -37,7 +44,14 @@ export function GarmentImage({ uri, testID, accessibilityLabel }: GarmentImagePr
  * Detalle/Revisión hero: the garment on a centred plinth panel. The image is capped at
  * ~45 % of the window height and 520 dp wide, and never rendered beyond its intrinsic size.
  */
-export function HeroImage({ uri, testID, accessibilityLabel }: GarmentImageProps) {
+export function HeroImage({
+  uri,
+  testID,
+  accessibilityLabel,
+  maxHeightRatio = HERO_MAX_HEIGHT_RATIO,
+  compact = false,
+}: HeroImageProps) {
+  const padding = compact ? spacing.md : spacing.xl;
   const { height } = useWindowDimensions();
   const duration = useImageTransition();
   const [loaded, setLoaded] = useState<{ uri: string; size: Size } | null>(null);
@@ -45,15 +59,15 @@ export function HeroImage({ uri, testID, accessibilityLabel }: GarmentImageProps
   const [panelWidth, setPanelWidth] = useState(0);
 
   const max: Size = {
-    width: Math.min(HERO_MAX_WIDTH, Math.max(0, panelWidth - spacing.xl * 2)),
-    height: Math.round(height * HERO_MAX_HEIGHT_RATIO),
+    width: Math.min(HERO_MAX_WIDTH, Math.max(0, panelWidth - padding * 2)),
+    height: Math.round(height * maxHeightRatio),
   };
   // Before the source size is known, reserve the largest box so the page does not jump much.
   const box = intrinsic ? fitWithin(intrinsic, max) : max;
 
   return (
     <View
-      style={styles.panel}
+      style={[styles.panel, { padding }]}
       onLayout={(event) => setPanelWidth(event.nativeEvent.layout.width)}
       testID={testID ? `${testID}-panel` : undefined}
     >
@@ -79,7 +93,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'stretch',
-    padding: spacing.xl,
     backgroundColor: colors.plinth,
     borderRadius: radii.panel,
     borderWidth: StyleSheet.hairlineWidth,

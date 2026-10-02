@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 
 import { buildColors } from '../src/lib/palette';
 import { CATEGORY_LABELS } from '../src/lib/labels';
@@ -106,6 +106,9 @@ async function renderScreen() {
   );
 }
 
+/** Expands a collapsed summary row ("Formalidad, 2 de 5"). */
+const openRow = (label: string) => fireEvent.press(screen.getByLabelText(new RegExp(`^${label},`)));
+
 const patches = () => calls.filter((c) => c.method === 'PATCH');
 
 describe('ReviewScreen (Revisión)', () => {
@@ -146,12 +149,13 @@ describe('ReviewScreen (Revisión)', () => {
     await renderScreen();
     await screen.findByTestId('review-image');
 
+    await openRow('Formalidad');
     await fireEvent.press(screen.getByLabelText('Formalidad: 4'));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0].body).toEqual({ formality: 4 });
-    await waitFor(() =>
-      expect(screen.getByLabelText('Formalidad: 4').props.accessibilityState.selected).toBe(true),
-    );
+    // The row collapses after a successful save and shows the new value.
+    await waitFor(() => expect(screen.queryByLabelText('Formalidad: 4')).toBeNull());
+    expect(screen.getByLabelText('Formalidad, 4 de 5')).toBeTruthy();
 
     expect(screen.getByTestId('highlight-category')).toBeTruthy();
     expect(screen.getByTestId('review-badge')).toBeTruthy();
@@ -177,12 +181,15 @@ describe('ReviewScreen (Revisión)', () => {
     garment = { ...baseGarment(), style_tags: ['casual', 'classic', 'street'] };
     await renderScreen();
     await screen.findByTestId('review-image');
+    await openRow('Estilos');
     expect(screen.getByLabelText('Estilo: Minimal').props.accessibilityState.disabled).toBe(true);
 
     await fireEvent.press(screen.getByLabelText('Estilo: Classic'.replace('Classic', 'Clásico')));
     await waitFor(() => expect(patches()).toHaveLength(1));
     expect(patches()[0].body).toEqual({ style_tags: ['casual', 'street'] });
 
+    await openRow('Temporadas');
+    expect(screen.queryByLabelText('Estilo: Clásico')).toBeNull();
     await fireEvent.press(screen.getByLabelText('Temporada: Invierno'));
     await waitFor(() => expect(patches()).toHaveLength(2));
     expect(patches()[1].body).toEqual({ seasons: ['summer', 'winter'] });
@@ -191,6 +198,7 @@ describe('ReviewScreen (Revisión)', () => {
   it('saves free text on submit', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
+    await openRow('Material');
     const input = screen.getByLabelText('Material');
     await fireEvent.changeText(input, 'lana merino');
     await fireEvent(input, 'submitEditing');
@@ -201,6 +209,8 @@ describe('ReviewScreen (Revisión)', () => {
   it('edits colours with a valid PATCH body (descending proportions, sum <= 1)', async () => {
     await renderScreen();
     await screen.findByTestId('review-image');
+    await openRow('Colores');
+    await fireEvent.press(screen.getByLabelText('Cambiar colores'));
     await fireEvent.press(screen.getByLabelText('Color: rojo'));
     await waitFor(() => expect(patches()).toHaveLength(1));
 
@@ -216,6 +226,8 @@ describe('ReviewScreen (Revisión)', () => {
     garment = { ...baseGarment(), colors: [entry('negro', '#19191c', 1)] };
     await renderScreen();
     await screen.findByTestId('review-image');
+    await openRow('Colores');
+    await fireEvent.press(screen.getByLabelText('Cambiar colores'));
     expect(screen.getByLabelText('Color: negro').props.accessibilityState.disabled).toBe(true);
   });
 
@@ -223,6 +235,7 @@ describe('ReviewScreen (Revisión)', () => {
     patchStatus = 500;
     await renderScreen();
     await screen.findByTestId('review-image');
+    await openRow('Formalidad');
     await fireEvent.press(screen.getByLabelText('Formalidad: 5'));
     expect(await screen.findByTestId('error-formality')).toBeTruthy();
     expect(screen.getByLabelText('Formalidad: 2').props.accessibilityState.selected).toBe(true);
@@ -237,6 +250,70 @@ describe('ReviewScreen (Revisión)', () => {
     expect(
       calls.filter((c) => c.method === 'POST' && c.path === '/garments/g1/review/complete'),
     ).toHaveLength(1);
+  });
+
+  it('lists doubtful fields expanded and collapses the rest into summary rows', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    expect(screen.getByText('Por revisar')).toBeTruthy();
+    // Doubtful field: editor visible, no summary row.
+    expect(screen.getByLabelText(`Categoría: ${CATEGORY_LABELS.top}`)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Categoría,/)).toBeNull();
+    // Other fields: one-line summaries, no editors.
+    expect(screen.getByLabelText('Formalidad, 2 de 5')).toBeTruthy();
+    expect(screen.getByLabelText('Colores, negro, blanco')).toBeTruthy();
+    expect(screen.queryByLabelText('Formalidad: 3')).toBeNull();
+    expect(screen.queryByLabelText('Color: rojo')).toBeNull();
+  });
+
+  it('expands one row at a time and collapses it again on tap', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Formalidad');
+    expect(screen.getByLabelText('Formalidad: 3')).toBeTruthy();
+    await openRow('Abrigo');
+    expect(screen.queryByLabelText('Formalidad: 3')).toBeNull();
+    expect(screen.getByLabelText('Abrigo: 3')).toBeTruthy();
+    await openRow('Abrigo');
+    expect(screen.queryByLabelText('Abrigo: 3')).toBeNull();
+  });
+
+  it('keeps multi-select rows open after a save and keeps the highlight', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    await openRow('Temporadas');
+    await fireEvent.press(screen.getByLabelText('Temporada: Invierno'));
+    await waitFor(() => expect(patches()).toHaveLength(1));
+    expect(screen.getByLabelText('Temporada: Verano')).toBeTruthy();
+    expect(screen.getByTestId('highlight-category')).toBeTruthy();
+  });
+
+  it('shows colour swatches with percentages and the palette only after "Cambiar colores"', async () => {
+    garment = { ...baseGarment(), color_confidence: 0.3 };
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    expect(screen.getByTestId('highlight-colors')).toBeTruthy();
+    expect(screen.getByText('negro 70 %')).toBeTruthy();
+    expect(screen.getByText('blanco 30 %')).toBeTruthy();
+    expect(screen.queryByLabelText('Color: rojo')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('Cambiar colores'));
+    expect(screen.getByLabelText('Color: rojo')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Listo con los colores'));
+    expect(screen.queryByLabelText('Color: rojo')).toBeNull();
+  });
+
+  it('keeps "Revisión terminada" outside the scrolling content and shows a failure inline', async () => {
+    await renderScreen();
+    await screen.findByTestId('review-image');
+    expect(
+      within(screen.getByTestId('review-scroll')).queryByLabelText('Revisión terminada'),
+    ).toBeNull();
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve(json({ error: { code: 'X', message: 'boom', details: null } }, 500)),
+    ) as unknown as typeof fetch;
+    await fireEvent.press(screen.getByLabelText('Revisión terminada'));
+    expect(await screen.findByTestId('complete-error')).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('shows loading, then an error with retry, and a 404 state', async () => {
