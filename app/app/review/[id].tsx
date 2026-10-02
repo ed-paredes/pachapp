@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ApiError } from '@/api-client/errors';
@@ -198,12 +198,21 @@ function ReviewForm({
   // Only one collapsed-by-default row is open at a time; doubtful fields are always open.
   const [expanded, setExpanded] = useState<FieldName | null>(null);
   const [choosingColors, setChoosingColors] = useState(false);
+  // Every mounted free-text field registers here so typed-but-unsaved text can be committed on
+  // demand (two fields can be open at once when both are doubtful).
+  const flushers = useRef(new Set<FlushText>());
+  const flushText = async () =>
+    (await Promise.all([...flushers.current].map((flush) => flush()))).every(Boolean);
 
   const value = <K extends keyof Draft>(field: K): Garment[K & keyof Garment] =>
     (field in draft ? draft[field] : garment[field as keyof Garment]) as Garment[K & keyof Garment];
 
   /** Saves right away; shows the value optimistically and reverts it on failure. */
-  const save = async <K extends FieldName>(field: K, body: GarmentPatch, shown: Draft[K]) => {
+  const save = async <K extends FieldName>(
+    field: K,
+    body: GarmentPatch,
+    shown: Draft[K],
+  ): Promise<boolean> => {
     setErrors((current) => ({ ...current, [field]: undefined }));
     setDraft((current) => ({ ...current, [field]: shown }));
     try {
@@ -211,8 +220,10 @@ function ReviewForm({
       if (COLLAPSE_AFTER_SAVE.has(field)) {
         setExpanded((current) => (current === field ? null : current));
       }
+      return true;
     } catch {
       setErrors((current) => ({ ...current, [field]: SAVE_ERROR }));
+      return false;
     } finally {
       setDraft((current) => {
         const { [field]: _dropped, ...rest } = current;
@@ -223,6 +234,8 @@ function ReviewForm({
 
   const finish = async () => {
     setCompleteError(null);
+    // Text still being typed is saved first; if that fails the review stays open with its error.
+    if (!(await flushText())) return;
     try {
       await complete.mutateAsync();
       router.replace('/(tabs)/wardrobe');
@@ -317,7 +330,8 @@ function ReviewForm({
           <TextField
             label="Subcategoría"
             value={(value('subcategory') as string | null) ?? ''}
-            onSave={(text) => void save('subcategory', { subcategory: text }, text)}
+            flushers={flushers}
+            onSave={(text) => save('subcategory', { subcategory: text }, text)}
           />
         );
       case 'colors':
@@ -435,7 +449,8 @@ function ReviewForm({
             <TextField
               label="Material"
               value={(value('material') as string | null) ?? ''}
-              onSave={(text) => void save('material', { material: text }, text)}
+              flushers={flushers}
+              onSave={(text) => save('material', { material: text }, text)}
             />
             <ChipRow>
               {MATERIAL_SUGGESTIONS.map((suggestion) => (
@@ -522,6 +537,7 @@ function ReviewForm({
                     accessibilityLabel={`${FIELD_LABELS[name]}, ${summary(name)}`}
                     accessibilityState={{ expanded: open }}
                     onPress={() => {
+                      void flushText();
                       setExpanded(open ? null : name);
                       if (name === 'colors') setChoosingColors(false);
                     }}
@@ -598,33 +614,49 @@ function LinkButton({ label, onPress }: { label: string; onPress: () => void }) 
   );
 }
 
-/** Free-text control: saves on blur / submit when the text changed and is not empty. */
+/** Commits pending text; resolves false only when saving it failed. */
+type FlushText = () => Promise<boolean>;
+
+/**
+ * Free-text control: saves on blur / submit when the text changed and is not empty. It also
+ * registers in `flushers` so the screen can commit it before finishing or collapsing a row.
+ */
 function TextField({
   label,
   value,
   onSave,
+  flushers,
 }: {
   label: string;
   value: string;
-  onSave: (text: string) => void;
+  onSave: (text: string) => Promise<boolean>;
+  flushers: MutableRefObject<Set<FlushText>>;
 }) {
   // `null` = untouched: show the saved value; otherwise the text being typed.
   const [edit, setEdit] = useState<string | null>(null);
 
-  const commit = () => {
-    if (edit === null) return;
+  const commit: FlushText = async () => {
+    if (edit === null) return true;
     const trimmed = edit.trim();
     setEdit(null);
-    if (trimmed && trimmed !== value) onSave(trimmed);
+    return trimmed && trimmed !== value ? onSave(trimmed) : true;
   };
+
+  useEffect(() => {
+    const registry = flushers.current;
+    registry.add(commit);
+    return () => {
+      registry.delete(commit);
+    };
+  });
 
   return (
     <TextInput
       accessibilityLabel={label}
       value={edit ?? value}
       onChangeText={setEdit}
-      onBlur={commit}
-      onSubmitEditing={commit}
+      onBlur={() => void commit()}
+      onSubmitEditing={() => void commit()}
       placeholder={EMPTY_SUMMARY}
       placeholderTextColor={theme.muted}
       style={styles.input}

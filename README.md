@@ -16,8 +16,12 @@ Full toolchain spec: `docs/specs/01-dev-tooling.md`.
   - `make` refuses to run app/UI targets against the Windows Node/npm under
     `/mnt/c` (`check-node`) — always run `make` from a WSL shell with `nvm`'s
     Node on `PATH`.
-- The repo itself can live under `/mnt/d` (or anywhere Windows-visible), but
-  `PACHAPP_DATA_DIR` (the SQLite DB + images) must resolve to a path on the
+- Keep the repo on the WSL2 ext4 filesystem too (e.g. `~/code/pachapp`; Windows
+  sees it under `\\wsl$\`). It works under `/mnt/d`, but every file read
+  crosses the WSL/Windows boundary: the first web load of `make run-ui` took
+  ~200 s there against ~9 s on ext4, and the worker and tests slow down the
+  same way.
+- `PACHAPP_DATA_DIR` (the SQLite DB + images) must resolve to a path on the
   WSL2 ext4 filesystem, e.g. `~/pachapp-data` — never under `/mnt/*`. Settings
   fail fast with an explicit error if it doesn't (D14).
 
