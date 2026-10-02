@@ -1,4 +1,8 @@
-import { Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
+import {
+  Fraunces_400Regular,
+  Fraunces_400Regular_Italic,
+  Fraunces_600SemiBold,
+} from '@expo-google-fonts/fraunces';
 import {
   Manrope_400Regular,
   Manrope_500Medium,
@@ -8,6 +12,8 @@ import {
 
 /** Font files registered at startup, keyed by the names in `fontFamilies`. */
 export const fontAssets = {
+  Fraunces_400Regular,
+  Fraunces_400Regular_Italic,
   Fraunces_600SemiBold,
   Manrope_400Regular,
   Manrope_500Medium,

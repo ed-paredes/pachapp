@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Armario · Maqueta</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ================= TOKENS ================= */
+  :root{
+    --bg:#F6F3EE; --surface:#FFFFFF; --surface-2:#EFEAE2; --surface-3:#E7E0D5;
+    --ink:#1F1B16; --ink-2:#6B6359; --ink-3:#A39A8E; --line:#E4DDD2;
+    --accent:#B5562F; --accent-soft:#F4E3D9;
+    --ok:#4F7A5A; --ok-soft:#E3EEE5; --info:#3E6A8A; --info-soft:#E1EBF2;
+    --warn:#A3741F; --warn-soft:#F6ECD6; --danger:#B23A30;
+    --radius-lg:28px; --radius:18px; --radius-sm:12px;
+    --shadow:0 1px 2px rgba(31,27,22,.04), 0 8px 24px rgba(31,27,22,.06);
+    --shadow-lg:0 2px 4px rgba(31,27,22,.05), 0 20px 50px rgba(31,27,22,.12);
+    --serif:"Fraunces", Georgia, serif; --sans:"Inter", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased;padding-bottom:120px}
+  button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+  svg.i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .serif{font-family:var(--serif)}
+  .muted{color:var(--ink-2)}
+
+  /* ================= SHELL ================= */
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(246,243,238,.85);backdrop-filter:blur(14px);border-bottom:1px solid transparent;transition:border-color .2s}
+  .topbar.scrolled{border-color:var(--line)}
+  .topbar-in{max-width:1120px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;gap:12px}
+  .logo{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:-.02em}
+  .logo em{font-style:italic;font-weight:400;color:var(--accent)}
+  .topbar .sp{flex:1}
+  .round{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;transition:background .2s}
+  .round:hover{background:var(--surface-2)}
+  .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#C98B6B,#7D5A44);color:#fff;display:grid;place-items:center;font-weight:600;font-size:14px}
+
+  main{max-width:1120px;margin:0 auto;padding:8px 16px 0}
+  .screen{display:none;animation:in .35s ease}
+  .screen.active{display:block}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .nav{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:30;display:flex;gap:4px;align-items:center;
+    background:rgba(31,27,22,.92);backdrop-filter:blur(14px);padding:6px;border-radius:999px;box-shadow:var(--shadow-lg)}
+  .nav button{display:flex;align-items:center;gap:8px;color:#CFC6BA;padding:11px 16px;border-radius:999px;font-size:13.5px;font-weight:500;transition:.25s}
+  .nav button span{max-width:0;overflow:hidden;white-space:nowrap;transition:max-width .3s}
+  .nav button.on{background:var(--bg);color:var(--ink)}
+  .nav button.on span{max-width:90px}
+  .nav button:hover:not(.on){color:#fff}
+  .nav .add-btn{background:var(--accent);color:#fff;width:44px;height:44px;padding:0;justify-content:center;margin:0 4px}
+  .nav .add-btn.on{background:var(--accent);color:#fff;box-shadow:0 0 0 3px rgba(181,86,47,.35)}
+  .nav .add-btn span{display:none}
+
+  /* ================= COMMON ================= */
+  .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
+  h1.title{font-family:var(--serif);font-weight:400;font-size:clamp(34px,5vw,48px);line-height:1.05;letter-spacing:-.02em;margin:6px 0 4px}
+  h1.title em{font-style:italic;color:var(--accent)}
+  h2.sec{font-family:var(--serif);font-weight:600;font-size:20px;margin:32px 0 14px;display:flex;justify-content:space-between;align-items:baseline}
+  h2.sec button{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--accent)}
+  .card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap}
+  .pill.dot::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.info{background:var(--info-soft);color:var(--info)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.ghost{background:var(--surface-2);color:var(--ink-2)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:15px 22px;border-radius:999px;font-weight:600;font-size:15px;transition:transform .15s, background .2s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn.dark{background:var(--ink);color:#fff} .btn.dark:hover{background:#000}
+  .btn.light{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+  .btn.accent{background:var(--accent);color:#fff}
+  .chip-row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 0 6px}
+  .chip-row::-webkit-scrollbar{display:none}
+  .fchip{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:13.5px;font-weight:500;white-space:nowrap;transition:.2s}
+  .fchip small{color:var(--ink-3);font-weight:500}
+  .fchip:hover{border-color:var(--ink-3)}
+  .fchip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .fchip.on small{color:#A79F94}
+  .garment{filter:drop-shadow(0 12px 14px rgba(60,40,25,.18))}
+
+  /* ================= HOY ================= */
+  .hoy-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:12px}
+  .weather{display:flex;align-items:center;gap:12px;padding:10px 16px 10px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow)}
+  .weather b{font-family:var(--serif);font-size:22px;font-weight:400}
+  .weather .sun{width:34px;height:34px;border-radius:50%;background:var(--warn-soft);display:grid;place-items:center;color:var(--warn)}
+  .hoy-grid{display:grid;gap:20px;margin-top:24px}
+  @media(min-width:900px){.hoy-grid{grid-template-columns:1.25fr 1fr}}
+  .look{position:relative;border-radius:var(--radius-lg);overflow:hidden;background:radial-gradient(120% 100% at 30% 10%,#EFE6DA,#D9CBB9);min-height:460px;box-shadow:var(--shadow)}
+  .look-items{position:absolute;inset:0}
+  .look-items .g{position:absolute;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+  .look:hover .g:nth-child(1){transform:rotate(-3deg)}
+  .look:hover .g:nth-child(2){transform:rotate(2deg) translateY(-4px)}
+  .look-tag{position:absolute;left:18px;top:18px}
+  .look-score{position:absolute;right:18px;top:18px;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:600;display:flex;gap:6px;align-items:center}
+  .look-score i{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  .why{padding:24px}
+  .why h3{font-family:var(--serif);font-weight:400;font-size:28px;line-height:1.15;letter-spacing:-.01em}
+  .why ul{list-style:none;margin:18px 0 22px;display:grid;gap:12px}
+  .why li{display:flex;gap:12px;align-items:flex-start;font-size:14px;color:var(--ink-2)}
+  .why li b{color:var(--ink);font-weight:600}
+  .why li .ic{width:32px;height:32px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;flex:none;color:var(--ink)}
+  .why li .ic svg{width:16px;height:16px}
+  .pieces{display:flex;gap:8px;margin-bottom:22px}
+  .piece{flex:1;aspect-ratio:1;border-radius:14px;display:grid;place-items:center;cursor:pointer;transition:transform .2s}
+  .piece:hover{transform:translateY(-2px)}
+  .piece svg{width:70%}
+  .why .acts{display:grid;grid-template-columns:1fr auto;gap:8px}
+  .alts{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,1fr);gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:6px}
+  .alt{border-radius:var(--radius);padding:12px;cursor:pointer;transition:transform .2s}
+  .alt:hover{transform:translateY(-3px)}
+  .alt .mini{height:150px;border-radius:12px;position:relative;margin-bottom:10px;background:rgba(255,255,255,.45)}
+  .alt .mini .g{position:absolute}
+  .alt b{font-weight:600;font-size:14px;display:block}
+  .alt span{font-size:12.5px;color:var(--ink-2)}
+  .tip{display:flex;gap:14px;align-items:center;padding:16px 18px;margin-top:12px}
+  .tip .ic{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;flex:none}
+  .tip p{font-size:14px;flex:1} .tip p b{display:block}
+
+  /* ================= ARMARIO ================= */
+  .ar-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin:12px 0 20px}
+  .search{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:10px 16px;min-width:260px;color:var(--ink-3)}
+  .search input{border:0;outline:0;background:none;font:inherit;color:var(--ink);flex:1}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0 18px}
+  .seg{display:inline-flex;background:var(--surface-2);padding:4px;border-radius:999px}
+  .seg button{padding:8px 14px;border-radius:999px;font-size:13px;font-weight:500;color:var(--ink-2);display:flex;gap:6px;align-items:center}
+  .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .seg button small{font-size:11.5px;color:var(--ink-3)}
+  .review{display:flex;align-items:center;gap:14px;padding:14px 18px;border-radius:var(--radius);background:var(--warn-soft);color:#5E4512;margin-bottom:18px;font-size:14px}
+  .review b{font-weight:600}
+  .review .sp{flex:1}
+  .review button{font-weight:600;font-size:13.5px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.7)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+  @media(min-width:700px){.grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:18px}}
+  .item{cursor:pointer;transition:transform .25s}
+  .item:hover{transform:translateY(-4px)}
+  .item .ph{position:relative;aspect-ratio:4/5;border-radius:var(--radius);display:grid;place-items:center;overflow:hidden}
+  .item .ph svg.garment{width:72%;transition:transform .35s}
+  .item:hover .ph svg.garment{transform:scale(1.05) rotate(-1.5deg)}
+  .item .ph .st{position:absolute;left:10px;top:10px}
+  .item .ph .fav{position:absolute;right:10px;top:10px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.7);display:grid;place-items:center;opacity:0;transition:.2s}
+  .item:hover .ph .fav{opacity:1}
+  .item .ph .fav svg{width:16px;height:16px}
+  .item .meta{padding:10px 4px 0;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+  .item .meta b{font-weight:600;font-size:14px;display:block;line-height:1.25}
+  .item .meta span{font-size:12.5px;color:var(--ink-2)}
+  .dots{display:flex;margin-top:3px}
+  .dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--bg);margin-left:-4px}
+  .dots i:first-child{margin-left:0}
+  .item.addcard .ph{border:1.5px dashed var(--line);background:transparent;color:var(--ink-3);text-align:center;font-size:13.5px;font-weight:500;gap:8px;align-content:center}
+  .item.addcard:hover .ph{border-color:var(--accent);color:var(--accent)}
+  .empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--ink-2)}
+  .empty b{font-family:var(--serif);font-size:22px;font-weight:400;color:var(--ink);display:block;margin-bottom:6px}
+
+  /* ================= AÑADIR ================= */
+  .add-grid{display:grid;gap:20px;margin-top:20px}
+  @media(min-width:900px){.add-grid{grid-template-columns:1.2fr 1fr}}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius-lg);padding:56px 24px;text-align:center;background:var(--surface);transition:.2s;cursor:pointer}
+  .drop:hover{border-color:var(--accent);background:#FFFCF9}
+  .drop .big{width:72px;height:72px;border-radius:24px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 18px}
+  .drop .big svg{width:32px;height:32px}
+  .drop h3{font-family:var(--serif);font-weight:400;font-size:26px}
+  .drop p{color:var(--ink-2);margin:6px 0 22px}
+  .drop .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .steps{display:grid;gap:10px}
+  .step{display:flex;gap:14px;align-items:center;padding:16px}
+  .step .n{width:36px;height:36px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;font-family:var(--serif);font-size:17px;flex:none}
+  .step b{display:block;font-weight:600;font-size:14.5px}
+  .step span{font-size:13px;color:var(--ink-2)}
+  .proc{padding:20px;margin-top:20px}
+  .proc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .bar{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-bottom:18px}
+  .bar i{display:block;height:100%;width:72%;background:linear-gradient(90deg,var(--accent),#D9895F);border-radius:3px;animation:load 2.4s ease-in-out infinite alternate}
+  @keyframes load{from{width:35%}to{width:88%}}
+  .detected{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  .det{border:1px solid var(--line);border-radius:14px;padding:10px}
+  .det .ph{aspect-ratio:1;border-radius:10px;display:grid;place-items:center;margin-bottom:10px;position:relative}
+  .det .ph svg{width:66%}
+  .det .ph.scan::after{content:"";position:absolute;left:8%;right:8%;height:2px;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:scan 1.8s ease-in-out infinite}
+  @keyframes scan{0%{top:12%}50%{top:86%}100%{top:12%}}
+  .det b{font-size:13.5px;font-weight:600;display:flex;justify-content:space-between}
+  .det b small{font-weight:500;color:var(--ok)}
+  .det span{font-size:12px;color:var(--ink-2)}
+
+  /* ================= HISTORIAL ================= */
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:20px}
+  @media(min-width:800px){.kpis{grid-template-columns:repeat(4,1fr)}}
+  .kpi{padding:18px}
+  .kpi b{font-family:var(--serif);font-weight:400;font-size:34px;line-height:1;display:block}
+  .kpi span{font-size:13px;color:var(--ink-2)}
+  .kpi .trend{font-size:12px;color:var(--ok);font-weight:600;margin-top:8px;display:block}
+  .cal{padding:20px;margin-top:12px}
+  .cal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .cal-head b{font-family:var(--serif);font-size:20px;font-weight:600}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-grid .dow{font-size:11.5px;color:var(--ink-3);text-align:center;font-weight:600;padding-bottom:4px}
+  .day{aspect-ratio:1;border-radius:12px;background:var(--surface-2);position:relative;font-size:11.5px;color:var(--ink-2);padding:5px 7px;overflow:hidden;cursor:pointer;transition:.2s}
+  .day:hover{box-shadow:inset 0 0 0 1.5px var(--ink)}
+  .day.off{background:transparent;color:var(--ink-3);cursor:default}
+  .day.off:hover{box-shadow:none}
+  .day.today{box-shadow:inset 0 0 0 2px var(--accent);color:var(--accent);font-weight:600}
+  .day .g{position:absolute;width:62%;right:-4%;bottom:-6%}
+  .two{display:grid;gap:12px;margin-top:12px}
+  @media(min-width:800px){.two{grid-template-columns:1fr 1fr}}
+  .rank{padding:20px}
+  .rank h4{font-family:var(--serif);font-weight:600;font-size:17px;margin-bottom:12px}
+  .rank-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+  .rank-row:first-of-type{border-top:0}
+  .rank-row .th{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;flex:none}
+  .rank-row .th svg{width:72%}
+  .rank-row div{flex:1}
+  .rank-row b{font-size:14px;font-weight:600;display:block}
+  .rank-row span{font-size:12.5px;color:var(--ink-2)}
+  .rank-row .bar-s{width:80px;height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+  .rank-row .bar-s i{display:block;height:100%;background:var(--ink);border-radius:3px}
+
+  /* ================= DETALLE ================= */
+  .det-page{display:grid;gap:28px;padding-top:8px}
+  @media(min-width:880px){.det-page{grid-template-columns:1fr 1fr;align-items:start}.det-hero{position:sticky;top:84px}}
+  .det-hero{position:relative;border-radius:var(--radius-lg);overflow:hidden;aspect-ratio:4/5;display:grid;place-items:center;box-shadow:var(--shadow)}
+  .det-hero svg.garment{width:66%;filter:drop-shadow(0 24px 30px rgba(60,40,25,.25))}
+  .det-hero .hero-top{position:absolute;inset:16px 16px auto;display:flex;justify-content:space-between}
+  .glass{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.75);backdrop-filter:blur(8px);display:grid;place-items:center}
+  .glass:hover{background:#fff}
+  .ai-badge{position:absolute;left:16px;bottom:16px;display:flex;gap:6px;align-items:center;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);padding:7px 12px;border-radius:999px;font-size:12px;font-weight:500;color:var(--ink-2)}
+  .ai-badge i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:22px}
+  .stat{padding:16px 18px} .stat+.stat{border-left:1px solid var(--line)}
+  .stat b{display:block;font-family:var(--serif);font-weight:400;font-size:28px;line-height:1}
+  .stat span{font-size:12.5px;color:var(--ink-2)}
+  .attrs{padding:20px;margin-top:16px}
+  .attrs h3{font-family:var(--serif);font-weight:600;font-size:18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:baseline}
+  .attrs h3 button{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--accent)}
+  .arow{display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+  .arow:first-of-type{border-top:0}
+  .arow label{font-size:13px;color:var(--ink-2)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:6px 12px;border-radius:999px;background:var(--surface-2);font-size:13px;font-weight:500}
+  .swatch{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 4px;border-radius:999px;border:1px solid var(--line);font-size:13px;font-weight:500}
+  .swatch i{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+  .addc{padding:6px 12px;border-radius:999px;border:1.5px dashed var(--line);color:var(--ink-3);font-size:13px;font-weight:500}
+  .addc:hover{border-color:var(--accent);color:var(--accent)}
+  .meter{display:flex;gap:4px;align-items:center}
+  .meter i{width:26px;height:6px;border-radius:3px;background:var(--surface-2)} .meter i.on{background:var(--ink)}
+  .meter small{margin-left:8px;font-size:12.5px;color:var(--ink-2)}
+  .seasons{display:flex;gap:6px}
+  .season{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--surface-2);opacity:.45}
+  .season.on{opacity:1;background:var(--accent-soft)}
+  .season svg{width:18px;height:18px}
+  .actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .action{padding:14px 8px;border-radius:var(--radius-sm);background:var(--surface);box-shadow:var(--shadow);display:grid;justify-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--ink-2);transition:.2s}
+  .action:hover{color:var(--ink);transform:translateY(-1px)}
+  .delete{display:block;margin:22px auto 0;color:var(--danger);font-size:13.5px;font-weight:500;opacity:.8}
+  .delete:hover{opacity:1;text-decoration:underline}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:92px;transform:translate(-50%,20px);opacity:0;background:var(--ink);color:#fff;padding:12px 18px;border-radius:999px;font-size:14px;font-weight:500;transition:.3s;z-index:40;pointer-events:none;display:flex;gap:8px;align-items:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="topbar-in">
+    <div class="logo">Armario<em>.</em></div>
+    <div class="sp"></div>
+    <button class="round" aria-label="Ajustes"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+    <div class="avatar">E</div>
+  </div>
+</header>
+
+<main>
+  <!-- ================= HOY ================= -->
+  <section class="screen active" id="s-hoy">
+    <div class="hoy-head">
+      <div>
+        <div class="eyebrow">Jueves, 1 de octubre</div>
+        <h1 class="title">Buenos días.<br>Hoy te <em>proponemos</em>…</h1>
+      </div>
+      <div class="weather">
+        <div class="sun"><svg class="i" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 0 1 0 9z"/></svg></div>
+        <div><b>18°</b> <span class="muted">· Nublado, máx. 21°</span></div>
+      </div>
+    </div>
+
+    <div class="hoy-grid">
+      <div class="look" id="look"></div>
+      <div class="card why">
+        <div class="eyebrow">Look del día</div>
+        <h3 id="look-name">Tierra relajada</h3>
+        <ul>
+          <li><span class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2"/><circle cx="17.5" cy="10.5" r="2"/><circle cx="8.5" cy="7.5" r="2"/><circle cx="6.5" cy="12.5" r="2"/><path d="M12 2a10 10 0 0 0 0 20c1 0 2-1 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 1-2 2-2h2a5 5 0 0 0 5-5C22 6 17.5 2 12 2z"/></svg></span><div><b>Colores que combinan.</b> Marrón y crema con negro: paleta tierra, tonos análogos.</div></li>
+          <li><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 0 1 0 9z"/></svg></span><div><b>Va con el tiempo.</b> Capa ligera para la mañana fresca; te la puedes quitar a mediodía.</div></li>
+          <li><span class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l2.5 5.5L20 11l-5.5 2.5L12 19l-2.5-5.5L4 11l5.5-2.5z"/></svg></span><div><b>Estrenas algo.</b> La camiseta marrón todavía no la has usado.</div></li>
+        </ul>
+        <div class="pieces" id="pieces"></div>
+        <div class="acts">
+          <button class="btn dark" onclick="toast('¡Anotado! Que tengas un buen día ✨')"><svg class="i" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Me lo pongo</button>
+          <button class="btn light" onclick="shuffleLook()" aria-label="Otra sugerencia"><svg class="i" viewBox="0 0 24 24"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></button>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="sec">Otras opciones para hoy <button>Ver todas</button></h2>
+    <div class="alts" id="alts"></div>
+
+    <div class="two">
+      <div class="card tip"><div class="ic" style="background:var(--info-soft);color:var(--info)"><svg class="i" viewBox="0 0 24 24"><path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/></svg></div><p><b>2 prendas en el cesto</b><span class="muted">Vaquero negro y sudadera gris. Las quitamos de las sugerencias.</span></p><button class="round"><svg class="i" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div>
+      <div class="card tip"><div class="ic" style="background:var(--accent-soft);color:var(--accent)"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18M7 14l4-4 4 4 5-5"/></svg></div><p><b>Has usado el 64% de tu armario</b><span class="muted">5 prendas llevan más de 60 días sin salir.</span></p><button class="round" onclick="go('historial')"><svg class="i" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button></div>
+    </div>
+  </section>
+
+  <!-- ================= ARMARIO ================= -->
+  <section class="screen" id="s-armario">
+    <div class="ar-head">
+      <div>
+        <div class="eyebrow" id="ar-count">24 prendas</div>
+        <h1 class="title">Tu armario</h1>
+      </div>
+      <label class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input placeholder="Buscar: “camisa azul”, “lino”…" id="q"></label>
+    </div>
+
+    <div class="chip-row" id="cats"></div>
+
+    <div class="toolbar">
+      <div class="seg" id="states"></div>
+      <button class="fchip"><svg class="i" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M3 6h18M7 12h10M10 18h4"/></svg>Más usadas</button>
+    </div>
+
+    <div class="review">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+      <div><b>3 prendas pendientes de revisión.</b> Confirma la categoría y los colores que hemos detectado.</div>
+      <div class="sp"></div>
+      <button>Revisar</button>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ================= AÑADIR ================= -->
+  <section class="screen" id="s-anadir">
+    <div class="eyebrow" style="margin-top:12px">Nueva prenda</div>
+    <h1 class="title">Añade a tu <em>armario</em></h1>
+    <p class="muted">Haz una foto, aunque haya varias prendas: las separamos por ti.</p>
+
+    <div class="add-grid">
+      <div class="drop" onclick="toast('Aquí se abriría la cámara o la galería')">
+        <div class="big"><svg class="i" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
+        <h3>Arrastra tus fotos aquí</h3>
+        <p>o elige cómo quieres subirlas</p>
+        <div class="row">
+          <button class="btn dark"><svg class="i" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Hacer foto</button>
+          <button class="btn light"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Galería</button>
+        </div>
+      </div>
+      <div class="steps">
+        <div class="card step"><span class="n">1</span><div><b>Sube una foto</b><span>Sobre la cama, en percha o puesta. Con buena luz.</span></div></div>
+        <div class="card step"><span class="n">2</span><div><b>Recortamos cada prenda</b><span>Quitamos el fondo automáticamente.</span></div></div>
+        <div class="card step"><span class="n">3</span><div><b>Detectamos categoría y colores</b><span>Tú solo confirmas o corriges.</span></div></div>
+        <div class="card step" style="background:var(--accent-soft);box-shadow:none"><span class="n" style="background:#fff">💡</span><div><b>Consejo</b><span>Fondo liso y prenda extendida = mejor recorte.</span></div></div>
+      </div>
+    </div>
+
+    <div class="card proc">
+      <div class="proc-head">
+        <div><div class="eyebrow">Procesando · IMG_2041.jpg</div><b class="serif" style="font-size:20px;font-weight:600">Hemos encontrado 3 prendas</b></div>
+        <span class="pill info dot">Analizando</span>
+      </div>
+      <div class="bar"><i></i></div>
+      <div class="detected" id="detected"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap">
+        <button class="btn light">Descartar</button>
+        <button class="btn accent" onclick="toast('3 prendas añadidas a tu armario');go('armario')">Añadir 3 prendas</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HISTORIAL ================= -->
+  <section class="screen" id="s-historial">
+    <div class="eyebrow" style="margin-top:12px">Tu uso</div>
+    <h1 class="title">Historial</h1>
+
+    <div class="kpis">
+      <div class="card kpi"><b>23</b><span>looks este mes</span><span class="trend">↑ 4 vs. septiembre</span></div>
+      <div class="card kpi"><b>64%</b><span>del armario usado</span><span class="trend">↑ 9 pts</span></div>
+      <div class="card kpi"><b>2,40 €</b><span>coste medio por uso</span><span class="trend">↓ 0,30 €</span></div>
+      <div class="card kpi"><b>5</b><span>prendas olvidadas</span><span class="trend" style="color:var(--warn)">+60 días sin usar</span></div>
+    </div>
+
+    <div class="card cal">
+      <div class="cal-head">
+        <button class="round"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <b>Septiembre 2026</b>
+        <button class="round"><svg class="i" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+      </div>
+      <div class="cal-grid" id="cal"></div>
+    </div>
+
+    <div class="two">
+      <div class="card rank"><h4>Las que más usas</h4><div id="top"></div></div>
+      <div class="card rank"><h4>Dales otra oportunidad</h4><div id="forgot"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= DETALLE ================= -->
+  <section class="screen" id="s-detalle"></section>
+</main>
+
+<nav class="nav" id="nav">
+  <button data-go="hoy" class="on"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6l-4.9 3.6 1.9-5.8L4 8.8h6.1z"/></svg><span>Hoy</span></button>
+  <button data-go="armario"><svg class="i" viewBox="0 0 24 24"><path d="M12 6a2 2 0 1 1 2-2M12 6v2L3 15a1.5 1.5 0 0 0 1 2.6h16a1.5 1.5 0 0 0 1-2.6l-9-7"/></svg><span>Armario</span></button>
+  <button data-go="anadir" class="add-btn" aria-label="Añadir"><svg class="i" viewBox="0 0 24 24" style="stroke-width:2.4"><path d="M12 5v14M5 12h14"/></svg><span>Añadir</span></button>
+  <button data-go="historial"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Historial</span></button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= PRENDAS (SVG) ================= */
+const shade = (hex, f) => { const n=parseInt(hex.slice(1),16); let r=n>>16,g=n>>8&255,b=n&255;
+  r=Math.round(r*f);g=Math.round(g*f);b=Math.round(b*f); return `rgb(${Math.min(r,255)},${Math.min(g,255)},${Math.min(b,255)})`; };
+const SHAPES = {
+  tee:c=>`<path d="M70 22Q100 38 130 22L176 44 164 86 146 80V182H54V80L36 86 24 44Z" fill="${c}"/><path d="M70 22Q100 40 130 22" fill="none" stroke="${shade(c,.75)}" stroke-width="5"/>`,
+  shirt:c=>`<path d="M74 20 100 34 126 20 160 32 184 122 166 128 146 72V184H54V72L34 128 16 122 40 32Z" fill="${c}"/><path d="M74 20 100 48 126 20M100 48V184" fill="none" stroke="${shade(c,.8)}" stroke-width="3"/>${[70,95,120,145,170].map(y=>`<circle cx="106" cy="${y}" r="2.5" fill="${shade(c,.7)}"/>`).join('')}`,
+  sweater:c=>`<path d="M72 20Q100 34 128 20L160 32 184 122 166 128 146 72V176H54V72L34 128 16 122 40 32Z" fill="${c}"/><path d="M54 168H146M18 116 34 122M166 122 182 116M72 20Q100 38 128 20" fill="none" stroke="${shade(c,.82)}" stroke-width="6"/>`,
+  jacket:c=>`<path d="M72 18 100 30 128 18 162 30 186 128 166 134 148 76V186H52V76L34 134 14 128 38 30Z" fill="${c}"/><path d="M72 18 92 70 100 186M128 18 108 70 100 186" fill="none" stroke="${shade(c,.72)}" stroke-width="3"/><rect x="62" y="120" width="22" height="4" rx="2" fill="${shade(c,.72)}"/><rect x="116" y="120" width="22" height="4" rx="2" fill="${shade(c,.72)}"/>`,
+  pants:c=>`<path d="M58 16H142L152 186H112L100 66 88 186H48Z" fill="${c}"/><path d="M58 30H142M100 30V66" fill="none" stroke="${shade(c,.78)}" stroke-width="3"/>`,
+  shorts:c=>`<path d="M54 50H146L156 140 110 144 100 96 90 144 44 140Z" fill="${c}"/><path d="M54 62H146" stroke="${shade(c,.78)}" stroke-width="3"/>`,
+  dress:c=>`<path d="M80 14H120L124 62 164 184H36L76 62Z" fill="${c}"/><path d="M76 62H124" stroke="${shade(c,.78)}" stroke-width="4"/>`,
+  sneaker:c=>`<path d="M18 128Q20 92 48 88L86 80Q108 102 140 106L170 114Q186 120 184 138V144H18Z" fill="${c}"/><rect x="14" y="140" width="174" height="14" rx="6" fill="#F4F0EA" stroke="#D8D0C4"/><path d="M70 92 80 104M84 88 94 100M98 92 108 104" stroke="${shade(c,.6)}" stroke-width="3" stroke-linecap="round"/>`,
+  boot:c=>`<path d="M54 30H104V110L168 128Q184 134 182 150V156H50Z" fill="${c}"/><rect x="46" y="152" width="140" height="12" rx="4" fill="${shade(c,.55)}"/>`,
+  bag:c=>`<path d="M70 70Q70 30 100 30 130 30 130 70" fill="none" stroke="${shade(c,.7)}" stroke-width="7"/><rect x="40" y="66" width="120" height="104" rx="14" fill="${c}"/><rect x="88" y="90" width="24" height="8" rx="3" fill="${shade(c,.7)}"/>`,
+};
+const svg = (shape,c,cls='garment') => `<svg class="${cls}" viewBox="0 0 200 200">${SHAPES[shape](c)}</svg>`;
+const tint = c => `color-mix(in srgb, ${c} 16%, #F1ECE4)`;
+
+/* ================= DATOS ================= */
+const ITEMS = [
+  {id:1,name:'Camiseta Obey',cat:'Top',shape:'tee',color:'#5B4A3E',colors:['#5B4A3E','#2E2A27'],cn:['Marrón','Negro'],worn:0,state:'activa',style:['Casual','Street'],form:2,mat:'Algodón',season:[1,0,1,0],nuevo:1},
+  {id:2,name:'Camisa oxford',cat:'Top',shape:'shirt',color:'#A9C1D9',colors:['#A9C1D9'],cn:['Azul cielo'],worn:14,state:'activa',style:['Smart'],form:4,mat:'Algodón',season:[1,1,1,0]},
+  {id:3,name:'Jersey de punto',cat:'Capa intermedia',shape:'sweater',color:'#E8DCC6',colors:['#E8DCC6'],cn:['Crema'],worn:9,state:'activa',style:['Casual','Clásico'],form:3,mat:'Lana',season:[0,0,1,1]},
+  {id:4,name:'Chino beige',cat:'Pantalón',shape:'pants',color:'#C9B48F',colors:['#C9B48F'],cn:['Beige'],worn:21,state:'activa',style:['Smart'],form:3,mat:'Algodón',season:[1,1,1,0]},
+  {id:5,name:'Vaquero negro',cat:'Pantalón',shape:'pants',color:'#2F2D2E',colors:['#2F2D2E'],cn:['Negro'],worn:31,state:'lavando',style:['Casual'],form:2,mat:'Denim',season:[1,0,1,1]},
+  {id:6,name:'Chaqueta trucker',cat:'Abrigo',shape:'jacket',color:'#6E7B5A',colors:['#6E7B5A'],cn:['Oliva'],worn:7,state:'activa',style:['Casual','Workwear'],form:2,mat:'Lona',season:[1,0,1,0]},
+  {id:7,name:'Zapatillas blancas',cat:'Calzado',shape:'sneaker',color:'#EDEAE4',colors:['#EDEAE4'],cn:['Blanco'],worn:40,state:'activa',style:['Casual'],form:2,mat:'Piel',season:[1,1,1,1]},
+  {id:8,name:'Botas chelsea',cat:'Calzado',shape:'boot',color:'#6A4630',colors:['#6A4630'],cn:['Cuero'],worn:12,state:'activa',style:['Clásico'],form:4,mat:'Ante',season:[0,0,1,1]},
+  {id:9,name:'Vestido midi',cat:'Vestido / mono',shape:'dress',color:'#B5562F',colors:['#B5562F'],cn:['Terracota'],worn:3,state:'activa',style:['Romántico'],form:3,mat:'Lino',season:[1,1,0,0],review:1},
+  {id:10,name:'Bolso de piel',cat:'Complemento',shape:'bag',color:'#8C5A3C',colors:['#8C5A3C'],cn:['Coñac'],worn:18,state:'activa',style:['Clásico'],form:4,mat:'Piel',season:[1,1,1,1]},
+  {id:11,name:'Sudadera gris',cat:'Capa intermedia',shape:'sweater',color:'#9A9A98',colors:['#9A9A98'],cn:['Gris'],worn:25,state:'lavando',style:['Sport'],form:1,mat:'Algodón',season:[1,0,1,1]},
+  {id:12,name:'Bermuda lino',cat:'Pantalón',shape:'shorts',color:'#D8CDB8',colors:['#D8CDB8'],cn:['Arena'],worn:6,state:'archivada',style:['Casual'],form:2,mat:'Lino',season:[0,1,0,0]},
+  {id:13,name:'Camiseta blanca',cat:'Top',shape:'tee',color:'#F3F0EA',colors:['#F3F0EA'],cn:['Blanco'],worn:28,state:'activa',style:['Básico'],form:2,mat:'Algodón',season:[1,1,1,0],review:1},
+  {id:14,name:'Abrigo camel',cat:'Abrigo',shape:'jacket',color:'#B88B5A',colors:['#B88B5A'],cn:['Camel'],worn:0,state:'activa',style:['Clásico'],form:5,mat:'Lana',season:[0,0,1,1],review:1},
+];
+const byId = id => ITEMS.find(i=>i.id===id);
+const LOOKS = [
+  {name:'Tierra relajada',ids:[1,6,4,7],score:'94% match'},
+  {name:'Smart de jueves',ids:[2,3,4,8],score:'89% match'},
+  {name:'Fresco y simple',ids:[13,6,4,7],score:'86% match'},
+  {name:'Cálido y clásico',ids:[3,14,4,8],score:'82% match'},
+];
+let lookIdx=0;
+
+/* ================= HOY ================= */
+function lookLayout(ids, scale=1){
+  const [top,layer,bottom,shoe]=ids.map(byId);
+  const pos=[ // left, top, width (%)
+    [layer,'6%','8%','46%'],[top,'34%','14%','40%'],[bottom,'54%','36%','42%'],[shoe,'10%','64%','34%']];
+  return pos.map(([it,l,t,w])=>`<div class="g" style="left:${l};top:${t};width:${w}">${svg(it.shape,it.color)}</div>`).join('');
+}
+function renderLook(){
+  const L=LOOKS[lookIdx];
+  document.getElementById('look').innerHTML=`<div class="look-items">${lookLayout(L.ids)}</div>
+    <span class="pill ghost look-tag" style="background:rgba(255,255,255,.8)">Casual · Formalidad 2/5</span>
+    <div class="look-score"><i></i>${L.score}</div>`;
+  document.getElementById('look-name').textContent=L.name;
+  document.getElementById('pieces').innerHTML=L.ids.map(id=>{const it=byId(id);return `<div class="piece" style="background:${tint(it.color)}" title="${it.name}" onclick="openItem(${id})">${svg(it.shape,it.color,'')}</div>`}).join('');
+  document.getElementById('alts').innerHTML=LOOKS.filter((_,i)=>i!==lookIdx).map(l=>{
+    const c=byId(l.ids[0]).color;
+    return `<div class="alt card" style="background:${tint(c)};box-shadow:none" onclick="lookIdx=${LOOKS.indexOf(l)};renderLook();scrollTo({top:0})">
+      <div class="mini">${lookLayout(l.ids)}</div><b>${l.name}</b><span>${l.ids.length} prendas · ${l.score}</span></div>`}).join('');
+}
+function shuffleLook(){lookIdx=(lookIdx+1)%LOOKS.length;renderLook()}
+
+/* ================= ARMARIO ================= */
+const CATS=['Todas','Top','Pantalón','Vestido / mono','Capa intermedia','Abrigo','Calzado','Complemento'];
+const STATES=[['activa','Activas'],['lavando','Lavando'],['archivada','Archivadas'],['todas','Todas']];
+let fCat='Todas', fState='activa';
+function renderArmario(){
+  const q=document.getElementById('q').value.toLowerCase();
+  const inState=ITEMS.filter(i=>fState==='todas'||i.state===fState);
+  document.getElementById('cats').innerHTML=CATS.map(c=>{
+    const n=c==='Todas'?inState.length:inState.filter(i=>i.cat===c).length;
+    return `<button class="fchip ${c===fCat?'on':''}" onclick="fCat='${c}';renderArmario()">${c} <small>${n}</small></button>`}).join('');
+  document.getElementById('states').innerHTML=STATES.map(([k,l])=>{
+    const n=k==='todas'?ITEMS.length:ITEMS.filter(i=>i.state===k).length;
+    return `<button class="${k===fState?'on':''}" onclick="fState='${k}';renderArmario()">${l} <small>${n}</small></button>`}).join('');
+  const list=inState.filter(i=>(fCat==='Todas'||i.cat===fCat)&&(!q||(i.name+i.cn.join(' ')+i.mat+i.cat).toLowerCase().includes(q)));
+  document.getElementById('ar-count').textContent=`${ITEMS.length} prendas · ${ITEMS.filter(i=>i.state==='activa').length} activas`;
+  const st={lavando:'<span class="pill info dot st">Lavando</span>',archivada:'<span class="pill ghost st">Archivada</span>'};
+  document.getElementById('grid').innerHTML = list.length ? list.map(i=>`
+    <div class="item" onclick="openItem(${i.id})">
+      <div class="ph" style="background:${tint(i.color)}">${svg(i.shape,i.color)}
+        ${st[i.state]||(i.review?'<span class="pill warn st">Revisar</span>':i.nuevo?'<span class="pill ok st">Nueva</span>':'')}
+        <span class="fav"><svg class="i" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></span>
+      </div>
+      <div class="meta"><div><b>${i.name}</b><span>${i.worn?`Puesta ${i.worn} veces`:'Sin estrenar'}</span></div>
+        <div class="dots">${i.colors.map(c=>`<i style="background:${c}"></i>`).join('')}</div></div>
+    </div>`).join('') + (fState!=='archivada'?`<div class="item addcard" onclick="go('anadir')"><div class="ph"><svg class="i" viewBox="0 0 24 24" style="margin:0 auto;width:28px;height:28px"><path d="M12 5v14M5 12h14"/></svg>Añadir prenda</div></div>`:'')
+    : `<div class="empty"><b>Nada por aquí</b>Prueba con otra categoría o filtro.</div>`;
+}
+document.getElementById('q').addEventListener('input',renderArmario);
+
+/* ================= AÑADIR ================= */
+document.getElementById('detected').innerHTML=[[13,'97%'],[4,'94%'],[7,null]].map(([id,c])=>{const i=byId(id);return `
+  <div class="det"><div class="ph ${c?'':'scan'}" style="background:${tint(i.color)}">${svg(i.shape,i.color,'')}</div>
+  <b>${c?i.cat:'Analizando…'} ${c?`<small>${c}</small>`:''}</b>
+  <span>${c?i.cn.join(', ')+' · '+i.mat:'Detectando colores'}</span></div>`}).join('');
+
+/* ================= HISTORIAL ================= */
+(function(){
+  const dows=['L','M','X','J','V','S','D'];
+  let h=dows.map(d=>`<div class="dow">${d}</div>`).join('');
+  h+='<div class="day off"></div>'; // sept 2026 empieza en martes
+  const pool=[1,2,3,4,5,6,9,11,13];
+  for(let d=1;d<=30;d++){
+    const has=(d*7)%10<7 && d<=30;
+    const it=byId(pool[(d*5)%pool.length]);
+    h+=`<div class="day" ${has?`style="background:${tint(it.color)}"`:''}>${d}${has?`<div class="g">${svg(it.shape,it.color,'')}</div>`:''}</div>`;
+  }
+  h+='<div class="day today">1</div>';
+  for(let d=2;d<=4;d++) h+=`<div class="day off">${d}</div>`;
+  document.getElementById('cal').innerHTML=h;
+  const row=(i,extra)=>`<div class="rank-row" onclick="openItem(${i.id})"><div class="th" style="background:${tint(i.color)}">${svg(i.shape,i.color,'')}</div><div><b>${i.name}</b><span>${extra}</span></div>`;
+  const top=[...ITEMS].sort((a,b)=>b.worn-a.worn).slice(0,4);
+  document.getElementById('top').innerHTML=top.map(i=>row(i,`${i.worn} usos`)+`<div class="bar-s"><i style="width:${i.worn/40*100}%"></i></div></div>`).join('');
+  document.getElementById('forgot').innerHTML=[14,9,1,3].map(byId).map(i=>row(i,i.worn?`Hace ${60+i.id*3} días`:'Sin estrenar')+`<button class="pill ghost" onclick="event.stopPropagation();toast('La incluiremos en tus próximas sugerencias')">Sugerir</button></div>`).join('');
+})();
+
+/* ================= DETALLE ================= */
+const FORM=['','Muy informal','Informal','Smart casual','Arreglado','Formal'];
+const SEASON_IC=[
+ '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
+ '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>',
+ '<path d="M5 19C5 10 11 5 19 5c0 8-5 14-14 14zM5 19l8-8"/>',
+ '<path d="M12 2v20M4 7l16 10M20 7L4 17"/>'];
+const SEASON_N=['Primavera','Verano','Otoño','Invierno'];
+let prev='armario';
+function openItem(id){
+  const i=byId(id);
+  const stPill={activa:'<span class="pill ok dot">En el armario</span>',lavando:'<span class="pill info dot">Lavando</span>',archivada:'<span class="pill ghost">Archivada</span>'}[i.state];
+  document.getElementById('s-detalle').innerHTML=`
+  <div class="det-page">
+    <div class="det-hero" style="background:radial-gradient(120% 90% at 50% 20%, ${tint(i.color)}, color-mix(in srgb, ${i.color} 30%, #DCCFC0))">
+      <div class="hero-top">
+        <button class="glass" onclick="go(prev)" aria-label="Volver"><svg class="i" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button class="glass" aria-label="Favorita"><svg class="i" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button>
+      </div>
+      ${svg(i.shape,i.color)}
+      <div class="ai-badge"><i></i>Recortada y analizada automáticamente</div>
+    </div>
+    <div>
+      <div class="eyebrow">${i.cat}</div>
+      <h1 class="title">${i.name}</h1>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${stPill}${i.review?'<span class="pill warn">Pendiente de revisión</span>':''}</div>
+      <div class="card stats">
+        <div class="stat"><b>${i.worn}</b><span>veces puesta</span></div>
+        <div class="stat"><b>${i.worn?'Hace '+(i.id+2)+' d':'—'}</b><span>última vez</span></div>
+        <div class="stat"><b>${Math.round(i.worn/2)}</b><span>outfits</span></div>
+      </div>
+      <button class="btn dark" style="width:100%;margin-top:16px" onclick="go('hoy')"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Crear outfit con esta prenda</button>
+      <div class="card attrs">
+        <h3>Atributos <button>Editar</button></h3>
+        <div class="arow"><label>Colores</label><div class="chips">${i.colors.map((c,k)=>`<span class="swatch"><i style="background:${c}"></i>${i.cn[k]}</span>`).join('')}</div></div>
+        <div class="arow"><label>Estilo</label><div class="chips">${i.style.map(s=>`<span class="chip">${s}</span>`).join('')}</div></div>
+        <div class="arow"><label>Formalidad</label><div class="meter">${[1,2,3,4,5].map(n=>`<i class="${n<=i.form?'on':''}"></i>`).join('')}<small>${FORM[i.form]}</small></div></div>
+        <div class="arow"><label>Temporada</label><div class="seasons">${i.season.map((on,k)=>`<span class="season ${on?'on':''}" title="${SEASON_N[k]}"><svg class="i" viewBox="0 0 24 24">${SEASON_IC[k]}</svg></span>`).join('')}</div></div>
+        <div class="arow"><label>Material</label><div class="chips"><span class="chip">${i.mat}</span></div></div>
+        <div class="arow"><label>Marca</label><div class="chips"><button class="addc">+ Añadir</button></div></div>
+        <div class="arow"><label>Notas</label><div class="chips"><button class="addc">+ Añadir nota</button></div></div>
+      </div>
+      <div class="actions">
+        <button class="action"><svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>Revisar</button>
+        <button class="action" onclick="toast('Marcada como lavando')"><svg class="i" viewBox="0 0 24 24"><path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/></svg>A lavar</button>
+        <button class="action" onclick="toast('Prenda archivada')"><svg class="i" viewBox="0 0 24 24"><path d="M3 7h18v3H3zM5 10v10h14V10M10 14h4"/></svg>Archivar</button>
+      </div>
+      <button class="delete">Eliminar prenda</button>
+    </div>
+  </div>`;
+  const cur=document.querySelector('.screen.active').id.slice(2);
+  if(cur!=='detalle') prev=cur;
+  show('detalle');
+}
+
+/* ================= NAV ================= */
+function show(s){
+  document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id==='s-'+s));
+  window.scrollTo({top:0});
+}
+function go(s){
+  show(s);
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.go===s));
+}
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.go));
+addEventListener('scroll',()=>document.getElementById('topbar').classList.toggle('scrolled',scrollY>4));
+let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200)}
+
+renderLook(); renderArmario();
+</script>
+</body>
+</html>
