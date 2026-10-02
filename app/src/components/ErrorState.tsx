@@ -1,4 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+
+import { Button } from '@/components/ui';
+import { colors, fontFamilies } from '@/theme';
 
 type ErrorStateProps = {
   message?: string;
@@ -16,14 +19,7 @@ export function ErrorState({ message = DEFAULT_MESSAGE, onRetry }: ErrorStatePro
   return (
     <View style={styles.container} testID="error-state">
       <Text style={styles.message}>{message}</Text>
-      <Pressable
-        onPress={onRetry}
-        accessibilityRole="button"
-        accessibilityLabel="Reintentar"
-        style={styles.button}
-      >
-        <Text style={styles.buttonText}>Reintentar</Text>
-      </Pressable>
+      <Button label="Reintentar" onPress={onRetry} />
     </View>
   );
 }
@@ -37,17 +33,10 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   message: {
+    fontFamily: fontFamilies.body,
     fontSize: 16,
+    lineHeight: 24,
+    color: colors.ink,
     textAlign: 'center',
-  },
-  button: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    backgroundColor: '#208AEF',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
   },
 });

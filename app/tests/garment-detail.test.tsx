@@ -1,10 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { Dimensions, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { ToastProvider } from '@/components/ui';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockBack = jest.fn();
+let mockCanGoBack = true;
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useRouter: () => ({
+    push: mockPush,
+    replace: mockReplace,
+    back: mockBack,
+    canGoBack: () => mockCanGoBack,
+  }),
   useLocalSearchParams: () => ({ id: 'g1' }),
 }));
 
@@ -95,9 +106,18 @@ async function renderScreen() {
   });
   const spy = jest.spyOn(client, 'invalidateQueries');
   const view = await render(
-    <QueryClientProvider client={client}>
-      <DetailScreen />
-    </QueryClientProvider>,
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 0, left: 0, right: 0, bottom: 0 },
+      }}
+    >
+      <ToastProvider>
+        <QueryClientProvider client={client}>
+          <DetailScreen />
+        </QueryClientProvider>
+      </ToastProvider>
+    </SafeAreaProvider>,
   );
   return { view, spy };
 }
@@ -115,6 +135,8 @@ describe('GarmentDetailScreen (Detalle)', () => {
     deleteResponse = () => new Response(null, { status: 204 });
     mockPush.mockClear();
     mockReplace.mockClear();
+    mockBack.mockClear();
+    mockCanGoBack = true;
     globalThis.fetch = jest.fn((input: Request) => handle(input)) as unknown as typeof fetch;
   });
 
@@ -123,19 +145,131 @@ describe('GarmentDetailScreen (Detalle)', () => {
     globalThis.fetch = originalFetch;
   });
 
-  it('renders the cutout, Spanish attributes and usage', async () => {
+  it('renders the cutout, composed name, Spanish attributes and usage', async () => {
     await renderScreen();
     expect(await screen.findByTestId('detail-image')).toBeTruthy();
-    expect(screen.getByText('Capa intermedia')).toBeTruthy();
+    expect(screen.getByText('Capa intermedia')).toBeTruthy(); // eyebrow
+    expect(screen.getByText('Jersey marino de lana')).toBeTruthy(); // composed title
     expect(screen.getByText('Rayas')).toBeTruthy();
-    expect(screen.getByText('Otoño, Invierno')).toBeTruthy();
+    expect(screen.getByLabelText('Otoño, activa')).toBeTruthy();
+    expect(screen.getByLabelText('Invierno, activa')).toBeTruthy();
+    expect(screen.getByLabelText('Primavera')).toBeTruthy();
     expect(screen.getByText('Clásico')).toBeTruthy();
     expect(screen.getByText('lana')).toBeTruthy();
     expect(screen.getByText('marino')).toBeTruthy();
-    expect(screen.getByText('7')).toBeTruthy();
-    expect(screen.getByText('Nunca')).toBeTruthy();
-    expect(screen.getByText('5')).toBeTruthy();
-    expect(screen.getByTestId('detail-status').props.children).toBe('Activa');
+    expect(screen.getByLabelText('Formalidad: Smart casual, 3 de 5')).toBeTruthy();
+    expect(screen.getByText('4 de 5')).toBeTruthy();
+    expect(screen.getByLabelText('veces puesta: 7')).toBeTruthy();
+    expect(screen.getByLabelText('última vez: Nunca')).toBeTruthy();
+    expect(screen.getByLabelText('outfits: 5')).toBeTruthy();
+    expect(within(screen.getByTestId('detail-status')).getByText('En el armario')).toBeTruthy();
+  });
+
+  it('shows "+ Añadir" chips for empty attributes instead of "Sin definir"', async () => {
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    // brand and notes are empty in the base garment
+    await fireEvent.press(screen.getByLabelText('Añadir marca'));
+    expect(mockPush).toHaveBeenLastCalledWith('/review/g1');
+    await fireEvent.press(screen.getByLabelText('Añadir notas'));
+    expect(screen.queryByText('Sin definir')).toBeNull();
+    expect(screen.queryByLabelText('Añadir material')).toBeNull();
+    await cleanup();
+
+    garment = {
+      ...baseGarment(),
+      colors: null,
+      style_tags: [],
+      seasons: [],
+      pattern: null,
+      formality: null,
+      warmth: null,
+      material: null,
+    };
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    for (const what of [
+      'colores',
+      'estilo',
+      'formalidad',
+      'temporada',
+      'estampado',
+      'material',
+      'abrigo',
+    ]) {
+      expect(screen.getByLabelText(`Añadir ${what}`)).toBeTruthy();
+    }
+    expect(screen.queryByText('Sin definir')).toBeNull();
+  });
+
+  it('opens Revisión from "Editar"', async () => {
+    await renderScreen();
+    await fireEvent.press(await screen.findByLabelText('Editar atributos'));
+    expect(mockPush).toHaveBeenCalledWith('/review/g1');
+  });
+
+  it('does not offer "Crear outfit con esta prenda" (no outfit engine yet)', async () => {
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    expect(screen.queryByText('Crear outfit con esta prenda')).toBeNull();
+  });
+
+  it('shows the analysed badge only when the garment has a cutout', async () => {
+    await renderScreen();
+    expect(await screen.findByText('Recortada y analizada automáticamente')).toBeTruthy();
+    await cleanup();
+
+    garment = { ...baseGarment(), img_cutout: null };
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    expect(screen.queryByText('Recortada y analizada automáticamente')).toBeNull();
+  });
+
+  it('goes back, or to Armario when there is no history', async () => {
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    const btn = screen.getByLabelText('Volver');
+    await fireEvent.press(btn);
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    await cleanup();
+
+    mockCanGoBack = false;
+    await renderScreen();
+    await screen.findByTestId('detail-image');
+    await fireEvent.press(screen.getByLabelText('Volver'));
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe');
+  });
+
+  it('keeps a way back on the not-found state', async () => {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve(
+        json({ error: { code: 'GARMENT_NOT_FOUND', message: 'x', details: null } }, 404),
+      ),
+    ) as unknown as typeof fetch;
+    await renderScreen();
+    await screen.findByText('No encontramos esta prenda');
+    await fireEvent.press(screen.getByLabelText('Volver'));
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('lays out two columns from 880 px and one below', async () => {
+    const window = (width: number) => ({ width, height: 900, scale: 2, fontScale: 1 });
+    const spy = jest.spyOn(Dimensions, 'get');
+    const layout = () => StyleSheet.flatten(screen.getByTestId('detail-page').props.style);
+    try {
+      spy.mockReturnValue(window(1200));
+      await renderScreen();
+      await screen.findByTestId('detail-image');
+      expect(layout().flexDirection).toBe('row');
+      await cleanup();
+
+      spy.mockReturnValue(window(390));
+      await renderScreen();
+      await screen.findByTestId('detail-image');
+      expect(layout().flexDirection).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('marks as laundry via PATCH and invalidates list and detail', async () => {
@@ -146,7 +280,10 @@ describe('GarmentDetailScreen (Detalle)', () => {
         { status: 'laundry' },
       ]),
     );
-    await waitFor(() => expect(screen.getByTestId('detail-status').props.children).toBe('Lavando'));
+    await waitFor(() =>
+      expect(within(screen.getByTestId('detail-status')).getByText('Lavando')).toBeTruthy(),
+    );
+    expect(await screen.findByText('Marcada como lavando')).toBeTruthy(); // toast
     expect(invalidatedKeys(spy)).toEqual(
       expect.arrayContaining([
         JSON.stringify(['garments', 'list']),
@@ -160,6 +297,8 @@ describe('GarmentDetailScreen (Detalle)', () => {
     const { spy } = await renderScreen();
     await fireEvent.press(await screen.findByLabelText('Archivar'));
     await waitFor(() => expect(posts('/garments/g1/archive')).toHaveLength(1));
+    expect(await screen.findByText('Prenda archivada')).toBeTruthy(); // toast
+    expect(screen.queryByLabelText('Marcar como lavando')).toBeNull();
     await fireEvent.press(await screen.findByLabelText('Reactivar'));
     await waitFor(() => expect(posts('/garments/g1/reactivate')).toHaveLength(1));
     expect(invalidatedKeys(spy)).toContain(JSON.stringify(['garments', 'detail', 'g1']));
@@ -169,6 +308,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
     garment = { ...baseGarment(), needs_review: true };
     await renderScreen();
     expect(await screen.findByTestId('review-badge')).toBeTruthy();
+    expect(screen.getByText('Pendiente de revisión')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Revisar'));
     expect(mockPush).toHaveBeenCalledWith('/review/g1');
   });
@@ -203,21 +343,24 @@ describe('GarmentDetailScreen (Detalle)', () => {
     await renderScreen();
     expect(await screen.findByTestId('detail-processing')).toBeTruthy();
     await waitFor(() =>
-      expect(screen.getByRole('progressbar').props.accessibilityValue.now).toBe(60),
+      expect(
+        within(screen.getByTestId('detail-processing')).getByRole('progressbar').props
+          .accessibilityValue.now,
+      ).toBe(60),
     );
     expect(screen.getByText('Analizando colores')).toBeTruthy();
   });
 
   it('asks for confirmation before deleting, then leaves for Armario', async () => {
     await renderScreen();
-    await fireEvent.press(await screen.findByLabelText('Eliminar'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar prenda'));
     expect(await screen.findByTestId('delete-confirm')).toBeTruthy();
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
 
     await fireEvent.press(screen.getByLabelText('Cancelar'));
     await waitFor(() => expect(screen.queryByTestId('delete-confirm')).toBeNull());
 
-    await fireEvent.press(screen.getByLabelText('Eliminar'));
+    await fireEvent.press(screen.getByLabelText('Eliminar prenda'));
     await fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/wardrobe'));
     expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(1);
@@ -236,7 +379,7 @@ describe('GarmentDetailScreen (Detalle)', () => {
         409,
       );
     await renderScreen();
-    await fireEvent.press(await screen.findByLabelText('Eliminar'));
+    await fireEvent.press(await screen.findByLabelText('Eliminar prenda'));
     await fireEvent.press(await screen.findByLabelText('Eliminar definitivamente'));
     expect(await screen.findByTestId('action-error')).toHaveTextContent(
       'La prenda aparece en outfits; archívala en su lugar.',

@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { colors, fontFamilies } from '@/theme';
+
 type EmptyStateProps = {
   title: string;
   description?: string;
@@ -27,13 +29,17 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontFamily: fontFamilies.displayRegular,
+    fontSize: 24,
+    lineHeight: 30,
+    color: colors.ink,
     textAlign: 'center',
   },
   description: {
+    fontFamily: fontFamilies.body,
     fontSize: 14,
+    lineHeight: 20,
+    color: colors.ink2,
     textAlign: 'center',
-    opacity: 0.7,
   },
 });
