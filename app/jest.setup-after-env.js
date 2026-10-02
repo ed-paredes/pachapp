@@ -4,3 +4,15 @@
 const { configure } = require('@testing-library/react-native');
 
 configure({ asyncUtilTimeout: 5000 });
+
+// On device, expo-file-system's `File` is Blob-like and expo/fetch reads it
+// through `bytes()`; Node's FormData only accepts real Blobs, so tests get a
+// Blob subclass that keeps the `uri`.
+jest.mock('expo-file-system', () => ({
+  File: class MockFile extends Blob {
+    constructor(uri) {
+      super(['photo'], { type: 'image/jpeg' });
+      this.uri = uri;
+    }
+  },
+}));

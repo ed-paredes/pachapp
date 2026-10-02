@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
+import { File } from 'expo-file-system';
 import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
 
@@ -148,15 +149,19 @@ describe('garment data layer', () => {
     expect(fetchMock()).not.toHaveBeenCalled();
   });
 
-  it('buildUploadForm appends the native {uri, name, type} descriptor', async () => {
+  it('buildUploadForm appends an expo-file-system File on native', async () => {
+    // expo/fetch (the native global fetch) rejects `{uri, name, type}` parts.
     const append = jest.spyOn(FormData.prototype, 'append');
-    await buildUploadForm({ uri: 'file:///tmp/a.jpg', name: 'a.jpg', mimeType: 'image/jpeg' });
-    expect(append).toHaveBeenCalledWith('file', {
-      uri: 'file:///tmp/a.jpg',
-      name: 'a.jpg',
-      type: 'image/jpeg',
-    });
-    append.mockRestore();
+    try {
+      await buildUploadForm({ uri: 'file:///tmp/a.jpg', name: 'a.jpg', mimeType: 'image/jpeg' });
+      const [field, part, name] = append.mock.calls[0];
+      expect(field).toBe('file');
+      expect(part).toBeInstanceOf(File);
+      expect((part as unknown as File).uri).toBe('file:///tmp/a.jpg');
+      expect(name).toBe('a.jpg');
+    } finally {
+      append.mockRestore();
+    }
   });
 
   it('buildUploadForm appends a fetched Blob with the file name on web', async () => {

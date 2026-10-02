@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { unwrap } from '@/api-client/errors';
@@ -14,9 +15,11 @@ export type UploadPhoto = {
 
 /**
  * Builds the multipart body for `POST /garments` (field `file`).
- * Native React Native FormData takes a `{uri, name, type}` descriptor and
- * streams the file itself; on web the URI must be fetched into a Blob first
- * because `FormData.append` only accepts Blob/File there.
+ * On native the global `fetch` is `expo/fetch`, which only serialises
+ * Blob-like parts (it rejects React Native's `{uri, name, type}` descriptor),
+ * so the photo goes in as an `expo-file-system` `File`. On web the URI must
+ * be fetched into a Blob first because `FormData.append` only accepts
+ * Blob/File there.
  */
 export async function buildUploadForm(photo: UploadPhoto): Promise<FormData> {
   const form = new FormData();
@@ -24,7 +27,7 @@ export async function buildUploadForm(photo: UploadPhoto): Promise<FormData> {
     const blob = await (await fetch(photo.uri)).blob();
     form.append('file', blob, photo.name);
   } else {
-    form.append('file', { uri: photo.uri, name: photo.name, type: photo.mimeType } as never);
+    form.append('file', new File(photo.uri) as unknown as Blob, photo.name);
   }
   return form;
 }
