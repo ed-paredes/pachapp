@@ -26,6 +26,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Hoy',
+          // Hoy is built on `Screen`, which pads itself for the floating bar.
+          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'house.fill', android: 'home', web: 'home' }}

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { Segmented } from '@/components/ui/Segmented';
 
@@ -40,5 +41,22 @@ describe('Segmented', () => {
     expect(screen.getByText('15')).toBeTruthy();
     await fireEvent.press(screen.getByRole('tab', { name: 'Todas' }));
     expect(onChange).toHaveBeenCalledWith('all');
+  });
+});
+
+describe('Segmented layout', () => {
+  it('keeps every segment at least 44 dp tall and shrinkable to fit a phone', async () => {
+    await render(
+      <Segmented
+        options={[...options]}
+        value="active"
+        onChange={() => undefined}
+        accessibilityLabel="Estado"
+      />,
+    );
+
+    const style = StyleSheet.flatten(screen.getAllByRole('tab')[0].props.style);
+    expect(style.minHeight).toBeGreaterThanOrEqual(44);
+    expect(style.flexShrink).toBe(1);
   });
 });
