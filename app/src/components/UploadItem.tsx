@@ -1,19 +1,21 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { GarmentImage } from '@/components/GarmentImage';
+import { ProgressBar } from '@/components/add/ProgressBar';
+import { ScanLine } from '@/components/add/ScanLine';
+import { uploadStatus } from '@/components/add/upload-status';
+import { Button, Card, ColorDots, Pill } from '@/components/ui';
+import { useGarment } from '@/hooks/useGarments';
 import { useRetryGarment } from '@/hooks/useGarmentMutations';
 import { useJob } from '@/hooks/useJob';
 import type { QueueItem } from '@/hooks/useUploadQueue';
+import { garmentName } from '@/lib/garment-name';
+import { imageUrl } from '@/lib/image-url';
+import { categoryLabel } from '@/lib/labels';
 import { LOW_RES_NOTE } from '@/lib/photos';
-
-const STEP_LABELS: Record<string, string> = {
-  preprocess: 'Preparando',
-  cutout: 'Recortando',
-  color: 'Analizando colores',
-  ai_attributes: 'Analizando prenda',
-  embedding: 'Calculando similitud',
-  consolidate: 'Terminando',
-};
+import { colors, fontFamilies, radii, tint } from '@/theme';
 
 type UploadItemProps = {
   item: QueueItem;
@@ -21,50 +23,41 @@ type UploadItemProps = {
   onDismiss: (key: string) => void;
 };
 
-/** One photo on Añadir with its own progress bar (UI-REQ-006/018/019). */
+/** One photo on Añadir with its own state, progress and actions (UI-REQ-006/018/019). */
 export function UploadItem({ item, onRetryUpload, onDismiss }: UploadItemProps) {
   if (item.phase === 'queued' && item.jobId && item.garmentId) {
     return <ProcessingItem item={item} jobId={item.jobId} garmentId={item.garmentId} />;
   }
 
-  const failed = item.phase === 'error';
+  const status = uploadStatus(item.phase);
   return (
-    <View style={styles.card} testID={`upload-item-${item.key}`}>
-      <Text style={styles.name}>{item.name}</Text>
-      {item.lowRes ? <LowResNote /> : null}
-      {failed ? (
-        <>
-          <Text style={styles.error}>{item.error}</Text>
-          <View style={styles.actions}>
-            {item.photo ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Reintentar subida de ${item.name}`}
-                onPress={() => onRetryUpload(item.key)}
-                style={styles.button}
-              >
-                <Text style={styles.buttonText}>Reintentar</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Quitar ${item.name}`}
-              onPress={() => onDismiss(item.key)}
-              style={styles.secondary}
-            >
-              <Text style={styles.secondaryText}>Quitar</Text>
-            </Pressable>
-          </View>
-        </>
-      ) : (
-        <>
-          <Text style={styles.status}>
-            {item.phase === 'preparing' ? 'Preparando foto' : 'Subiendo'}
-          </Text>
-          <ProgressBar value={0} />
-        </>
-      )}
-    </View>
+    <ItemCard
+      item={item}
+      status={status}
+      scanning={false}
+      footer={
+        status.kind === 'failed' ? (
+          <>
+            <Text style={styles.error}>{item.error}</Text>
+            <View style={styles.actions}>
+              {item.photo ? (
+                <Button
+                  label="Reintentar"
+                  accessibilityLabel={`Reintentar subida de ${item.name}`}
+                  onPress={() => onRetryUpload(item.key)}
+                />
+              ) : null}
+              <Button
+                label="Quitar"
+                accessibilityLabel={`Quitar ${item.name}`}
+                variant="secondary"
+                onPress={() => onDismiss(item.key)}
+              />
+            </View>
+          </>
+        ) : null
+      }
+    />
   );
 }
 
@@ -81,101 +74,156 @@ function ProcessingItem({
   const job = useJob(jobId);
   const retry = useRetryGarment(garmentId);
   const data = job.data;
-
-  let status = 'En cola';
-  if (data?.status === 'done') {
-    status = 'Listo';
-  } else if (data?.status === 'failed') {
-    status = 'Falló';
-  } else if (data?.step) {
-    status = STEP_LABELS[data.step] ?? 'Procesando';
-  }
+  const status = uploadStatus(item.phase, data);
+  // Name, colours and confidence only exist once the garment has been analysed.
+  const garment = useGarment(status.kind === 'done' ? garmentId : undefined).data;
 
   return (
-    <View style={styles.card} testID={`upload-item-${item.key}`}>
-      <Text style={styles.name}>{item.name}</Text>
-      {item.lowRes ? <LowResNote /> : null}
-      <Text style={styles.status}>{status}</Text>
-      {data?.status === 'failed' ? (
+    <ItemCard
+      item={item}
+      status={status}
+      scanning={status.kind === 'analysing'}
+      garment={garment}
+      footer={
         <>
-          <Text style={styles.error}>{data.error ?? 'No se pudo procesar la foto.'}</Text>
-          {retry.error ? <Text style={styles.error}>{retry.error.message}</Text> : null}
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Reintentar ${item.name}`}
-              onPress={() => retry.mutate()}
-              disabled={retry.isPending}
-              style={styles.button}
-            >
-              <Text style={styles.buttonText}>Reintentar</Text>
-            </Pressable>
-          </View>
+          {status.kind === 'failed' ? (
+            <>
+              <Text style={styles.error}>{data?.error ?? 'No se pudo procesar la foto.'}</Text>
+              {retry.error ? <Text style={styles.error}>{retry.error.message}</Text> : null}
+              <View style={styles.actions}>
+                <Button
+                  label="Reintentar"
+                  accessibilityLabel={`Reintentar ${item.name}`}
+                  onPress={() => retry.mutate()}
+                  disabled={retry.isPending}
+                />
+              </View>
+            </>
+          ) : null}
+          {job.isError ? <Text style={styles.error}>{job.error.message}</Text> : null}
+          {status.kind === 'done' ? (
+            <View style={styles.actions}>
+              <Button
+                label="Revisar"
+                accessibilityLabel={`Revisar ${item.name}`}
+                variant="secondary"
+                onPress={() => router.push(`/review/${garmentId}`)}
+              />
+            </View>
+          ) : null}
         </>
-      ) : (
-        <ProgressBar value={data?.status === 'done' ? 100 : (data?.progress ?? 0)} />
-      )}
-      {job.isError ? <Text style={styles.error}>{job.error.message}</Text> : null}
-      {data?.status === 'done' ? (
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Revisar ${item.name}`}
-            onPress={() => router.push(`/review/${garmentId}`)}
-            style={styles.button}
-          >
-            <Text style={styles.buttonText}>Revisar</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </View>
+      }
+    />
   );
 }
 
-function LowResNote() {
+type Garment = ReturnType<typeof useGarment>['data'];
+
+function ItemCard({
+  item,
+  status,
+  scanning,
+  garment,
+  footer,
+}: {
+  item: QueueItem;
+  status: ReturnType<typeof uploadStatus>;
+  scanning: boolean;
+  garment?: Garment;
+  footer: React.ReactNode;
+}) {
+  const done = status.kind === 'done';
+  const hasBar =
+    status.kind === 'uploading' || status.kind === 'queued' || status.kind === 'analysing';
+  const dotColors = (garment?.colors ?? []).map((entry) => entry.hex);
+  const confidence = garment?.ai_confidence?.category?.confidence;
+  const title = done && garment ? garmentName(garment) : item.name;
+
   return (
-    <Text style={styles.warning} testID="low-res-note">
-      {LOW_RES_NOTE}
-    </Text>
+    <Card style={styles.card} testID={`upload-item-${item.key}`}>
+      <View style={styles.row}>
+        <Thumb item={item} garment={done ? garment : undefined} scanning={scanning} />
+        <View style={styles.body}>
+          <View style={styles.head}>
+            <Text style={styles.name} numberOfLines={2}>
+              {title}
+            </Text>
+            <Pill label={status.label} tone={status.tone} dot={status.kind !== 'done'} />
+          </View>
+          {done && garment ? (
+            <View style={styles.details}>
+              <Text style={styles.meta}>{categoryLabel(garment.category)}</Text>
+              {dotColors.length ? <ColorDots colors={dotColors} /> : null}
+              {typeof confidence === 'number' ? (
+                <Text style={styles.confidence}>{`${Math.round(confidence * 100)} % seguro`}</Text>
+              ) : null}
+            </View>
+          ) : null}
+          {done && !garment ? <Text style={styles.meta}>{item.name}</Text> : null}
+          {status.step ? <Text style={styles.meta}>{status.step}</Text> : null}
+          {hasBar ? (
+            <ProgressBar value={status.progress} label={`Progreso de ${item.name}`} />
+          ) : null}
+          {item.lowRes ? (
+            <Text style={styles.warning} testID="low-res-note">
+              {LOW_RES_NOTE}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {footer}
+    </Card>
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
+/** Local preview while uploading and analysing; the cutout on its tint once it exists. */
+function Thumb({
+  item,
+  garment,
+  scanning,
+}: {
+  item: QueueItem;
+  garment?: Garment;
+  scanning: boolean;
+}) {
+  const cutout = imageUrl(garment?.img_cutout ?? garment?.img_thumb);
+  const dominant = garment?.colors?.[0]?.hex;
   return (
     <View
-      accessible
-      style={styles.track}
-      accessibilityRole="progressbar"
-      accessibilityValue={{ min: 0, max: 100, now: clamped }}
+      style={[styles.thumb, { backgroundColor: dominant ? tint(dominant) : colors.surface2 }]}
+      testID="upload-thumb"
     >
-      <View style={[styles.fill, { width: `${clamped}%` }]} />
+      {cutout ? (
+        <GarmentImage uri={cutout} tintColor={dominant} />
+      ) : item.previewUri ? (
+        <Image
+          source={{ uri: item.previewUri }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          accessibilityLabel={`Vista previa de ${item.name}`}
+        />
+      ) : null}
+      {scanning ? <ScanLine /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#d0d5dd', gap: 8 },
-  name: { fontSize: 15, fontWeight: '600' },
-  status: { fontSize: 13, opacity: 0.7 },
-  warning: { fontSize: 13, color: '#8A6A3B' },
-  error: { fontSize: 13, color: '#b42318' },
-  track: { height: 6, borderRadius: 3, backgroundColor: '#e4e7ec', overflow: 'hidden' },
-  fill: { height: 6, backgroundColor: '#208AEF' },
-  actions: { flexDirection: 'row', gap: 8 },
-  button: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#208AEF',
+  card: { padding: 12, gap: 12 },
+  row: { flexDirection: 'row', gap: 14 },
+  thumb: { width: 84, height: 105, borderRadius: radii.tile, overflow: 'hidden' },
+  body: { flex: 1, gap: 6, justifyContent: 'center' },
+  head: { gap: 6, alignItems: 'flex-start' },
+  name: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 14.5,
+    lineHeight: 20,
+    color: colors.ink,
   },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  secondary: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d0d5dd',
-  },
-  secondaryText: { fontWeight: '600' },
+  details: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  meta: { fontFamily: fontFamilies.body, fontSize: 13, lineHeight: 18, color: colors.ink2 },
+  confidence: { fontFamily: fontFamilies.bodyMedium, fontSize: 12.5, color: colors.okText },
+  warning: { fontFamily: fontFamilies.body, fontSize: 13, lineHeight: 18, color: colors.warnText },
+  error: { fontFamily: fontFamilies.body, fontSize: 13, lineHeight: 18, color: colors.danger },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

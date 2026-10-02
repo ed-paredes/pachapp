@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 import { getItem } from '../src/lib/device-storage';
 
 const mockPush = jest.fn();
@@ -35,6 +37,11 @@ jest.mock('expo-image-manipulator', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ImagePicker = require('expo-image-picker');
+const metrics = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 0, left: 0, right: 0, bottom: 0 },
+};
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AddScreen = require('../app/(tabs)/add').default;
 
@@ -71,9 +78,11 @@ async function renderScreen() {
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { gcTime: 0 } },
   });
   const view = await render(
-    <QueryClientProvider client={client}>
-      <AddScreen />
-    </QueryClientProvider>,
+    <SafeAreaProvider initialMetrics={metrics}>
+      <QueryClientProvider client={client}>
+        <AddScreen />
+      </QueryClientProvider>
+    </SafeAreaProvider>,
   );
   return { client, ...view };
 }
@@ -124,6 +133,7 @@ describe('AddScreen upload flow', () => {
       expect(screen.getByText('Recortando')).toBeTruthy();
       expect(screen.getByText('Analizando colores')).toBeTruthy();
     });
+    expect(screen.getAllByText('Analizando')).toHaveLength(2);
     const bars = screen.getAllByRole('progressbar');
     expect(bars.map((bar) => bar.props.accessibilityValue.now).sort()).toEqual([30, 60]);
     // Landscape resized by width, portrait by height (long side 3000/1500 -> 2048 only for a.jpg).

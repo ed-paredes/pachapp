@@ -56,6 +56,8 @@ export default function TabsLayout() {
         name="add"
         options={{
           title: 'Añadir',
+          // Añadir is built on `Screen`, which pads itself for the floating bar.
+          sceneStyle: { backgroundColor: colors.bg },
           tabBarIcon: ({ color, size }) => (
             <IconSymbol
               name={{ ios: 'plus', android: 'add', web: 'add' }}
