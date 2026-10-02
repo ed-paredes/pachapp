@@ -1,8 +1,10 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { GarmentImage } from '@/components/GarmentImage';
 import type { components } from '@/api-client/schema';
 import { imageUrl } from '@/lib/image-url';
 import { categoryLabel } from '@/lib/labels';
+import { colors, fontFamilies, fontSizes, radii, spacing } from '@/theme';
 
 type GarmentListItem = Pick<
   components['schemas']['GarmentListItem'],
@@ -37,16 +39,7 @@ export function GarmentCard({ item, onPress }: GarmentCardProps) {
       testID={`garment-card-${item.id}`}
     >
       <View style={styles.imageBox}>
-        {uri ? (
-          <Image
-            source={{ uri }}
-            style={styles.image}
-            resizeMode="contain"
-            testID="garment-thumb"
-          />
-        ) : (
-          <Placeholder job={item.job} />
-        )}
+        {uri ? <GarmentImage uri={uri} testID="garment-thumb" /> : <Placeholder job={item.job} />}
         {item.needs_review ? (
           <View style={styles.badge} testID="review-badge">
             <Text style={styles.badgeText}>Revisar</Text>
@@ -84,34 +77,63 @@ function Placeholder({ job }: { job: GarmentListItem['job'] }) {
 }
 
 const styles = StyleSheet.create({
-  card: { flex: 1, gap: 6 },
-  imageBox: {
-    aspectRatio: 1,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-    overflow: 'hidden',
+  // The garment stands on a plinth: a light tile with generous inner padding and only a hairline edge.
+  card: {
+    flex: 1,
+    backgroundColor: colors.plinth,
+    borderRadius: radii.tile,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  image: { width: '100%', height: '100%' },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8 },
-  placeholderText: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  placeholderStep: { fontSize: 12, opacity: 0.7, textAlign: 'center' },
+  imageBox: { aspectRatio: 1, borderRadius: radii.sm, overflow: 'hidden' },
+  placeholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: spacing.sm,
+    backgroundColor: colors.stone,
+    borderRadius: radii.sm,
+  },
+  placeholderText: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.small,
+    color: colors.charcoal,
+    textAlign: 'center',
+  },
+  placeholderStep: {
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.caption,
+    color: colors.muted,
+    textAlign: 'center',
+  },
   track: {
     alignSelf: 'stretch',
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#E4E7EC',
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.hairline,
     overflow: 'hidden',
   },
-  fill: { height: 6, backgroundColor: '#208AEF' },
+  fill: { height: 4, backgroundColor: colors.olive },
   badge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 0,
+    left: 0,
     paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    backgroundColor: '#F79009',
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.xs,
+    backgroundColor: colors.brass,
   },
-  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  category: { fontSize: 13, fontWeight: '500' },
+  badgeText: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.caption,
+    color: colors.onBrass,
+  },
+  category: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.small,
+    color: colors.charcoal,
+  },
 });

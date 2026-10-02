@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     worker_poll_interval_ms: int = Field(default=500, gt=0)
     db_busy_timeout_ms: int = Field(default=5000, gt=0)
     upload_max_px: int = Field(default=2048, gt=0)
-    thumb_px: int = Field(default=400, gt=0)
+    thumb_px: int = Field(default=640, gt=0)
 
     # --- Local vision (08-local-vision.md) ---
     ml_device: Literal["auto", "cpu", "cuda", "mps"] = "auto"

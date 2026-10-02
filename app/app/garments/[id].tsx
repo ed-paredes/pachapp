@@ -1,10 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ApiError } from '@/api-client/errors';
 import { queryKeys } from '@/api-client/query-keys';
+import { HeroImage } from '@/components/GarmentImage';
+import { centeredContentStyle } from '@/components/ContentContainer';
 import type { components } from '@/api-client/schema';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -126,12 +128,8 @@ function Detail({ garment }: { garment: Garment }) {
   const progress = Math.max(0, Math.min(100, liveJob?.progress ?? 0));
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.imageBox}>
-        {uri ? (
-          <Image source={{ uri }} style={styles.image} resizeMode="contain" testID="detail-image" />
-        ) : null}
-      </View>
+    <ScrollView contentContainerStyle={[styles.container, centeredContentStyle]}>
+      {uri ? <HeroImage uri={uri} testID="detail-image" /> : null}
 
       {processing ? (
         <View testID="detail-processing" style={styles.notice}>
@@ -314,8 +312,6 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   container: { padding: 16, gap: 12 },
-  imageBox: { aspectRatio: 1, borderRadius: 10, backgroundColor: '#F1F5F9', overflow: 'hidden' },
-  image: { width: '100%', height: '100%' },
   notice: { gap: 8, padding: 12, borderRadius: 10, backgroundColor: '#F8FAFC' },
   noticeTitle: { fontSize: 15, fontWeight: '600' },
   muted: { fontSize: 13, opacity: 0.7 },

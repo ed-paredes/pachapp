@@ -13,19 +13,30 @@ import {
 
 import type { GarmentFilters } from '@/api-client/query-keys';
 import type { components } from '@/api-client/schema';
+import { Chip } from '@/components/Chip';
+import { ContentContainer } from '@/components/ContentContainer';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { GarmentCard } from '@/components/GarmentCard';
 import { LoadingState } from '@/components/LoadingState';
 import { flattenGarmentPages, useInfiniteGarments } from '@/hooks/useGarments';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/labels';
+import {
+  CONTENT_MAX_WIDTH,
+  colors,
+  fontFamilies,
+  fontSizes,
+  gridColumns,
+  radii,
+  spacing,
+} from '@/theme';
 
 type Category = components['schemas']['GarmentCategory'];
 type GarmentStatus = components['schemas']['GarmentStatus'];
 
 const PAGE_SIZE = 50;
-const PADDING = 16;
-const GAP = 12;
+const PADDING = spacing.lg;
+const GAP = spacing.md;
 
 /** `null` = default (active + laundry, UI-REQ-004 default of the Armario). */
 type StatusChoice = GarmentStatus | 'all' | null;
@@ -51,7 +62,8 @@ function statusFilter(choice: StatusChoice): GarmentStatus[] {
 export default function WardrobeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const columns = width >= 600 ? 3 : 2;
+  // Columns come from the content width (capped like the container) and a minimum card width.
+  const columns = gridColumns(Math.min(width, CONTENT_MAX_WIDTH) - PADDING * 2, undefined, GAP);
 
   const [category, setCategory] = useState<Category | null>(null);
   const [statusChoice, setStatusChoice] = useState<StatusChoice>(null);
@@ -163,10 +175,11 @@ export default function WardrobeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ContentContainer style={styles.container}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.chipRow}
         contentContainerStyle={styles.chips}
       >
         <Chip
@@ -188,6 +201,7 @@ export default function WardrobeScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.chipRow}
         contentContainerStyle={styles.chips}
       >
         {STATUS_CHIPS.map((chip) => (
@@ -222,63 +236,40 @@ export default function WardrobeScreen() {
         </View>
       ) : null}
       <View style={styles.body}>{body}</View>
-    </View>
-  );
-}
-
-function Chip({
-  group,
-  label,
-  selected,
-  onPress,
-}: {
-  group: string;
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${group}: ${label}`}
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[styles.chip, selected && styles.chipSelected]}
-    >
-      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
-    </Pressable>
+    </ContentContainer>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  chips: { gap: 8, paddingHorizontal: PADDING, paddingVertical: 6 },
-  chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#D0D5DD',
-  },
-  chipSelected: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipText: { fontSize: 13, fontWeight: '500' },
-  chipTextSelected: { color: '#fff' },
+  // A horizontal ScrollView must not grow: on web it would otherwise stretch to fill the column.
+  chipRow: { flexGrow: 0, flexShrink: 0 },
+  chips: { gap: spacing.sm, alignItems: 'center', paddingHorizontal: PADDING, paddingVertical: 6 },
   body: { flex: 1 },
   list: { padding: PADDING - GAP / 2, gap: GAP },
   row: { alignItems: 'flex-start' },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
     marginHorizontal: PADDING,
     marginVertical: 6,
     padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#FEF3F2',
+    borderRadius: radii.sm,
+    backgroundColor: colors.errorSurface,
   },
-  bannerText: { flex: 1, fontSize: 13, color: '#B42318' },
-  bannerAction: { padding: 4 },
+  bannerText: {
+    flex: 1,
+    fontFamily: fontFamilies.body,
+    fontSize: fontSizes.small,
+    color: colors.error,
+  },
+  bannerAction: { padding: spacing.xs },
   emptyBox: { flex: 1 },
-  action: { alignSelf: 'center', marginVertical: 16, padding: 8 },
-  actionText: { fontSize: 16, fontWeight: '600', color: '#208AEF' },
+  action: { alignSelf: 'center', marginVertical: PADDING, padding: spacing.sm },
+  actionText: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: fontSizes.body,
+    color: colors.olive,
+  },
 });

@@ -121,7 +121,7 @@ Todas las claves se leen mediante un modelo `Settings` de `pydantic-settings` en
 | `PACHAPP_WORKER_POLL_INTERVAL_MS` | `500` | Intervalo de polling del worker sobre la tabla `job`. |
 | `PACHAPP_DB_BUSY_TIMEOUT_MS` | `5000` | `busy_timeout` de SQLite (D4). |
 | `PACHAPP_UPLOAD_MAX_PX` | `2048` | Tamaño objetivo de redimensionado en cliente antes de subir; el servidor también lo aplica como tope duro. |
-| `PACHAPP_THUMB_PX` | `400` | Tamaño del lado largo de la miniatura. |
+| `PACHAPP_THUMB_PX` | `640` | Tamaño del lado largo de la miniatura. |
 | `EXPO_PUBLIC_API_BASE_URL` | *(ninguno — obligatorio)* | Lado app; debe apuntar al `host:port` de la API accesible por LAN. |
 
 **DEV-REQ-011.** Los secretos (`PACHAPP_LLM_API_KEY`) NO DEBEN tener un valor por defecto versionado. Cuando `PACHAPP_ML_LLM_FALLBACK=true` (08-local-vision.md), el arranque del worker DEBE fallar de forma inmediata y clara si falta `PACHAPP_LLM_API_KEY`, `PACHAPP_LLM_PROVIDER` o `PACHAPP_LLM_MODEL_ID`; cuando el respaldo está desactivado (valor por defecto), estas tres variables NO DEBEN exigirse.

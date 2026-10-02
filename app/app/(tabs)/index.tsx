@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { EmptyState } from '@/components/EmptyState';
+import { centeredContentStyle } from '@/components/ContentContainer';
 
 /**
  * Hoy (Today): shows the current outfit proposal, or the empty state from
@@ -11,7 +12,7 @@ import { EmptyState } from '@/components/EmptyState';
  */
 export default function TodayScreen() {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, centeredContentStyle]}>
       <EmptyState
         title="Aún no tienes suficientes prendas para generar un outfit"
         description="Añade algunas prendas a tu armario para ver tu primera propuesta."

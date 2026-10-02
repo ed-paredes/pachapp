@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
 
+import { colors, fontFamilies, fontSizes, radii } from '@/theme';
+
 type ChipProps = {
   group: string;
   label: string;
@@ -8,7 +10,7 @@ type ChipProps = {
   disabled?: boolean;
 };
 
-/** Selectable pill used by the attribute editors of Revisión. */
+/** Selectable pill used by the Armario filters and the attribute editors of Revisión. */
 export function Chip({ group, label, selected, onPress, disabled }: ChipProps) {
   return (
     <Pressable
@@ -16,8 +18,9 @@ export function Chip({ group, label, selected, onPress, disabled }: ChipProps) {
       accessibilityLabel={`${group}: ${label}`}
       accessibilityState={{ selected, disabled: !!disabled }}
       disabled={disabled}
+      hitSlop={4}
       onPress={onPress}
-      style={[styles.chip, selected && styles.chipSelected]}
+      style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}
     >
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
     </Pressable>
@@ -26,13 +29,20 @@ export function Chip({ group, label, selected, onPress, disabled }: ChipProps) {
 
 const styles = StyleSheet.create({
   chip: {
-    paddingVertical: 6,
+    minHeight: 36,
+    justifyContent: 'center',
     paddingHorizontal: 14,
-    borderRadius: 16,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: '#D0D5DD',
+    borderColor: colors.hairline,
+    backgroundColor: colors.plinth,
   },
-  chipSelected: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipText: { fontSize: 13, fontWeight: '500' },
-  chipTextSelected: { color: '#fff' },
+  chipSelected: { backgroundColor: colors.olive, borderColor: colors.olive },
+  chipDisabled: { opacity: 0.5 },
+  chipText: {
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: fontSizes.small,
+    color: colors.charcoal,
+  },
+  chipTextSelected: { color: colors.onOlive },
 });

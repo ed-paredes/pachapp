@@ -44,7 +44,7 @@ def test_defaults_derive_db_path_and_images_root(tmp_path: Path) -> None:
     assert settings.worker_poll_interval_ms == 500
     assert settings.db_busy_timeout_ms == 5000
     assert settings.upload_max_px == 2048
-    assert settings.thumb_px == 400
+    assert settings.thumb_px == 640
     assert settings.llm_provider is None
     assert settings.llm_model_id is None
     assert settings.llm_api_key is None

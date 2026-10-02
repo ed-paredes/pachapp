@@ -6,6 +6,17 @@ import type { UploadPhoto } from '@/hooks/useUploadGarment';
 /** Longest side sent to the server (default `upload_max_px`, 03-garment-ingestion). */
 export const MAX_UPLOAD_PX = 2048;
 
+/** Photos whose long side is below this look blurry once cut out and shown large. */
+export const LOW_RES_PX = 800;
+
+export const LOW_RES_NOTE =
+  'Foto de baja resolución: se verá borrosa. Mejor una foto más cercana y con más luz.';
+
+export function isLowResolution(asset: Pick<PickedAsset, 'width' | 'height'>): boolean {
+  const longSide = Math.max(asset.width, asset.height);
+  return longSide > 0 && longSide < LOW_RES_PX;
+}
+
 export const CAMERA_DENIED_MESSAGE =
   'Necesitamos permiso para usar la cámara. Actívalo en los ajustes del dispositivo.';
 
