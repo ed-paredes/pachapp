@@ -40,7 +40,7 @@ Login/sesión (aplazado), exportación de datos (aplazada, ver Conflictos), try-
 
 **UI-REQ-004.** Armario: estado de carga con skeleton de cuadrícula; estado vacío con copy en español invitando a "Añadir" la primera prenda; insignia visible en las miniaturas de prendas con `needs_review = true`.
 
-**UI-REQ-005.** Hoy: spinner mientras `POST /outfits/generate` está en curso; estado de error con botón de reintento si la generación falla; estado vacío ("Aún no tienes suficientes prendas para generar un outfit") cuando `proposals` vuelve vacío (ENG-REQ-022).
+**UI-REQ-005.** Hoy: spinner mientras `POST /outfits/generate` está en curso; estado de error con botón de reintento si la generación falla; estado vacío ("Aún no tienes suficientes prendas para generar un outfit") cuando `proposals` vuelve vacío (ENG-REQ-022). Mientras no haya propuestas disponibles: con el armario vacío, el estado vacío invita a añadir prendas; con prendas en el armario, un estado "Tus propuestas diarias llegan pronto" que indica cuántas prendas hay y enlaza a Armario.
 
 **UI-REQ-006.** Añadir: cada foto en curso de subida/procesado muestra su propia barra de progreso independiente, derivada del polling de `GET /jobs/{id}` (`job.progress`/`job.step`); el usuario puede encadenar varias fotos seguidas sin esperar a que termine el procesado de la anterior.
 
@@ -62,7 +62,9 @@ Login/sesión (aplazado), exportación de datos (aplazada, ver Conflictos), try-
 
 **UI-REQ-013.** La captura de fotos en Añadir usa la cámara nativa (`expo-image-picker`) en iOS/Android; en web recae en el selector de fichero / cámara del navegador, con fiabilidad limitada según el navegador (ver Preguntas abiertas).
 
-**UI-REQ-020.** La primera vez que se abre la pantalla Añadir, DEBE mostrarse un panel de consejos de captura (paso 1 del pipeline del borrador: prenda sola, extendida sobre fondo liso o colgada en percha, con luz natural), descartable por el usuario. Tras descartarlo, DEBE quedar accesible de nuevo en cualquier momento mediante un icono de ayuda visible en la propia pantalla Añadir (no solo la primera vez). *(Persistencia de "ya visto" vía `localStorage`/almacenamiento local del dispositivo — per-viewer, no sincronizado con el servidor, ya que es una preferencia puramente de UI sin equivalente en el modelo de datos.)*
+**UI-REQ-020.** La primera vez que se abre la pantalla Añadir, DEBE mostrarse un panel de consejos de captura (paso 1 del pipeline del borrador: prenda sola, extendida sobre una superficie lisa, sin percha, con luz natural), descartable por el usuario. Tras descartarlo, DEBE quedar accesible de nuevo en cualquier momento mediante un icono de ayuda visible en la propia pantalla Añadir (no solo la primera vez). *(Persistencia de "ya visto" vía `localStorage`/almacenamiento local del dispositivo — per-viewer, no sincronizado con el servidor, ya que es una preferencia puramente de UI sin equivalente en el modelo de datos.)*
+
+**Nota sobre el rediseño visual (sin cambio de requisitos).** El rediseño (`docs/redesign/`) cambia la presentación, no la intención de los requisitos: en Armario, la insignia/filtro de pendientes de revisión se presenta como un banner (un único pendiente abre su Revisión; varios activan el filtro "Solo pendientes de revisión") en lugar de un chip de filtro; en Hoy, la propuesta se presenta como un collage en lugar de la pila vertical de UI-REQ-009 y permanece pendiente del motor de outfits (hasta entonces no se muestra); el panel de consejos de UI-REQ-020 se presenta como tarjeta "Consejo" y el icono de ayuda se mantiene; Historial muestra solo estadísticas derivables de las prendas (usadas, sin estrenar, más usadas) hasta que exista el registro de uso.
 
 ## Uso del cliente de API vía TanStack Query
 

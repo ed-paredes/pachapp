@@ -45,6 +45,7 @@ const base = {
   dateLabel: 'Jueves, 1 de octubre',
   greeting: 'Buenos días',
   onAddGarment: jest.fn(),
+  onOpenWardrobe: jest.fn(),
 };
 
 describe('TodayView', () => {
@@ -54,6 +55,17 @@ describe('TodayView', () => {
     expect(screen.getByText('Jueves, 1 de octubre')).toBeTruthy();
     expect(screen.getByTestId('empty-state')).toBeTruthy();
     expect(screen.queryByText('Look del día')).toBeNull();
+  });
+
+  it('shows the coming-soon state with the garment count and opens Armario', async () => {
+    const onOpenWardrobe = jest.fn();
+    await renderView(<TodayView {...base} wardrobeSize={1} onOpenWardrobe={onOpenWardrobe} />);
+
+    expect(screen.getByTestId('soon-state')).toBeTruthy();
+    expect(screen.getByText(/Ya tienes 1 prenda en tu armario/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Añadir prendas' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ver tu armario' }));
+    expect(onOpenWardrobe).toHaveBeenCalled();
   });
 
   it('shows the look, the reasons and the actions once a proposal exists', async () => {

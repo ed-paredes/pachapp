@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import SettingsScreen from '../app/settings';
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: jest.fn(), back: jest.fn(), canGoBack: () => false }),
+}));
 
 const clients: QueryClient[] = [];
 
@@ -15,7 +20,16 @@ function renderWithClient(ui: ReactNode) {
     },
   });
   clients.push(client);
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  return render(
+    <SafeAreaProvider
+      initialMetrics={{
+        frame: { x: 0, y: 0, width: 390, height: 844 },
+        insets: { top: 0, left: 0, right: 0, bottom: 0 },
+      }}
+    >
+      <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+    </SafeAreaProvider>,
+  );
 }
 
 const json = (body: unknown, status = 200) =>
@@ -64,6 +78,15 @@ describe('SettingsScreen', () => {
     await cleanup();
     clients.splice(0).forEach((client) => client.clear());
     globalThis.fetch = originalFetch;
+  });
+
+  it('titles the page and offers a way back, since the native header is hidden', async () => {
+    routeFetch({ 'GET /health': json({ status: 'ok' }), 'GET /settings': json(SETTINGS) });
+
+    await renderWithClient(<SettingsScreen />);
+
+    expect(screen.getByRole('header', { name: 'Ajustes' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Volver' })).toBeTruthy();
   });
 
   describe('connection status (UI-REQ-014)', () => {

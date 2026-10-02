@@ -22,3 +22,4 @@ export {
 } from './tab-bar-metrics';
 export { Title } from './Title';
 export { ToastProvider, useToast } from './Toast';
+export { WebFocusRing } from './WebFocusRing';

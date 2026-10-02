@@ -4,7 +4,10 @@ import { Card } from '@/components/ui';
 import { colors, fontFamilies, spacing } from '@/theme';
 
 const STEPS = [
-  { title: 'Sube una foto', text: 'Una sola prenda, sobre la cama o en percha. Con buena luz.' },
+  {
+    title: 'Sube una foto',
+    text: 'Una sola prenda, extendida sobre una superficie lisa. Con buena luz.',
+  },
   { title: 'Recortamos la prenda', text: 'Quitamos el fondo automáticamente.' },
   { title: 'Detectamos categoría y colores', text: 'Tú solo confirmas o corriges.' },
 ];

@@ -1,20 +1,36 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api-client/errors';
-import { centeredContentStyle } from '@/components/ContentContainer';
 import type { components } from '@/api-client/schema';
 import { Chip } from '@/components/Chip';
+import { BackButton, GarmentHero } from '@/components/GarmentHero';
 import { HeroImage } from '@/components/GarmentImage';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
+import { StateShell, useGoBack } from '@/components/StateShell';
+import { Button, Card, ColorDots, ColorSwatch, Eyebrow, Pill, Title } from '@/components/ui';
+import { FORMALITY_LABELS } from '@/components/ui/FormalityMeter';
+import { pressFeedback } from '@/components/ui/feedback';
+import { IconSymbol } from '@/components/IconSymbol';
 import { useCompleteReview, usePatchGarment, type GarmentPatch } from '@/hooks/useGarmentMutations';
 import { useGarment } from '@/hooks/useGarments';
 import { useSettings } from '@/hooks/useSettings';
+import { garmentName } from '@/lib/garment-name';
 import { imageUrl } from '@/lib/image-url';
 import {
+  categoryLabel,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   MATERIAL_SUGGESTIONS,
@@ -26,7 +42,15 @@ import {
   STYLE_ORDER,
 } from '@/lib/labels';
 import { buildColors, MAX_COLORS, PALETTE_NAMES, paletteHex } from '@/lib/palette';
-import { colors as theme, fontFamilies, fontSizes, lineHeights, radii, spacing } from '@/theme';
+import {
+  colors,
+  fontFamilies,
+  radii,
+  shadows,
+  spacing,
+  TWO_COLUMNS,
+  CONTENT_MAX_WIDTH,
+} from '@/theme';
 
 type Garment = components['schemas']['GarmentDetail'];
 
@@ -34,8 +58,12 @@ const DEFAULT_NEEDS_REVIEW_THRESHOLD = 0.7;
 const DEFAULT_COLOR_REVIEW_THRESHOLD = 0.7;
 const MAX_STYLE_TAGS = 3;
 const LEVELS = [1, 2, 3, 4, 5];
-/** The review screen spends less of the window on the image so the fields to check fit above the fold. */
+/** On phones the image spends less of the window so the fields to check fit above the fold. */
 const REVIEW_HERO_HEIGHT_RATIO = 0.24;
+/** Tint of the hero when the garment has no colour yet. */
+const NEUTRAL_HERO = '#A39A8E';
+/** The fields column never grows past this on wide screens. */
+const FIELDS_MAX_WIDTH = 560;
 const SAVE_ERROR = 'No se pudo guardar el cambio. Inténtalo de nuevo.';
 
 type FieldName =
@@ -102,7 +130,8 @@ const COLLAPSE_AFTER_SAVE = new Set<FieldName>([
   'material',
 ]);
 
-const EMPTY_SUMMARY = 'Sin definir';
+/** Spoken in row labels; on screen an empty value is a dashed "+ Añadir" chip. */
+const EMPTY_SUMMARY = 'sin definir';
 
 function isEmpty(value: unknown): boolean {
   return (
@@ -149,18 +178,28 @@ export default function ReviewScreen() {
   const settings = useSettings();
 
   if (garment.isPending || (settings.isPending && !settings.isError)) {
-    return <LoadingState />;
+    return <StateShell state={<LoadingState />} />;
   }
   if (garment.isError && !garment.data) {
     if (garment.error instanceof ApiError && garment.error.status === 404) {
       return (
-        <EmptyState
-          title="No encontramos esta prenda"
-          description="Puede que se haya eliminado. Vuelve al armario."
+        <StateShell
+          state={
+            <EmptyState
+              title="No encontramos esta prenda"
+              description="Puede que se haya eliminado. Vuelve al armario."
+            />
+          }
         />
       );
     }
-    return <ErrorState message={garment.error.message} onRetry={() => void garment.refetch()} />;
+    return (
+      <StateShell
+        state={
+          <ErrorState message={garment.error.message} onRetry={() => void garment.refetch()} />
+        }
+      />
+    );
   }
   return (
     <ReviewForm
@@ -244,6 +283,10 @@ function ReviewForm({
     }
   };
 
+  const goBack = useGoBack();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const twoColumns = width >= TWO_COLUMNS;
   const uri = imageUrl(garment.img_cutout) ?? imageUrl(garment.img_thumb);
   const category = value('category');
   const pattern = value('pattern');
@@ -296,17 +339,23 @@ function ReviewForm({
     current: number | null | undefined,
     field: 'formality' | 'warmth',
   ) => (
-    <ChipRow>
-      {LEVELS.map((level) => (
-        <Chip
-          key={level}
-          group={group}
-          label={String(level)}
-          selected={current === level}
-          onPress={() => current !== level && void save(field, { [field]: level }, level)}
-        />
-      ))}
-    </ChipRow>
+    <View style={styles.levels}>
+      <View style={styles.levelRow}>
+        {LEVELS.map((level) => (
+          <Chip
+            key={level}
+            grow
+            group={group}
+            label={String(level)}
+            selected={current === level}
+            onPress={() => current !== level && void save(field, { [field]: level }, level)}
+          />
+        ))}
+      </View>
+      {field === 'formality' && current ? (
+        <Text style={styles.levelCaption}>{FORMALITY_LABELS[current - 1]}</Text>
+      ) : null}
+    </View>
   );
 
   const editor = (name: FieldName): ReactNode => {
@@ -329,6 +378,7 @@ function ReviewForm({
         return (
           <TextField
             label="Subcategoría"
+            placeholder="Por ejemplo, camiseta"
             value={(value('subcategory') as string | null) ?? ''}
             flushers={flushers}
             onSave={(text) => save('subcategory', { subcategory: text }, text)}
@@ -339,16 +389,13 @@ function ReviewForm({
           <>
             <View style={styles.swatchList} testID="color-swatches">
               {(garmentColors ?? []).map((entry) => (
-                <View key={entry.name} style={styles.swatch}>
-                  <View style={[styles.swatchDot, { backgroundColor: entry.hex }]} />
-                  <Text style={styles.swatchText}>
-                    {entry.name} {Math.round(entry.proportion * 100)} %
-                  </Text>
-                </View>
+                <ColorSwatch
+                  key={entry.name}
+                  color={entry.hex}
+                  label={`${entry.name} ${Math.round(entry.proportion * 100)} %`}
+                />
               ))}
-              {!garmentColors?.length ? (
-                <Text style={styles.swatchText}>{EMPTY_SUMMARY}</Text>
-              ) : null}
+              {!garmentColors?.length ? <EmptyValue /> : null}
             </View>
             {choosingColors ? (
               <>
@@ -369,12 +416,22 @@ function ReviewForm({
                           (!selected && colorNames.length >= MAX_COLORS)
                         }
                         onPress={() => toggleColor(paletteName)}
-                        style={[styles.paletteChip, selected && styles.paletteChipSelected]}
+                        style={(state) => [
+                          styles.paletteChip,
+                          selected && styles.paletteChipSelected,
+                          (selected && colorNames.length === 1) ||
+                          (!selected && colorNames.length >= MAX_COLORS)
+                            ? styles.paletteChipDisabled
+                            : null,
+                          pressFeedback(state),
+                        ]}
                       >
                         <View
                           style={[styles.swatchDot, { backgroundColor: paletteHex(paletteName) }]}
                         />
-                        <Text style={styles.chipLabel}>{paletteName}</Text>
+                        <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
+                          {paletteName}
+                        </Text>
                       </Pressable>
                     );
                   })}
@@ -448,6 +505,7 @@ function ReviewForm({
           <>
             <TextField
               label="Material"
+              placeholder="Por ejemplo, algodón"
               value={(value('material') as string | null) ?? ''}
               flushers={flushers}
               onSave={(text) => save('material', { material: text }, text)}
@@ -480,116 +538,175 @@ function ReviewForm({
 
   const reviewFields = FIELD_ORDER.filter((name) => highlights.has(name));
   const otherFields = FIELD_ORDER.filter((name) => !highlights.has(name));
+  const dominant = garment.colors?.[0]?.hex ?? NEUTRAL_HERO;
+  const name = garmentName({
+    category,
+    subcategory: value('subcategory') as string | null,
+    colors: garmentColors,
+    material: value('material') as string | null,
+  });
+
+  const heading = (
+    <View style={styles.head}>
+      <Eyebrow>{categoryLabel(category)}</Eyebrow>
+      <Title>{name}</Title>
+      {garment.needs_review ? (
+        <Pill label="Pendiente de revisión" tone="warn" testID="review-badge" />
+      ) : null}
+    </View>
+  );
+
+  const fields = (
+    <View style={styles.fields}>
+      {reviewFields.length || garment.needs_review ? (
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          {reviewFields.length ? 'Por revisar' : 'Ficha de la prenda'}
+        </Text>
+      ) : null}
+
+      {reviewFields.length ? (
+        <Card style={styles.reviewCard}>
+          {reviewFields.map((field, index) => (
+            <View
+              key={field}
+              testID={`field-${field}`}
+              style={[styles.reviewField, index > 0 && styles.reviewSeparator]}
+            >
+              <View style={styles.fieldHeader}>
+                <Text style={styles.reviewLabel}>{FIELD_LABELS[field]}</Text>
+                <Pill label="Revisar" tone="warn" testID={`highlight-${field}`} />
+              </View>
+              {FIELD_HINTS[field] ? <Text style={styles.hint}>{FIELD_HINTS[field]}</Text> : null}
+              {editor(field)}
+              {errorText(field)}
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {otherFields.length ? (
+        <>
+          {reviewFields.length ? <Text style={styles.sectionTitle}>Resto de la ficha</Text> : null}
+          <Card>
+            {otherFields.map((field, index) => {
+              const open = expanded === field;
+              const empty = summary(field) === EMPTY_SUMMARY;
+              return (
+                <View
+                  key={field}
+                  testID={`field-${field}`}
+                  style={[styles.row, index > 0 && styles.rowSeparator]}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${FIELD_LABELS[field]}, ${summary(field)}`}
+                    accessibilityState={{ expanded: open }}
+                    onPress={() => {
+                      void flushText();
+                      setExpanded(open ? null : field);
+                      if (field === 'colors') setChoosingColors(false);
+                    }}
+                    style={(state) => [styles.rowHeader, pressFeedback(state)]}
+                  >
+                    <Text style={styles.rowLabel}>{FIELD_LABELS[field]}</Text>
+                    <View style={styles.rowValueBox}>
+                      {empty ? (
+                        <EmptyValue />
+                      ) : (
+                        <>
+                          {field === 'colors' && !open ? (
+                            <ColorDots
+                              colors={(garmentColors ?? []).map((entry) => entry.hex)}
+                              ringColor={colors.surface}
+                            />
+                          ) : null}
+                          <Text style={styles.rowValue} numberOfLines={1}>
+                            {summary(field)}
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                    <View style={open ? styles.chevronOpen : undefined}>
+                      <IconSymbol name={CHEVRON} size={18} color={colors.ink2} />
+                    </View>
+                  </Pressable>
+                  {open ? (
+                    <View style={styles.rowEditor}>
+                      {FIELD_HINTS[field] ? (
+                        <Text style={styles.hint}>{FIELD_HINTS[field]}</Text>
+                      ) : null}
+                      {editor(field)}
+                    </View>
+                  ) : null}
+                  {errorText(field)}
+                </View>
+              );
+            })}
+          </Card>
+        </>
+      ) : null}
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.scroll}
         testID="review-scroll"
-        contentContainerStyle={[styles.container, centeredContentStyle]}
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: insets.top + (twoColumns ? spacing.xxl : spacing.md) },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
-        {uri ? (
-          <HeroImage
-            uri={uri}
-            testID="review-image"
-            maxHeightRatio={REVIEW_HERO_HEIGHT_RATIO}
-            compact
-          />
-        ) : null}
-
-        {reviewFields.length || garment.needs_review ? (
-          <View style={styles.groupHeader}>
-            <Text style={styles.groupTitle} accessibilityRole="header">
-              {reviewFields.length ? 'Por revisar' : 'Ficha de la prenda'}
-            </Text>
-            {garment.needs_review ? (
-              <View style={styles.badge} testID="review-badge">
-                <Text style={styles.badgeText}>Pendiente de revisión</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {reviewFields.map((name) => (
-          <View key={name} testID={`field-${name}`} style={styles.reviewField}>
-            <View style={styles.fieldHeader}>
-              <Text style={styles.reviewLabel}>{FIELD_LABELS[name]}</Text>
-              <Text style={styles.doubt} testID={`highlight-${name}`}>
-                Revisar
-              </Text>
+        {twoColumns ? (
+          <View style={styles.pageTwo}>
+            <View style={styles.heroColumn}>
+              <GarmentHero
+                uri={uri}
+                color={dominant}
+                onBack={goBack}
+                analyzed={!!garment.img_cutout}
+                sticky
+                testID="review-image"
+              />
             </View>
-            {FIELD_HINTS[name] ? <Text style={styles.hint}>{FIELD_HINTS[name]}</Text> : null}
-            {editor(name)}
-            {errorText(name)}
+            <View style={styles.fieldsColumn}>
+              {heading}
+              {fields}
+            </View>
           </View>
-        ))}
-
-        {otherFields.length ? (
-          <View style={styles.rows}>
-            {reviewFields.length ? <Text style={styles.restTitle}>Resto de la ficha</Text> : null}
-            {otherFields.map((name) => {
-              const open = expanded === name;
-              return (
-                <View key={name} testID={`field-${name}`} style={styles.row}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${FIELD_LABELS[name]}, ${summary(name)}`}
-                    accessibilityState={{ expanded: open }}
-                    onPress={() => {
-                      void flushText();
-                      setExpanded(open ? null : name);
-                      if (name === 'colors') setChoosingColors(false);
-                    }}
-                    style={styles.rowHeader}
-                  >
-                    <Text style={styles.rowLabel}>{FIELD_LABELS[name]}</Text>
-                    {name === 'colors' && !open ? (
-                      <View style={styles.rowDots}>
-                        {(garmentColors ?? []).map((entry) => (
-                          <View
-                            key={entry.name}
-                            style={[styles.swatchDot, { backgroundColor: entry.hex }]}
-                          />
-                        ))}
-                      </View>
-                    ) : null}
-                    <Text style={styles.rowValue} numberOfLines={1}>
-                      {summary(name)}
-                    </Text>
-                    <Text style={[styles.chevron, open && styles.chevronOpen]}>›</Text>
-                  </Pressable>
-                  {open ? (
-                    <View style={styles.rowEditor}>
-                      {FIELD_HINTS[name] ? (
-                        <Text style={styles.hint}>{FIELD_HINTS[name]}</Text>
-                      ) : null}
-                      {editor(name)}
-                    </View>
-                  ) : null}
-                  {errorText(name)}
-                </View>
-              );
-            })}
+        ) : (
+          <View style={styles.page}>
+            <View style={styles.back}>
+              <BackButton onPress={goBack} />
+            </View>
+            {uri ? (
+              <HeroImage
+                uri={uri}
+                tintColor={dominant}
+                testID="review-image"
+                maxHeightRatio={REVIEW_HERO_HEIGHT_RATIO}
+                compact
+              />
+            ) : null}
+            {heading}
+            {fields}
           </View>
-        ) : null}
+        )}
       </ScrollView>
 
-      <View style={styles.footer}>
-        <View style={[styles.footerInner, centeredContentStyle]}>
-          {completeError ? (
-            <Text style={styles.error} testID="complete-error">
-              {completeError}
-            </Text>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Revisión terminada"
-            onPress={() => void finish()}
-            style={({ pressed }) => [styles.done, pressed && styles.donePressed]}
-          >
-            <Text style={styles.doneText}>Revisión terminada</Text>
-          </Pressable>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
+        <View style={[styles.footerInner, twoColumns && styles.pageTwo]}>
+          {twoColumns ? <View style={styles.heroColumn} /> : null}
+          <View style={twoColumns ? styles.fieldsColumn : styles.footerAction}>
+            {completeError ? (
+              <Text style={styles.error} testID="complete-error" accessibilityRole="alert">
+                {completeError}
+              </Text>
+            ) : null}
+            <Button label="Revisión terminada" onPress={() => void finish()} />
+          </View>
         </View>
       </View>
     </View>
@@ -598,6 +715,15 @@ function ReviewForm({
 
 function ChipRow({ children }: { children: ReactNode }) {
   return <View style={styles.chipRow}>{children}</View>;
+}
+
+/** Dashed stand-in for a value nobody has set yet (never "Sin definir"). */
+function EmptyValue() {
+  return (
+    <View style={styles.empty}>
+      <Text style={styles.emptyText}>+ Añadir</Text>
+    </View>
+  );
 }
 
 function LinkButton({ label, onPress }: { label: string; onPress: () => void }) {
@@ -623,23 +749,41 @@ type FlushText = () => Promise<boolean>;
  */
 function TextField({
   label,
+  placeholder,
   value,
   onSave,
   flushers,
 }: {
   label: string;
+  placeholder: string;
   value: string;
   onSave: (text: string) => Promise<boolean>;
   flushers: MutableRefObject<Set<FlushText>>;
 }) {
-  // `null` = untouched: show the saved value; otherwise the text being typed.
+  // `null` = untouched: show the saved value; otherwise the text being typed. `typed` mirrors it
+  // synchronously so a commit from a stale closure (blur then tap) never sends the text twice.
   const [edit, setEdit] = useState<string | null>(null);
+  const typed = useRef<string | null>(null);
+  // The save a blur/submit already started: flushing waits for it instead of resolving early.
+  const saving = useRef<Promise<boolean> | null>(null);
+
+  const change = (text: string) => {
+    typed.current = text;
+    setEdit(text);
+  };
 
   const commit: FlushText = async () => {
-    if (edit === null) return true;
-    const trimmed = edit.trim();
+    const text = typed.current;
+    if (text === null) return saving.current ?? true;
+    const trimmed = text.trim();
+    typed.current = null;
     setEdit(null);
-    return trimmed && trimmed !== value ? onSave(trimmed) : true;
+    if (!trimmed || trimmed === value) return saving.current ?? true;
+    const save = onSave(trimmed).finally(() => {
+      if (saving.current === save) saving.current = null;
+    });
+    saving.current = save;
+    return save;
   };
 
   useEffect(() => {
@@ -654,170 +798,147 @@ function TextField({
     <TextInput
       accessibilityLabel={label}
       value={edit ?? value}
-      onChangeText={setEdit}
+      onChangeText={change}
       onBlur={() => void commit()}
       onSubmitEditing={() => void commit()}
-      placeholder={EMPTY_SUMMARY}
-      placeholderTextColor={theme.muted}
+      placeholder={placeholder}
+      placeholderTextColor={colors.ink3Text}
       style={styles.input}
     />
   );
 }
 
+const CHEVRON = { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' } as const;
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.stone },
+  screen: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1 },
-  container: { padding: spacing.lg, gap: spacing.md },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
+  container: {
+    width: '100%',
+    maxWidth: CONTENT_MAX_WIDTH,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.screen,
+    paddingBottom: spacing.xxl,
+  },
+  page: { gap: spacing.lg },
+  back: { alignItems: 'flex-start' },
+  pageTwo: { flexDirection: 'row', alignItems: 'flex-start', gap: 48 },
+  heroColumn: { flex: 1 },
+  fieldsColumn: { flex: 1, maxWidth: FIELDS_MAX_WIDTH, gap: spacing.xl },
+  head: { gap: 10 },
+  fields: { gap: spacing.md },
+  sectionTitle: {
     marginTop: spacing.xs,
-  },
-  groupTitle: {
     fontFamily: fontFamilies.display,
-    fontSize: fontSizes.title,
-    lineHeight: lineHeights.title,
-    color: theme.charcoal,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.ink,
   },
-  badge: {
-    paddingVertical: 2,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: theme.brass,
-  },
-  badgeText: {
-    color: theme.onBrass,
-    fontFamily: fontFamilies.bodySemiBold,
-    fontSize: fontSizes.caption,
-    lineHeight: lineHeights.caption,
-  },
-  reviewField: {
-    gap: spacing.sm,
-    paddingLeft: spacing.md,
-    paddingVertical: spacing.xs,
-    borderLeftWidth: 3,
-    borderLeftColor: theme.brass,
-  },
+  reviewCard: { paddingHorizontal: 18 },
+  reviewField: { gap: spacing.sm, paddingVertical: spacing.lg },
+  reviewSeparator: { borderTopWidth: 1, borderTopColor: colors.line },
   fieldHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   reviewLabel: {
     fontFamily: fontFamilies.bodySemiBold,
-    fontSize: fontSizes.body,
-    lineHeight: lineHeights.body,
-    color: theme.charcoal,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.ink,
   },
-  doubt: {
-    fontFamily: fontFamilies.bodyMedium,
-    fontSize: fontSizes.caption,
-    color: theme.muted,
-  },
-  restTitle: {
-    fontFamily: fontFamilies.bodyMedium,
-    fontSize: fontSizes.small,
-    color: theme.muted,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  rows: { borderTopWidth: 1, borderTopColor: theme.hairline },
-  row: { borderBottomWidth: 1, borderBottomColor: theme.hairline },
+  row: { paddingHorizontal: 18 },
+  rowSeparator: { borderTopWidth: 1, borderTopColor: colors.line },
   rowHeader: {
-    minHeight: 48,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.sm,
   },
-  rowLabel: {
-    width: 112,
-    fontFamily: fontFamilies.body,
-    fontSize: fontSizes.small,
-    color: theme.muted,
-  },
-  rowDots: { flexDirection: 'row', gap: 4 },
-  rowValue: {
+  rowLabel: { width: 108, fontFamily: fontFamilies.body, fontSize: 14, color: colors.ink2 },
+  rowValueBox: {
     flex: 1,
-    textAlign: 'right',
-    fontFamily: fontFamilies.bodyMedium,
-    fontSize: fontSizes.small,
-    color: theme.charcoal,
-  },
-  chevron: { fontSize: fontSizes.title, lineHeight: lineHeights.title, color: theme.muted },
-  chevronOpen: { transform: [{ rotate: '90deg' }] },
-  rowEditor: { gap: spacing.sm, paddingBottom: spacing.md },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  swatchList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  swatch: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatchDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: theme.hairline,
-  },
-  swatchText: {
-    fontFamily: fontFamilies.body,
-    fontSize: fontSizes.small,
-    color: theme.charcoal,
-  },
-  hint: { fontFamily: fontFamilies.body, fontSize: fontSizes.caption, color: theme.muted },
-  paletteChip: {
-    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  rowValue: {
+    flexShrink: 1,
+    textAlign: 'right',
+    fontFamily: fontFamilies.bodyMedium,
+    fontSize: 14,
+    color: colors.ink,
+  },
+  chevronOpen: { transform: [{ rotate: '90deg' }] },
+  rowEditor: { gap: spacing.sm, paddingBottom: spacing.lg },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  levels: { gap: spacing.sm },
+  levelRow: { flexDirection: 'row', gap: spacing.sm },
+  levelCaption: { fontFamily: fontFamilies.bodySemiBold, fontSize: 13.5, color: colors.ink },
+  swatchList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  swatchDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.12)',
+  },
+  hint: { fontFamily: fontFamilies.body, fontSize: 13, lineHeight: 18, color: colors.ink2 },
+  paletteChip: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
     borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: theme.hairline,
-    backgroundColor: theme.plinth,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
   },
-  paletteChipSelected: { borderColor: theme.olive, borderWidth: 2 },
-  chipLabel: {
-    fontFamily: fontFamilies.bodyMedium,
-    fontSize: fontSizes.small,
-    color: theme.charcoal,
-  },
-  link: { alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center' },
+  paletteChipSelected: { backgroundColor: colors.ink, borderColor: colors.ink },
+  paletteChipDisabled: { opacity: 0.45 },
+  chipLabel: { fontFamily: fontFamilies.bodyMedium, fontSize: 14, color: colors.ink },
+  chipLabelSelected: { color: colors.onInk },
+  link: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
   linkText: {
     fontFamily: fontFamilies.bodySemiBold,
-    fontSize: fontSizes.small,
-    color: theme.olive,
+    fontSize: 14,
+    color: colors.accentText,
     textDecorationLine: 'underline',
   },
   input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: theme.hairline,
-    borderRadius: radii.sm,
-    backgroundColor: theme.plinth,
-    paddingHorizontal: spacing.md,
-    fontFamily: fontFamilies.body,
-    fontSize: fontSizes.body,
-    color: theme.charcoal,
-  },
-  error: {
-    fontFamily: fontFamilies.body,
-    fontSize: fontSizes.small,
-    color: theme.error,
-  },
-  footer: {
-    borderTopWidth: 1,
-    borderTopColor: theme.hairline,
-    backgroundColor: theme.stone,
-  },
-  footerInner: { padding: spacing.lg, gap: spacing.sm },
-  done: {
     minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
     borderRadius: radii.sm,
-    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    fontFamily: fontFamilies.body,
+    fontSize: 16,
+    color: colors.ink,
+  },
+  empty: {
+    minHeight: 32,
     justifyContent: 'center',
-    backgroundColor: theme.olive,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.lineStrong,
   },
-  donePressed: { opacity: 0.85 },
-  doneText: {
-    color: theme.onOlive,
-    fontFamily: fontFamilies.bodySemiBold,
-    fontSize: fontSizes.body,
+  emptyText: { fontFamily: fontFamilies.bodyMedium, fontSize: 13, color: colors.ink3Text },
+  error: { fontFamily: fontFamilies.body, fontSize: 14, lineHeight: 20, color: colors.danger },
+  footer: {
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.screen,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    backgroundColor: colors.bg,
+    boxShadow: shadows.card,
   },
+  footerInner: {
+    width: '100%',
+    // Same width as the content above (its side margins are the footer's padding here).
+    maxWidth: CONTENT_MAX_WIDTH - spacing.screen * 2,
+    alignSelf: 'center',
+  },
+  footerAction: { gap: spacing.sm },
 });

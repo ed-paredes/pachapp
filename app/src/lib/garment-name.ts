@@ -9,14 +9,16 @@ type NameSource = {
   material?: string | null;
 };
 
-/** Colour names that never change with the noun's gender or number. */
+/**
+ * Colour names that never change with the noun's gender or number. "gris", "azul", "verde"
+ * and "marrón" are not here: they have no gender but do take a plural ("grises").
+ */
 const INVARIABLE = new Set([
   'rosa',
   'naranja',
   'caqui',
   'camel',
   'beige',
-  'gris',
   'marino',
   'denim',
   'oliva',

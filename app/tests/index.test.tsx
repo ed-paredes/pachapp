@@ -75,10 +75,62 @@ describe('TodayScreen (Hoy)', () => {
     await renderScreen();
 
     expect(
-      screen.getByText('Aún no tienes suficientes prendas para generar un outfit'),
+      await screen.findByText('Aún no tienes suficientes prendas para generar un outfit'),
     ).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Añadir prendas' }));
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/add');
+  });
+
+  it('says proposals are coming soon, with the count, when there are garments', async () => {
+    mockApi({ items: [], total: 2 }, { items: [item('a')], total: 3 });
+    await renderScreen();
+
+    expect(await screen.findByText('Tus propuestas diarias llegan pronto')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Ya tienes 5 prendas en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Añadir prendas' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ver tu armario' }));
+    expect(mockPush).toHaveBeenCalledWith('/(tabs)/wardrobe');
+  });
+
+  it('uses the singular for a single garment', async () => {
+    mockApi({ items: [], total: 0 }, { items: [item('a')], total: 1 });
+    await renderScreen();
+
+    expect(
+      await screen.findByText(
+        'Ya tienes 1 prenda en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('does not claim an empty wardrobe when the count fails', async () => {
+    (globalThis.fetch as jest.Mock).mockRejectedValue(new Error('offline'));
+    await renderScreen();
+
+    expect(await screen.findByText('Tus propuestas diarias llegan pronto')).toBeTruthy();
+    expect(screen.queryByText(/Ya tienes/)).toBeNull();
+    expect(
+      screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Añadir prendas' })).toBeNull();
+  });
+
+  it('shows neither state while the count loads', async () => {
+    (globalThis.fetch as jest.Mock).mockReturnValue(new Promise(() => {}));
+    await renderScreen();
+
+    expect(screen.getByTestId('empty-state-loading')).toBeTruthy();
+    expect(
+      screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
+    ).toBeNull();
+    expect(screen.queryByText('Tus propuestas diarias llegan pronto')).toBeNull();
   });
 
   it('shows a dated greeting and no weather, look or engine-only controls', async () => {
@@ -126,7 +178,7 @@ describe('TodayScreen (Hoy)', () => {
   it('hides the usage notice while nothing has been worn', async () => {
     mockApi({ items: [], total: 0 }, { items: [item('a'), item('b')], total: 2 });
     await renderScreen();
-    await screen.findByText('Aún no tienes suficientes prendas para generar un outfit');
+    await screen.findByText('Tus propuestas diarias llegan pronto');
 
     expect(screen.queryByTestId('tip-usage')).toBeNull();
   });

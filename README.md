@@ -134,6 +134,10 @@ running in WSL (D13). This typically means:
 
 See `docs/specs/01-dev-tooling.md` for the full checklist and fallbacks.
 
+## App design
+
+The app's look follows the redesign in [`docs/redesign/`](docs/redesign/) (design system spec, navigable mockup and token proposal). Theme tokens (colours, type, radii, spacing, `tint()`) live in `app/src/theme`; the base components built on them (buttons, chips, cards, floating tab bar, ...) live in `app/src/components/ui`. Screens only compose these, so a visual change starts in one of those two places.
+
 ## Manual testing
 
 A step-by-step manual testing guide for Hito A (upload a photo, see the garment in the wardrobe), in Spanish, lives in [`docs/manual-testing/hito-a.md`](docs/manual-testing/hito-a.md). It covers setup, the three processes, curl smoke tests, every app screen and the failure cases.

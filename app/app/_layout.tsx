@@ -5,7 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
-import { ToastProvider } from '@/components/ui';
+import { ToastProvider, WebFocusRing } from '@/components/ui';
 import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
 
 // Keep the splash up until the fonts are ready. Failing to do so only means a
@@ -26,6 +26,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        <WebFocusRing />
         <Stack
           screenOptions={{
             headerStyle: { backgroundColor: colors.plinth },
@@ -40,11 +41,13 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="review/[id]" options={{ title: 'Revisión' }} />
+          {/* Revisión draws its own back button, like Detalle. */}
+          <Stack.Screen name="review/[id]" options={{ headerShown: false }} />
           {/* Detalle draws its own back button over the hero. */}
           <Stack.Screen name="garments/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
-          <Stack.Screen name="settings" options={{ title: 'Ajustes' }} />
+          {/* Ajustes draws its own back button and title, like Revisión. */}
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
         </Stack>
       </ToastProvider>
     </QueryClientProvider>

@@ -38,7 +38,13 @@ type TodayViewProps = {
   onOpenAlternative?: (id: string) => void;
   onWear?: () => void;
   onShuffle?: () => void;
+  /**
+   * Garments in the wardrobe (active + laundry). Decides what the no-proposal state says:
+   * `loading` shows a neutral placeholder, `unknown` (the count failed) avoids claiming a number.
+   */
+  wardrobeSize?: number | 'loading' | 'unknown';
   onAddGarment: () => void;
+  onOpenWardrobe: () => void;
 };
 
 /**
@@ -58,10 +64,14 @@ export function TodayView({
   onOpenAlternative,
   onWear,
   onShuffle,
+  wardrobeSize = 0,
   onAddGarment,
+  onOpenWardrobe,
 }: TodayViewProps) {
   const { width } = useWindowDimensions();
   const wide = width >= TWO_COLUMNS;
+  const hasGarments = typeof wardrobeSize === 'number' && wardrobeSize > 0;
+  const soon = hasGarments || wardrobeSize === 'unknown';
   const tips =
     laundryTip || usageTip ? (
       <>
@@ -88,10 +98,16 @@ export function TodayView({
               <Title size={wide ? 'hero' : 'page'} accent="proponemos">
                 {`${greeting}.\nHoy te proponemos…`}
               </Title>
-            ) : (
+            ) : hasGarments ? (
+              <Title size={wide ? 'hero' : 'page'} accent="armario">
+                {`${greeting}.\nTu armario está listo.`}
+              </Title>
+            ) : wardrobeSize === 0 ? (
               <Title size={wide ? 'hero' : 'page'} accent="armario">
                 {`${greeting}.\nEmpecemos por tu armario.`}
               </Title>
+            ) : (
+              <Title size={wide ? 'hero' : 'page'}>{`${greeting}.`}</Title>
             )}
           </View>
           <WeatherPill weather={weather} />
@@ -121,18 +137,40 @@ export function TodayView({
           </View>
         ) : (
           <View style={[styles.look, wide && styles.lookWide]}>
-            <View style={[styles.empty, wide && styles.canvasCol]} testID="empty-state">
-              <View style={styles.emptyIcon}>
-                <IconSymbol name={HANGER_ICON} size={28} color={colors.accentText} />
+            {wardrobeSize === 'loading' ? (
+              <View
+                style={[styles.empty, styles.emptyLoading, wide && styles.canvasCol]}
+                testID="empty-state-loading"
+              />
+            ) : soon ? (
+              <View style={[styles.empty, wide && styles.canvasCol]} testID="soon-state">
+                <View style={styles.emptyIcon}>
+                  <IconSymbol name={HANGER_ICON} size={28} color={colors.accentText} />
+                </View>
+                <Text accessibilityRole="header" style={styles.emptyTitle}>
+                  Tus propuestas diarias llegan pronto
+                </Text>
+                {hasGarments ? (
+                  <Text style={styles.emptyText}>
+                    {`Ya tienes ${wardrobeSize} ${wardrobeSize === 1 ? 'prenda' : 'prendas'} en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.`}
+                  </Text>
+                ) : null}
+                <Button variant="secondary" label="Ver tu armario" onPress={onOpenWardrobe} />
               </View>
-              <Text accessibilityRole="header" style={styles.emptyTitle}>
-                Aún no tienes suficientes prendas para generar un outfit
-              </Text>
-              <Text style={styles.emptyText}>
-                Añade algunas prendas a tu armario y aquí verás tu primera propuesta del día.
-              </Text>
-              <Button label="Añadir prendas" onPress={onAddGarment} />
-            </View>
+            ) : (
+              <View style={[styles.empty, wide && styles.canvasCol]} testID="empty-state">
+                <View style={styles.emptyIcon}>
+                  <IconSymbol name={HANGER_ICON} size={28} color={colors.accentText} />
+                </View>
+                <Text accessibilityRole="header" style={styles.emptyTitle}>
+                  Aún no tienes suficientes prendas para generar un outfit
+                </Text>
+                <Text style={styles.emptyText}>
+                  Añade algunas prendas a tu armario y aquí verás tu primera propuesta del día.
+                </Text>
+                <Button label="Añadir prendas" onPress={onAddGarment} />
+              </View>
+            )}
             {wide && tips ? <View style={[styles.cardCol, styles.tipColumn]}>{tips}</View> : null}
           </View>
         )}
@@ -166,6 +204,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     boxShadow: shadows.card,
   },
+  emptyLoading: { minHeight: 220 },
   emptyIcon: {
     width: 56,
     height: 56,

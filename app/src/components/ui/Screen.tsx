@@ -7,6 +7,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CONTENT_MAX_WIDTH, colors, spacing } from '@/theme';
 
@@ -18,6 +19,11 @@ type ScreenProps = {
   scroll?: boolean;
   /** Pull-to-refresh control, forwarded to the scroll view. */
   refreshControl?: React.ReactElement<RefreshControlProps>;
+  /**
+   * For stack screens with no native header and no floating tab bar (Ajustes): pads the top and
+   * bottom by the safe-area insets instead of reserving room for the bar.
+   */
+  standalone?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };
@@ -26,9 +32,23 @@ type ScreenProps = {
  * Page shell: linen background, 16 dp side margin, content centred up to 1120 dp, and enough
  * bottom padding that the floating tab bar never covers the last element.
  */
-export function Screen({ children, scroll = true, refreshControl, style, testID }: ScreenProps) {
-  const bottom = useTabBarSpace();
-  const content = [styles.content, { paddingBottom: bottom }, style];
+export function Screen({
+  children,
+  scroll = true,
+  refreshControl,
+  standalone = false,
+  style,
+  testID,
+}: ScreenProps) {
+  const tabBarSpace = useTabBarSpace();
+  const insets = useSafeAreaInsets();
+  const content = [
+    styles.content,
+    standalone
+      ? { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.xxl }
+      : { paddingBottom: tabBarSpace },
+    style,
+  ];
 
   if (!scroll) {
     return (
