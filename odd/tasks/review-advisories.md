@@ -23,7 +23,7 @@ engine, history API, A15. The native upload part type advisory stays as-is (phot
 - [x] **V1** Pure helpers: `tint()` handles 3-digit hex (`#abc`); `FormalityMeter` renders safely when the
       value is NaN / missing / out of range; `isNewGarment` treats future timestamps as not new (or clamps),
       with unit tests for each.
-- [ ] **V2** Historial: query errors show an error state with retry (not an empty wardrobe); Hoy and Historial
+- [x] **V2** Historial: query errors show an error state with retry (not an empty wardrobe); Hoy and Historial
       recompute `now` (date, greeting, relative labels) across midnight / on app focus; tests.
 - [ ] **V3** Armario counters and review banner refresh on pull-to-refresh; FloatingTabBar skips hidden routes;
       UploadItem done card: no duplicated file name while `useGarment` loads/fails, and the error is surfaced;
@@ -67,6 +67,17 @@ review assessed per work-unit commit (RDD on, global).
   `c6af071` (untracked excluded: owner's `SPEC-ML.md`, this doc): medium, 67 lines, `under_budget` -> pending in
   slice, boundary stays `c6af071`.
 
+- 2026-10-03: V2 done (delegated writer) `4d90e09`: Historial renders the shared `ErrorState` (server message,
+  "Reintentar" refetches every failed query) when any of its three queries errors with no data; loading/empty
+  unchanged; no new copy. New `useNow()` (`src/hooks/useNow.ts`, pure `nextTick`) re-arms a timeout to the next
+  local midnight or greeting boundary (06/12/20, matching `greeting()`) and refreshes on `AppState` 'active'
+  (react-native-web maps it to `visibilitychange`); Hoy and Historial use it instead of a memoised `new Date()`.
+  Tests: Historial error + retry; `use-now.test.ts` with fake timers (boundaries, month rollover, midnight, noon,
+  foreground after sleep, cleanup). Checks: prettier/lint/typecheck clean; jest 239/239 (parent spot check: one
+  cold run failed the known Revisión flake "shows loading, then an error with retry, and a 404 state"; rerun
+  239/239, file alone 30/30; writer saw the Wardrobe flake once). Parent readback: no hooks after the early
+  return. Assess base `c6af071`: medium, 296 lines (incl. this doc), `under_budget` -> pending in slice.
+
 ## Next step
 
-V2 (Historial error state + stale `now`).
+V3 (Armario refresh, FloatingTabBar hidden routes, UploadItem done-card fallback).
