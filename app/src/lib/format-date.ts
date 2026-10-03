@@ -43,10 +43,13 @@ export function formatToday(now: Date = new Date()): string {
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${now.getDate()} de ${MONTH_NAMES[now.getMonth()]}`;
 }
 
+/** Local hours at which the greeting changes (shared with `nextTick` in `useNow`). */
+export const GREETING_HOURS = { morning: 6, afternoon: 12, evening: 20 } as const;
+
 /** "Buenos días" until noon, "Buenas tardes" until 8 pm, "Buenas noches" otherwise. */
 export function greeting(now: Date = new Date()): string {
   const hour = now.getHours();
-  if (hour >= 6 && hour < 12) return 'Buenos días';
-  if (hour >= 12 && hour < 20) return 'Buenas tardes';
+  if (hour >= GREETING_HOURS.morning && hour < GREETING_HOURS.afternoon) return 'Buenos días';
+  if (hour >= GREETING_HOURS.afternoon && hour < GREETING_HOURS.evening) return 'Buenas tardes';
   return 'Buenas noches';
 }

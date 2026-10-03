@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ProgressBar } from '../src/components/add/ProgressBar';
 import { ScanLine } from '../src/components/add/ScanLine';
@@ -177,6 +177,27 @@ describe('UploadItem done state', () => {
       expect(screen.getAllByText('a.jpg')).toHaveLength(1);
       expect(screen.queryByText(/No se pudieron cargar/)).toBeNull();
       expect(screen.getByRole('button', { name: 'Revisar a.jpg' })).toBeTruthy();
+      client.clear();
+    });
+
+    it('keeps the loaded details, with no error, when a background refetch fails', async () => {
+      let ok = true;
+      const client = await renderDone(() =>
+        ok
+          ? json({ id: 'g1', category: 'top', subcategory: 'camiseta', colors: [] })
+          : json({ error: { code: 'X', message: 'boom' } }, 500),
+      );
+      expect(await screen.findByText('Camiseta')).toBeTruthy();
+
+      ok = false;
+      await act(async () => {
+        await client.refetchQueries({ queryKey: ['garments'] });
+      });
+
+      await waitFor(() => expect(client.isFetching()).toBe(0));
+      expect(screen.getByText('Camiseta')).toBeTruthy();
+      expect(screen.queryByText(/No se pudieron cargar/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Reintentar detalles de a.jpg' })).toBeNull();
       client.clear();
     });
 

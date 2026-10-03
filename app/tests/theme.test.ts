@@ -35,6 +35,11 @@ describe('tint', () => {
     expect(tint('abc', 1)).toBe('rgb(170, 187, 204)');
     expect(tint('#fff', 0.5, '#000')).toBe('rgb(128, 128, 128)');
   });
+
+  it('expands 4-digit hex like CSS and drops the alpha, as for 8 digits', () => {
+    expect(tint('#abcd', 1)).toBe('rgb(170, 187, 204)');
+    expect(tint('#abcd', 1)).toBe(tint('#aabbccdd', 1));
+  });
 });
 
 describe('gridColumns', () => {
