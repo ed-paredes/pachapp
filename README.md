@@ -42,6 +42,14 @@ make run-worker # processing worker
 make run-ui     # Expo dev server, web on :8081
 ```
 
+### Hosting the web build
+
+The web build is a single-page app (`web.output: "single"` in `app/app.json`):
+`npx expo export --platform web` emits one `index.html` and Expo Router resolves
+routes on the client. A static host must therefore rewrite unknown paths to
+`/index.html` (an SPA fallback); otherwise a deep link such as `/review/<id>`
+returns 404 on reload or when opened directly.
+
 ## `ENV_FILE`
 
 Every target reads a dotenv file at the repo root, named by `ENV_FILE`
