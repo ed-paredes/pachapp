@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
-/** Local hours at which the date or the greeting changes (see `greeting` in `format-date`). */
-const TICK_HOURS = [0, 6, 12, 20];
+import { GREETING_HOURS } from '@/lib/format-date';
+
+/** Local hours at which the date or the greeting changes: midnight, then the greeting hours. */
+const TICK_HOURS = [0, ...Object.values(GREETING_HOURS)];
 
 /** The next local tick strictly after `now`: midnight or a greeting boundary. */
 export function nextTick(now: Date): Date {

@@ -78,6 +78,8 @@ function ProcessingItem({
   // Name, colours and confidence only exist once the garment has been analysed.
   const garmentQuery = useGarment(status.kind === 'done' ? garmentId : undefined);
   const garment = garmentQuery.data;
+  // A failed background refetch keeps the details already loaded: no error next to them.
+  const detailsFailed = garmentQuery.isError && !garment;
 
   return (
     <ItemCard
@@ -102,12 +104,12 @@ function ProcessingItem({
             </>
           ) : null}
           {job.isError ? <Text style={styles.error}>{job.error.message}</Text> : null}
-          {status.kind === 'done' && garmentQuery.isError ? (
+          {status.kind === 'done' && detailsFailed ? (
             <Text style={styles.error}>No se pudieron cargar los detalles de la prenda.</Text>
           ) : null}
           {status.kind === 'done' ? (
             <View style={styles.actions}>
-              {garmentQuery.isError ? (
+              {detailsFailed ? (
                 <Button
                   label="Reintentar"
                   accessibilityLabel={`Reintentar detalles de ${item.name}`}

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const mockPush = jest.fn();
@@ -168,11 +168,57 @@ describe('HistoryScreen (Historial)', () => {
 
     expect(await screen.findByText('Servidor caído.')).toBeTruthy();
     expect(screen.queryByTestId('empty-state')).toBeNull();
+    // The blocking view keeps the screen identifiable.
+    expect(screen.getByRole('header', { name: 'Historial' })).toBeTruthy();
 
     failing = false;
     await fireEvent.press(screen.getByLabelText('Reintentar'));
 
     expect(await screen.findByTestId('kpi-usage')).toBeTruthy();
     expect(screen.queryByTestId('error-state')).toBeNull();
+  });
+
+  it('keeps the KPIs and the main list when a secondary list fails', async () => {
+    (globalThis.fetch as jest.Mock).mockImplementation(async (request: Request) => {
+      const sort = new URL(request.url).searchParams.get('sort');
+      if (sort === 'last_worn_at') {
+        return new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const items = [item('a', { wear_count: 4 }), item('b')];
+      return json({ items, total: items.length, page: 1, page_size: 50 });
+    });
+    await renderScreen();
+
+    expect(await screen.findByTestId('kpi-usage')).toBeTruthy();
+    expect(screen.getByText('Las que más usas')).toBeTruthy();
+    expect(screen.queryByTestId('error-state')).toBeNull();
+  });
+
+  it('does not fire another request when retrying while one is in flight', async () => {
+    let calls = 0;
+    (globalThis.fetch as jest.Mock).mockImplementation(async () => {
+      calls += 1;
+      // The first three requests are the initial ones (all fail); later ones never settle.
+      if (calls <= 3) {
+        return new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Promise<Response>(() => {});
+    });
+    await renderScreen();
+    await screen.findByText('Servidor caído.');
+    const callsBeforeRetry = calls;
+
+    await fireEvent.press(screen.getByLabelText('Reintentar'));
+    await waitFor(() => expect(screen.getByLabelText('Reintentar')).toBeDisabled());
+    await fireEvent.press(screen.getByLabelText('Reintentar'));
+
+    // Only the first press refetched the main query; the second press did nothing.
+    expect(calls).toBe(callsBeforeRetry + 1);
   });
 });
