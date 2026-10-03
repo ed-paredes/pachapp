@@ -25,12 +25,15 @@ engine, history API, A15. The native upload part type advisory stays as-is (phot
       with unit tests for each.
 - [x] **V2** Historial: query errors show an error state with retry (not an empty wardrobe); Hoy and Historial
       recompute `now` (date, greeting, relative labels) across midnight / on app focus; tests.
-- [ ] **V3** Armario counters and review banner refresh on pull-to-refresh; FloatingTabBar skips hidden routes;
+- [x] **V3** Armario counters and review banner refresh on pull-to-refresh; FloatingTabBar skips hidden routes;
       UploadItem done card: no duplicated file name while `useGarment` loads/fails, and the error is surfaced;
       tests.
 - [ ] **V4** Test gaps: Hoy "absence" tests wait for queries to settle before asserting absence; Segmented
       narrow branch; GarmentImage tint branch; Añadir two-column tips branch; WebFocusRing mount effect. Docs:
-      SPA deep-link hosting fallback (static host must rewrite unknown paths to `index.html`).
+      SPA deep-link hosting fallback (static host must rewrite unknown paths to `index.html`). Added from
+      `review-def4988555b60feb` (suggestions): `formality-meter.test.tsx` "renders nothing" cases must prove
+      nothing renders (no label text / empty tree), not only no `progressbar` role; `use-now.test.ts` must prove
+      the timer is cleared on unmount (reset the spy before unmount, or advance timers and expect no update).
 
 ## Acceptance criteria
 
@@ -78,6 +81,18 @@ review assessed per work-unit commit (RDD on, global).
   239/239, file alone 30/30; writer saw the Wardrobe flake once). Parent readback: no hooks after the early
   return. Assess base `c6af071`: medium, 296 lines (incl. this doc), `under_budget` -> pending in slice.
 
+- 2026-10-03: V3 done (delegated writer) `be7f22d`: Armario pull-to-refresh runs
+  `queryClient.refetchQueries({ queryKey: queryKeys.garments.lists(), type: 'active' })` (grid, counters and
+  review banner; also mounted Hoy/Historial lists, harmless); FloatingTabBar filters routes whose flattened
+  `tabBarItemStyle.display` is `'none'` (expo-router strips `href`), "N of M" counts visible tabs; UploadItem done
+  card shows the file name once and, on `useGarment` error, "No se pudieron cargar los detalles de la prenda." +
+  "Reintentar" (a11y "Reintentar detalles de {name}") next to "Revisar". Checks: prettier/lint/typecheck clean;
+  jest 244/244 (writer and parent spot check).
+- 2026-10-03: native review of slice `c6af071..be7f22d` (V1-V3 + doc, 18 files, 452 lines, medium,
+  `slice_budget_reached`): untracked excluded (`--untracked-scope=exclude`, owner's `SPEC-ML.md`), owner
+  granted, `review-def4988555b60feb` one lens (reliability) approved and acknowledged (burned). Two SUGGESTION
+  findings folded into V4. Reviewed boundary -> `be7f22d`.
+
 ## Next step
 
-V3 (Armario refresh, FloatingTabBar hidden routes, UploadItem done-card fallback).
+V4 (test gaps, review suggestions, SPA hosting docs).
