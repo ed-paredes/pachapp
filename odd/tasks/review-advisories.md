@@ -35,6 +35,12 @@ engine, history API, A15. The native upload part type advisory stays as-is (phot
       nothing renders (no label text / empty tree), not only no `progressbar` role; `use-now.test.ts` must prove
       the timer is cleared on unmount (reset the spy before unmount, or advance timers and expect no update).
 
+- [x] **V5** PR #34 code-review fixes (owner chose "Lo recomendado y merge", 2026-10-04): UploadItem error only
+      without data; Historial blocks only when `active` fails (secondary lists drop their section), error view
+      keeps the header, Reintentar disabled while fetching; shared `GREETING_HOURS`; `tint()` 4-digit hex.
+- [x] **V6** PR #35 code-review fixes: assertions that could not fail (useNow unmount, GarmentImage/HeroImage
+      plain, Añadir order with missing IDs, redundant FormalityMeter loop) and the 480 / 880 dp boundaries.
+
 ## Acceptance criteria
 
 Each advisory is fixed or covered by a test that fails without the fix (where behavioural); no regressions in
@@ -111,7 +117,23 @@ Feature total ~700 authored lines (> 400) -> owner's cached chain strategy **sta
 slice: PR 1 `c6af071..be7f22d` (V1-V3, reviewed `review-def4988555b60feb`), PR 2 `be7f22d..HEAD` (V4 + doc,
 stacked on PR 1). Push and PR creation are the owner's decision.
 
+- 2026-10-04: PRs #34 (`review-advisories/01-fixes`) and #35 (`review-advisories/02-tests-docs`, renamed from
+  `fix/review-advisories`) opened after a GitHub outage (verified no PR existed before retrying). Owner asked to
+  review and merge if OK; `/code-review` found issues in both; owner chose the recommended fixes.
+- 2026-10-04: V5 (delegated writer) `df93aae` on 01-fixes: `detailsFailed = isError && !garment`; Historial
+  blocks on `!active.data && (active.isError || active.errorUpdatedAt > 0)` (a retry turns a never-succeeded
+  query pending; this keeps the error view instead of flashing the empty state; message falls back to the
+  default while retrying), "Tu uso / Historial" header above `ErrorState`, new optional `ErrorState.retrying`
+  disables Reintentar; `GREETING_HOURS` exported from `format-date`; `tint('#abcd')` expands like CSS. jest
+  248/248 (writer x2, parent spot check). Assess base `be7f22d`: medium, 137 lines, under budget. Pushed; merged
+  into 02-tests-docs (`6a1df0f`, merge commit, no history rewrite).
+- 2026-10-04: V6 (delegated writer) `a8cec2a` on 02-tests-docs: each fixed assertion probed RED by breaking the
+  production code locally (reverted). Writer's two full runs each hit one known flake; parent ran two full runs:
+  257/257 both. Deferred (owner): Armario refresh fan-out, FloatingTabBar `tabBarButton`, isNewGarment window,
+  shared window-size test helper.
+
 ## Next step
 
-Owner: push + PRs (plan above), merge, then delete branches. Open follow-ups outside this feature: cold-run
-jest flakes in `wardrobe.test.tsx` and `review.test.tsx`; `README.md` prettier formatting.
+Native review of `be7f22d..HEAD` (401 lines, `slice_budget_reached`), then push, merge #34, retarget #35 to
+`main`, merge, delete branches. Follow-ups: deferred items above, cold-run jest flakes in `wardrobe.test.tsx`
+and `review.test.tsx`, `README.md` prettier formatting.
