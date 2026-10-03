@@ -1,7 +1,10 @@
 import { colors } from './colors';
 
 function parse(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', '').padEnd(6, '0').slice(0, 6), 16);
+  const digits = hex.replace('#', '');
+  // Short form (#abc) doubles each digit, as CSS does.
+  const full = digits.length === 3 ? [...digits].map((d) => d + d).join('') : digits;
+  const n = parseInt(full.padEnd(6, '0').slice(0, 6), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 

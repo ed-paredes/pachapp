@@ -11,12 +11,13 @@ export const FORMALITY_LABELS = [
 ] as const;
 
 type FormalityMeterProps = {
-  /** 1 (Muy informal) to 5 (Formal); values outside are clamped. */
-  level: number;
+  /** 1 (Muy informal) to 5 (Formal); values outside are clamped, a missing or NaN level renders nothing. */
+  level: number | null | undefined;
 };
 
 /** Five-segment meter plus its label. */
 export function FormalityMeter({ level }: FormalityMeterProps) {
+  if (level == null || !Number.isFinite(level)) return null;
   const filled = Math.min(5, Math.max(1, Math.round(level)));
   const label = FORMALITY_LABELS[filled - 1];
   return (

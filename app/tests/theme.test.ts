@@ -29,6 +29,12 @@ describe('tint', () => {
     expect(tint('#FFFFFF', 0.5, '#000000')).toBe('rgb(128, 128, 128)');
     expect(tint('ffffff', 0.5, '000000')).toBe('rgb(128, 128, 128)');
   });
+
+  it('expands 3-digit hex by doubling each digit', () => {
+    expect(tint('#abc', 1)).toBe(tint('#aabbcc', 1));
+    expect(tint('abc', 1)).toBe('rgb(170, 187, 204)');
+    expect(tint('#fff', 0.5, '#000')).toBe('rgb(128, 128, 128)');
+  });
 });
 
 describe('gridColumns', () => {
