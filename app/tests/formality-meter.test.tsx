@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 
-import { FormalityMeter } from '@/components/ui/FormalityMeter';
+import { FORMALITY_LABELS, FormalityMeter } from '@/components/ui/FormalityMeter';
 
 describe('FormalityMeter', () => {
   it.each([
@@ -31,6 +31,8 @@ describe('FormalityMeter', () => {
     async (level) => {
       await render(<FormalityMeter level={level} />);
       expect(screen.queryByRole('progressbar')).toBeNull();
+      for (const label of FORMALITY_LABELS) expect(screen.queryByText(label)).toBeNull();
+      expect(screen.toJSON()).toBeNull();
     },
   );
 });

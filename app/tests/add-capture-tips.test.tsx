@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { getItem, setItem } from '../src/lib/device-storage';
@@ -77,5 +78,33 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
     });
 
     expect(screen.queryByTestId('capture-tips-panel')).toBeNull();
+  });
+
+  it('puts the tips beside the upload zone from 880 dp, and above it on a phone', async () => {
+    mockGetItem.mockResolvedValue(null);
+    const window = (width: number) => ({ width, height: 900, scale: 2, fontScale: 1 });
+    const spy = jest.spyOn(Dimensions, 'get');
+    // Document order of the rendered tree tells which column / stack slot each block is in.
+    const order = () => {
+      const tree = JSON.stringify(screen.toJSON());
+      return {
+        zone: tree.indexOf('"upload-zone"'),
+        tips: tree.indexOf('"capture-tips-panel"'),
+      };
+    };
+    try {
+      spy.mockReturnValue(window(1200));
+      await renderScreen();
+      await screen.findByTestId('capture-tips-panel');
+      expect(order().tips).toBeGreaterThan(order().zone);
+      await cleanup();
+
+      spy.mockReturnValue(window(390));
+      await renderScreen();
+      await screen.findByTestId('capture-tips-panel');
+      expect(order().tips).toBeLessThan(order().zone);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

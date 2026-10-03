@@ -136,6 +136,8 @@ describe('TodayScreen (Hoy)', () => {
   it('shows a dated greeting and no weather, look or engine-only controls', async () => {
     mockApi({ items: [], total: 0 }, { items: [], total: 0 });
     await renderScreen();
+    // Wait for the queries to settle: absence is only meaningful once the content has loaded.
+    await screen.findByText('Aún no tienes suficientes prendas para generar un outfit');
 
     expect(
       screen.getByRole('header', { name: /^Buen(os días|as tardes|as noches)\./ }),
