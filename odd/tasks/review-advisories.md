@@ -28,7 +28,7 @@ engine, history API, A15. The native upload part type advisory stays as-is (phot
 - [x] **V3** Armario counters and review banner refresh on pull-to-refresh; FloatingTabBar skips hidden routes;
       UploadItem done card: no duplicated file name while `useGarment` loads/fails, and the error is surfaced;
       tests.
-- [ ] **V4** Test gaps: Hoy "absence" tests wait for queries to settle before asserting absence; Segmented
+- [x] **V4** Test gaps: Hoy "absence" tests wait for queries to settle before asserting absence; Segmented
       narrow branch; GarmentImage tint branch; Añadir two-column tips branch; WebFocusRing mount effect. Docs:
       SPA deep-link hosting fallback (static host must rewrite unknown paths to `index.html`). Added from
       `review-def4988555b60feb` (suggestions): `formality-meter.test.tsx` "renders nothing" cases must prove
@@ -93,6 +93,25 @@ review assessed per work-unit commit (RDD on, global).
   granted, `review-def4988555b60feb` one lens (reliability) approved and acknowledged (burned). Two SUGGESTION
   findings folded into V4. Reviewed boundary -> `be7f22d`.
 
+- 2026-10-03: V4 done (delegated writer) `dbf47de` tests + `c455a63` docs; no production change, no bug found.
+  Hoy: `index.test.tsx` dated-greeting test now awaits the empty-state text before asserting absence (other Hoy
+  absence tests already awaited or are prop-driven). New coverage: Segmented narrow (column at 390 dp, row at
+  1024), `garment-image.test.tsx` (GarmentImage/HeroImage tint and plain), Añadir tips side column at 1200 dp vs
+  stacked at 390, WebFocusRing (fake `document`, style tag injected once on web, nothing on iOS; file renamed to
+  `.tsx`). Review suggestions: FormalityMeter "renders nothing" also checks no label text and `toJSON()` null;
+  `useNow` asserts `clearTimeout` with the armed timer id on unmount and no update after 24 h. README "Hosting
+  the web build" (SPA fallback to `/index.html`). Checks: prettier (app) / lint / typecheck clean; jest 253/253
+  in two writer runs and the parent spot check. README is outside the app prettier scope (already failing at
+  HEAD before this edit). Assess base `be7f22d`: medium, 241 lines, `under_budget`; no later commit, so this
+  tests+docs slice stays unreviewed.
+
+## Delivery plan
+
+Feature total ~700 authored lines (> 400) -> owner's cached chain strategy **stacked-to-main**, one PR per
+slice: PR 1 `c6af071..be7f22d` (V1-V3, reviewed `review-def4988555b60feb`), PR 2 `be7f22d..HEAD` (V4 + doc,
+stacked on PR 1). Push and PR creation are the owner's decision.
+
 ## Next step
 
-V4 (test gaps, review suggestions, SPA hosting docs).
+Owner: push + PRs (plan above), merge, then delete branches. Open follow-ups outside this feature: cold-run
+jest flakes in `wardrobe.test.tsx` and `review.test.tsx`; `README.md` prettier formatting.
