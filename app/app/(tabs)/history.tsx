@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
 
+import { ErrorState } from '@/components/ErrorState';
 import { HistoryView, type HistoryKpi, type RankItem } from '@/components/history';
+import { Screen } from '@/components/ui';
 import { useGarments } from '@/hooks/useGarments';
+import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { imageUrl } from '@/lib/image-url';
 import { USAGE_PAGE_SIZE, wardrobeUsage } from '@/lib/wardrobe-usage';
@@ -47,7 +49,7 @@ function toRow(item: Listed, detail: string, usage?: number): RankItem {
  */
 export default function HistoryScreen() {
   const router = useRouter();
-  const now = useMemo(() => new Date(), []);
+  const now = useNow();
 
   // Same request as Hoy, so the cache is shared: the active wardrobe, most worn first.
   const active = useGarments({
@@ -69,6 +71,19 @@ export default function HistoryScreen() {
     order: 'asc',
     page_size: LIST_SIZE,
   });
+
+  // A failed request must not look like an empty wardrobe: show the error with a retry instead.
+  const failed = [active, unworn, stale].filter((query) => query.isError && !query.data);
+  if (failed.length > 0) {
+    return (
+      <Screen scroll={false} testID="history-screen">
+        <ErrorState
+          message={failed[0].error?.message}
+          onRetry={() => failed.forEach((query) => void query.refetch())}
+        />
+      </Screen>
+    );
+  }
 
   const usage = active.data ? wardrobeUsage(active.data.items, active.data.total) : null;
   const kpis: HistoryKpi[] = [];

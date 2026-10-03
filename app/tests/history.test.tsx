@@ -153,4 +153,26 @@ describe('HistoryScreen (Historial)', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Abrir prenda Camisa azul' }));
     expect(mockPush).toHaveBeenCalledWith('/garments/n');
   });
+
+  it('shows an error state instead of an empty wardrobe, and retry refetches', async () => {
+    let failing = true;
+    (globalThis.fetch as jest.Mock).mockImplementation(async () =>
+      failing
+        ? new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        : json({ items: [item('a', { wear_count: 3 })], total: 1, page: 1, page_size: 50 }),
+    );
+    await renderScreen();
+
+    expect(await screen.findByText('Servidor caído.')).toBeTruthy();
+    expect(screen.queryByTestId('empty-state')).toBeNull();
+
+    failing = false;
+    await fireEvent.press(screen.getByLabelText('Reintentar'));
+
+    expect(await screen.findByTestId('kpi-usage')).toBeTruthy();
+    expect(screen.queryByTestId('error-state')).toBeNull();
+  });
 });

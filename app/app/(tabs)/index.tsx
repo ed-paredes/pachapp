@@ -1,9 +1,9 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
 
 import type { LookProposal } from '@/components/today/types';
 import { TodayView, type TodayTip } from '@/components/today/TodayView';
 import { useGarments } from '@/hooks/useGarments';
+import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { formatToday, greeting } from '@/lib/format-date';
 import { USAGE_PAGE_SIZE, wardrobeUsage } from '@/lib/wardrobe-usage';
@@ -35,7 +35,7 @@ function laundryText(items: NamedGarment[], total: number): string | undefined {
  */
 export default function TodayScreen() {
   const router = useRouter();
-  const now = useMemo(() => new Date(), []);
+  const now = useNow();
   const proposal: LookProposal | undefined = undefined;
 
   const laundry = useGarments({ status: ['laundry'], page_size: LAUNDRY_NAMES });
