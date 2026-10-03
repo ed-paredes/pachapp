@@ -76,7 +76,8 @@ function ProcessingItem({
   const data = job.data;
   const status = uploadStatus(item.phase, data);
   // Name, colours and confidence only exist once the garment has been analysed.
-  const garment = useGarment(status.kind === 'done' ? garmentId : undefined).data;
+  const garmentQuery = useGarment(status.kind === 'done' ? garmentId : undefined);
+  const garment = garmentQuery.data;
 
   return (
     <ItemCard
@@ -101,8 +102,19 @@ function ProcessingItem({
             </>
           ) : null}
           {job.isError ? <Text style={styles.error}>{job.error.message}</Text> : null}
+          {status.kind === 'done' && garmentQuery.isError ? (
+            <Text style={styles.error}>No se pudieron cargar los detalles de la prenda.</Text>
+          ) : null}
           {status.kind === 'done' ? (
             <View style={styles.actions}>
+              {garmentQuery.isError ? (
+                <Button
+                  label="Reintentar"
+                  accessibilityLabel={`Reintentar detalles de ${item.name}`}
+                  onPress={() => void garmentQuery.refetch()}
+                  disabled={garmentQuery.isFetching}
+                />
+              ) : null}
               <Button
                 label="Revisar"
                 accessibilityLabel={`Revisar ${item.name}`}
@@ -159,7 +171,6 @@ function ItemCard({
               ) : null}
             </View>
           ) : null}
-          {done && !garment ? <Text style={styles.meta}>{item.name}</Text> : null}
           {status.step ? <Text style={styles.meta}>{status.step}</Text> : null}
           {hasBar ? (
             <ProgressBar value={status.progress} label={`Progreso de ${item.name}`} />

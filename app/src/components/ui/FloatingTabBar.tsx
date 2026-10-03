@@ -72,6 +72,15 @@ function TabItem({ title, accessibilityLabel, focused, onPress, renderIcon }: It
  * Keeps the accessible name "<title>, tab, N of M" so tab semantics match the default bar.
  */
 export function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+  // Routes hidden with `href: null` stay in the navigator state; expo-router marks them with
+  // `tabBarItemStyle: { display: 'none' }`, which is what the default bar honours too.
+  const visible = state.routes
+    .map((route, index) => ({ route, index }))
+    .filter(
+      ({ route }) =>
+        StyleSheet.flatten(descriptors[route.key].options.tabBarItemStyle)?.display !== 'none',
+    );
+
   return (
     <View
       pointerEvents="box-none"
@@ -79,13 +88,13 @@ export function FloatingTabBar({ state, descriptors, navigation, insets }: Botto
     >
       <View style={styles.bar}>
         <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-        {state.routes.map((route, index) => {
+        {visible.map(({ route, index }, position) => {
           const { options } = descriptors[route.key];
           const title = options.title ?? route.name;
           const focused = state.index === index;
           const accessibilityLabel =
             options.tabBarAccessibilityLabel ??
-            `${title}, tab, ${index + 1} of ${state.routes.length}`;
+            `${title}, tab, ${position + 1} of ${visible.length}`;
 
           const onPress = () => {
             const event = navigation.emit({

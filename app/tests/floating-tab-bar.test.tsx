@@ -11,7 +11,7 @@ const ROUTES = [
   { key: 'history-1', name: 'history', title: 'Historial' },
 ];
 
-function makeProps(index: number, preventDefault = false) {
+function makeProps(index: number, preventDefault = false, hidden: string[] = []) {
   const emit = jest.fn(() => ({ defaultPrevented: preventDefault }));
   const navigate = jest.fn();
   const props = {
@@ -19,7 +19,13 @@ function makeProps(index: number, preventDefault = false) {
     descriptors: Object.fromEntries(
       ROUTES.map(({ key, title }) => [
         key,
-        { options: { title, tabBarIcon: () => <Text>{`icon-${title}`}</Text> } },
+        {
+          options: {
+            title,
+            tabBarIcon: () => <Text>{`icon-${title}`}</Text>,
+            ...(hidden.includes(key) ? { tabBarItemStyle: { display: 'none' } } : {}),
+          },
+        },
       ]),
     ),
     navigation: { emit, navigate },
@@ -39,6 +45,24 @@ describe('FloatingTabBar', () => {
       'Añadir, tab, 3 of 4',
       'Historial, tab, 4 of 4',
     ]);
+  });
+
+  it('skips routes hidden by expo-router (href: null) and counts only the visible tabs', async () => {
+    await render(<FloatingTabBar {...makeProps(0, false, ['wardrobe-1']).props} />);
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.props.accessibilityLabel)).toEqual([
+      'Hoy, tab, 1 of 3',
+      'Añadir, tab, 2 of 3',
+      'Historial, tab, 3 of 3',
+    ]);
+    expect(screen.queryByText('icon-Armario')).toBeNull();
+  });
+
+  it('keeps the focused tab selected when a hidden route precedes it', async () => {
+    await render(<FloatingTabBar {...makeProps(3, false, ['wardrobe-1']).props} />);
+
+    const selected = screen.getAllByRole('tab', { selected: true });
+    expect(selected.map((tab) => tab.props.accessibilityLabel)).toEqual(['Historial, tab, 3 of 3']);
   });
 
   it('marks only the focused tab as selected', async () => {

@@ -523,6 +523,24 @@ describe('WardrobeScreen (Armario)', () => {
     expect(screen.getByTestId('garment-card-a')).toBeTruthy();
   });
 
+  it('refreshes the counters and the review banner on pull-to-refresh', async () => {
+    let pending = 1;
+    mockItems([item('a')], (params) => (params.get('needs_review') === 'true' ? pending : 5));
+    await renderScreen();
+    await screen.findByTestId('review-banner');
+    const before = counterUrls().length;
+
+    pending = 0;
+    const { refreshControl } = screen.getByTestId('wardrobe-list').props;
+    await act(async () => {
+      refreshControl.props.onRefresh();
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('review-banner')).toBeNull());
+    expect(counterUrls().length).toBeGreaterThan(before);
+    expect(screen.getByTestId('wardrobe-list').props.refreshControl.props.refreshing).toBe(false);
+  });
+
   it('opens the garment detail when a card is tapped', async () => {
     mockItems([item('abc')]);
     await renderScreen();

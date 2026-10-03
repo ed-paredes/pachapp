@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -9,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import type { GarmentFilters } from '@/api-client/query-keys';
+import { queryKeys, type GarmentFilters } from '@/api-client/query-keys';
 import type { components } from '@/api-client/schema';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -75,6 +76,7 @@ const ADD_TILE_ID = '__add__';
  */
 export default function WardrobeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
   // Columns come from the content width (capped like the container) and a minimum card width.
   const contentWidth = Math.min(width, CONTENT_MAX_WIDTH) - spacing.screen * 2;
@@ -141,7 +143,8 @@ export default function WardrobeScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await query.refetch();
+      // Every active garment list: the grid plus the counters and the review banner.
+      await queryClient.refetchQueries({ queryKey: queryKeys.garments.lists(), type: 'active' });
     } finally {
       setRefreshing(false);
     }
