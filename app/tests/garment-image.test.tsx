@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react-native';
 import { StyleSheet, type ViewStyle } from 'react-native';
 
 import { GarmentImage, HeroImage } from '@/components/GarmentImage';
-import { tint } from '@/theme';
+import { colors, tint } from '@/theme';
 
 const backgroundOf = (element: { props: { style?: unknown } }) =>
   (StyleSheet.flatten(element.props.style as ViewStyle) as ViewStyle | undefined)?.backgroundColor;
@@ -24,7 +24,9 @@ describe('GarmentImage', () => {
     const image = screen.getByTestId('garment');
     expect(backgroundOf(image)).not.toBe('transparent');
     expect(backgroundOf(image)).toBeTruthy();
-    expect(image.parent && backgroundOf(image.parent)).not.toBe(tint('#8B5E3C'));
+    expect(backgroundOf(image)).toBe(colors.plinth);
+    // No tinted panel or shadow wrapper: the image is the root of what was rendered.
+    expect(screen.toJSON()).toMatchObject({ props: { testID: 'garment' } });
   });
 });
 
@@ -39,7 +41,7 @@ describe('HeroImage', () => {
   it('leaves the panel untinted without a colour', async () => {
     await render(<HeroImage uri="http://img/a.png" testID="hero" />);
 
-    expect(backgroundOf(screen.getByTestId('hero-panel'))).not.toBe(tint('#8B5E3C'));
+    expect(backgroundOf(screen.getByTestId('hero-panel'))).toBe(colors.plinth);
     expect(backgroundOf(screen.getByTestId('hero'))).not.toBe('transparent');
   });
 });

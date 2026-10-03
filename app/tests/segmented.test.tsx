@@ -60,12 +60,12 @@ describe('Segmented layout', () => {
     expect(style.flexShrink).toBe(1);
   });
 
-  it('stacks the counter under the label below 480 dp and keeps it inline above', async () => {
+  it('stacks the counter under the label below 480 dp and keeps it inline from 480 dp', async () => {
     const window = (width: number) => ({ width, height: 800, scale: 2, fontScale: 1 });
     const spy = jest.spyOn(Dimensions, 'get');
     const tab = () => StyleSheet.flatten(screen.getAllByRole('tab')[0].props.style);
     try {
-      spy.mockReturnValue(window(390));
+      spy.mockReturnValue(window(479));
       await render(
         <Segmented
           options={[...options]}
@@ -77,7 +77,7 @@ describe('Segmented layout', () => {
       expect(tab().flexDirection).toBe('column');
       await cleanup();
 
-      spy.mockReturnValue(window(1024));
+      spy.mockReturnValue(window(480));
       await render(
         <Segmented
           options={[...options]}

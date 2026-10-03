@@ -80,29 +80,34 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
     expect(screen.queryByTestId('capture-tips-panel')).toBeNull();
   });
 
-  it('puts the tips beside the upload zone from 880 dp, and above it on a phone', async () => {
+  it('puts the tips beside the upload zone from 880 dp, and above it below that', async () => {
     mockGetItem.mockResolvedValue(null);
     const window = (width: number) => ({ width, height: 900, scale: 2, fontScale: 1 });
     const spy = jest.spyOn(Dimensions, 'get');
     // Document order of the rendered tree tells which column / stack slot each block is in.
     const order = () => {
       const tree = JSON.stringify(screen.toJSON());
-      return {
-        zone: tree.indexOf('"upload-zone"'),
-        tips: tree.indexOf('"capture-tips-panel"'),
-      };
+      const zone = tree.indexOf('"upload-zone"');
+      const tips = tree.indexOf('"capture-tips-panel"');
+      // indexOf is -1 for a missing block, which would satisfy either ordering by accident.
+      expect(zone).toBeGreaterThanOrEqual(0);
+      expect(tips).toBeGreaterThanOrEqual(0);
+      return { zone, tips };
     };
     try {
-      spy.mockReturnValue(window(1200));
+      // 880 dp is the first two-column width; 879 dp still stacks.
+      spy.mockReturnValue(window(880));
       await renderScreen();
       await screen.findByTestId('capture-tips-panel');
-      expect(order().tips).toBeGreaterThan(order().zone);
+      const wide = order();
+      expect(wide.tips).toBeGreaterThan(wide.zone);
       await cleanup();
 
-      spy.mockReturnValue(window(390));
+      spy.mockReturnValue(window(879));
       await renderScreen();
       await screen.findByTestId('capture-tips-panel');
-      expect(order().tips).toBeLessThan(order().zone);
+      const stacked = order();
+      expect(stacked.tips).toBeLessThan(stacked.zone);
     } finally {
       spy.mockRestore();
     }

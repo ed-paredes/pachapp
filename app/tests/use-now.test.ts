@@ -62,27 +62,23 @@ describe('useNow', () => {
     expect(result.current.getDate()).toBe(4);
     expect(result.current.getHours()).toBe(8);
 
-    // Spy right before unmounting so only the cleanup's own call is counted.
-    const clear = jest.spyOn(globalThis, 'clearTimeout');
     await unmount();
     expect(remove).toHaveBeenCalled();
-    expect(clear).toHaveBeenCalled();
   });
 
   it('clears the exact timer it armed on unmount, so nothing fires later', async () => {
-    jest.setSystemTime(new Date(2026, 9, 3, 23, 59, 0));
+    const start = new Date(2026, 9, 3, 23, 59, 0);
+    jest.setSystemTime(start);
+    // The hook arms its timer for the next tick plus a 50 ms margin; find it by that delay.
+    const delay = nextTick(start).getTime() - start.getTime() + 50;
     const armed = jest.spyOn(globalThis, 'setTimeout');
-    const { result, unmount } = await renderHook(() => useNow());
-    const timer = armed.mock.results[armed.mock.results.length - 1].value;
-    const shown = result.current;
+    const { unmount } = await renderHook(() => useNow());
+    const index = armed.mock.calls.findIndex((call) => call[1] === delay);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const timer = armed.mock.results[index].value;
 
     const cleared = jest.spyOn(globalThis, 'clearTimeout');
     await unmount();
     expect(cleared).toHaveBeenCalledWith(timer);
-
-    await act(async () => {
-      jest.advanceTimersByTime(24 * 60 * 60 * 1000);
-    });
-    expect(result.current).toBe(shown);
   });
 });
