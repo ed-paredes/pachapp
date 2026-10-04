@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
-import { Dimensions, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ToastProvider } from '@/components/ui';
+
+import { withWindowWidths } from './helpers/window';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -253,23 +255,19 @@ describe('GarmentDetailScreen (Detalle)', () => {
   });
 
   it('lays out two columns from 880 px and one below', async () => {
-    const window = (width: number) => ({ width, height: 900, scale: 2, fontScale: 1 });
-    const spy = jest.spyOn(Dimensions, 'get');
     const layout = () => StyleSheet.flatten(screen.getByTestId('detail-page').props.style);
-    try {
-      spy.mockReturnValue(window(1200));
+    await withWindowWidths(900, async (setWidth) => {
+      setWidth(1200);
       await renderScreen();
       await screen.findByTestId('detail-image');
       expect(layout().flexDirection).toBe('row');
       await cleanup();
 
-      spy.mockReturnValue(window(390));
+      setWidth(390);
       await renderScreen();
       await screen.findByTestId('detail-image');
       expect(layout().flexDirection).toBeUndefined();
-    } finally {
-      spy.mockRestore();
-    }
+    });
   });
 
   it('marks as laundry via PATCH and invalidates list and detail', async () => {

@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { getItem, setItem } from '../src/lib/device-storage';
+
+import { withWindowWidths } from './helpers/window';
 
 jest.mock('../src/lib/device-storage', () => ({
   getItem: jest.fn(),
@@ -82,8 +83,6 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
 
   it('puts the tips beside the upload zone from 880 dp, and above it below that', async () => {
     mockGetItem.mockResolvedValue(null);
-    const window = (width: number) => ({ width, height: 900, scale: 2, fontScale: 1 });
-    const spy = jest.spyOn(Dimensions, 'get');
     // Document order of the rendered tree tells which column / stack slot each block is in.
     const order = () => {
       const tree = JSON.stringify(screen.toJSON());
@@ -94,22 +93,20 @@ describe('AddScreen capture tips panel (UI-REQ-020 / UI-SCN-007)', () => {
       expect(tips).toBeGreaterThanOrEqual(0);
       return { zone, tips };
     };
-    try {
+    await withWindowWidths(900, async (setWidth) => {
       // 880 dp is the first two-column width; 879 dp still stacks.
-      spy.mockReturnValue(window(880));
+      setWidth(880);
       await renderScreen();
       await screen.findByTestId('capture-tips-panel');
       const wide = order();
       expect(wide.tips).toBeGreaterThan(wide.zone);
       await cleanup();
 
-      spy.mockReturnValue(window(879));
+      setWidth(879);
       await renderScreen();
       await screen.findByTestId('capture-tips-panel');
       const stacked = order();
       expect(stacked.tips).toBeLessThan(stacked.zone);
-    } finally {
-      spy.mockRestore();
-    }
+    });
   });
 });

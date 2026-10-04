@@ -112,10 +112,22 @@ describe('WardrobeScreen (Armario)', () => {
   });
 
   it('shows the grid skeleton while loading, then the garments', async () => {
-    mockItems([item('a'), item('b', { category: 'shoes' })]);
+    // Gate the list response so the skeleton is observable before it settles; an
+    // already-resolved fetch can land inside render's act on a cold run.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockWardrobe([
+      async () => {
+        await gate;
+        return page([item('a'), item('b', { category: 'shoes' })]);
+      },
+    ]);
     await renderScreen();
 
     expect(screen.getByTestId('loading-state-grid')).toBeTruthy();
+    await act(async () => release());
     expect(await screen.findByTestId('garment-card-a')).toBeTruthy();
     expect(screen.getByTestId('garment-card-b')).toBeTruthy();
     expect(within(screen.getByTestId('garment-card-b')).getByText('Calzado')).toBeTruthy();
@@ -289,8 +301,12 @@ describe('WardrobeScreen (Armario)', () => {
     expect(screen.getByTestId('add-garment-tile')).toBeTruthy();
 
     await fireEvent.press(screen.getByRole('tab', { name: /^Archivadas/ }));
-    await waitFor(() => expect(screen.queryByTestId('add-garment-tile')).toBeNull());
-    expect(screen.getByTestId('garment-card-a')).toBeTruthy();
+    // The tile is also absent while the Archivadas query shows its skeleton, so the card and the
+    // missing tile must hold together, not one after the other.
+    await waitFor(() => {
+      expect(screen.queryByTestId('add-garment-tile')).toBeNull();
+      expect(screen.getByTestId('garment-card-a')).toBeTruthy();
+    });
   });
 
   it('distinguishes "nothing here with these filters" and clears them', async () => {

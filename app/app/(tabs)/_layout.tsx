@@ -12,6 +12,7 @@ import { colors } from '@/theme';
 export default function TabsLayout() {
   return (
     <Tabs
+      // To hide a tab, give its screen `href: null`; FloatingTabBar ignores `tabBarButton`.
       tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         header: () => <AppHeader />,

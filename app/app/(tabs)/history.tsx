@@ -119,6 +119,11 @@ export default function HistoryScreen() {
     ),
   );
 
+  // A list that failed without data would otherwise look empty; refetch only those.
+  const failedLists = [unworn, stale].filter(
+    (query) => !query.data && (query.isError || query.errorUpdatedAt > 0),
+  );
+
   const secondChance: RankItem[] = [
     ...(unworn.data?.items ?? [])
       .filter((item) => item.wear_count === 0)
@@ -138,6 +143,14 @@ export default function HistoryScreen() {
       mostWorn={mostWorn}
       secondChance={secondChance}
       secondChanceTitle={anyWorn ? 'Dales otra oportunidad' : 'Aún sin estrenar'}
+      secondChanceError={
+        failedLists.length > 0
+          ? {
+              onRetry: () => failedLists.forEach((query) => void query.refetch()),
+              retrying: failedLists.some((query) => query.isFetching),
+            }
+          : undefined
+      }
       onOpenGarment={(id) => router.push(`/garments/${id}`)}
     />
   );

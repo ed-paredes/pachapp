@@ -70,6 +70,7 @@ function TabItem({ title, accessibilityLabel, focused, onPress, renderIcon }: It
 /**
  * Floating pill nav, passed to `<Tabs tabBar>`: Hoy, Armario, a round "Añadir" button, Historial.
  * Keeps the accessible name "<title>, tab, N of M" so tab semantics match the default bar.
+ * Hide a tab with `href: null` only: a custom `tabBarButton` (e.g. `() => null`) is not honoured.
  */
 export function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   // Routes hidden with `href: null` stay in the navigator state; expo-router marks them with

@@ -119,6 +119,37 @@ describe('HistoryView', () => {
     expect(screen.queryByTestId('empty-state')).toBeNull();
   });
 
+  it('puts a retryable notice in the second list slot when it failed to load', async () => {
+    const onRetry = jest.fn();
+    await renderView({
+      mostWorn: [{ id: 'm', name: 'Camisa', detail: '3 usos', color: '#3355AA', thumbUri: null }],
+      secondChanceTitle: 'Aún sin estrenar',
+      secondChanceError: { onRetry },
+    });
+
+    expect(screen.getByTestId('rank-most-worn')).toBeTruthy();
+    expect(screen.getByTestId('second-chance-error')).toBeTruthy();
+    expect(screen.getByText('Aún sin estrenar')).toBeTruthy();
+    expect(screen.queryByTestId('rank-second-chance')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reintentar: Aún sin estrenar' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the notice even when there is nothing else to list, and disables it while retrying', async () => {
+    const onRetry = jest.fn();
+    await renderView({ secondChanceError: { onRetry, retrying: true } });
+
+    expect(screen.getByTestId('second-chance-error')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Reintentar/ })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('shows no notice when the second list loaded', async () => {
+    await renderView({});
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+  });
+
   it('renders every KPI it is given', async () => {
     await renderView({
       kpis: [

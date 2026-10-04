@@ -1,6 +1,7 @@
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
+import { SectionError } from '@/components/SectionError';
 import { Eyebrow, Screen, Title } from '@/components/ui';
 import { colors, fontFamilies, radii, shadows, spacing, TWO_COLUMNS } from '@/theme';
 
@@ -30,6 +31,11 @@ type HistoryViewProps = {
   secondChance: RankItem[];
   /** Title of the second list; "Dales otra oportunidad" only makes sense with real history. */
   secondChanceTitle?: string;
+  /**
+   * The data behind the second list failed to load. A retryable notice takes the card's place, so
+   * a failed load is not mistaken for "nothing to show"; the rest of the screen is unchanged.
+   */
+  secondChanceError?: { onRetry: () => void; retrying?: boolean };
   onOpenGarment: (id: string) => void;
   /** Adds the "Sugerir" button to the second list (needs the outfit engine). */
   onSuggest?: (id: string) => void;
@@ -45,12 +51,13 @@ export function HistoryView({
   mostWorn,
   secondChance,
   secondChanceTitle = 'Dales otra oportunidad',
+  secondChanceError,
   onOpenGarment,
   onSuggest,
 }: HistoryViewProps) {
   const { width } = useWindowDimensions();
   const wide = width >= TWO_COLUMNS;
-  const lists = mostWorn.length > 0 || secondChance.length > 0;
+  const lists = mostWorn.length > 0 || secondChance.length > 0 || secondChanceError !== undefined;
 
   return (
     <Screen testID="history-screen">
@@ -96,7 +103,14 @@ export function HistoryView({
                 testID="rank-most-worn"
               />
             ) : null}
-            {secondChance.length > 0 ? (
+            {secondChanceError ? (
+              <SectionError
+                title={secondChanceTitle}
+                onRetry={secondChanceError.onRetry}
+                retrying={secondChanceError.retrying}
+                testID="second-chance-error"
+              />
+            ) : secondChance.length > 0 ? (
               <RankCard
                 title={secondChanceTitle}
                 items={secondChance}

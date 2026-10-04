@@ -178,23 +178,151 @@ describe('HistoryScreen (Historial)', () => {
     expect(screen.queryByTestId('error-state')).toBeNull();
   });
 
-  it('keeps the KPIs and the main list when a secondary list fails', async () => {
+  /**
+   * Historial's three requests, with one secondary list (`last_worn_at` = stale, `wear_count`
+   * ascending = unworn) answering by `mode`: it fails, hangs, or serves `items`.
+   */
+  function mockSecondaryList(
+    which: 'stale' | 'unworn',
+    state: { mode: 'fail' | 'hang' | 'ok' },
+    items: Item[],
+  ) {
     (globalThis.fetch as jest.Mock).mockImplementation(async (request: Request) => {
-      const sort = new URL(request.url).searchParams.get('sort');
-      if (sort === 'last_worn_at') {
+      const params = new URL(request.url).searchParams;
+      const isTarget =
+        which === 'stale'
+          ? params.get('sort') === 'last_worn_at'
+          : params.get('sort') === 'wear_count' && params.get('order') === 'asc';
+      if (isTarget && state.mode === 'fail') {
         return new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      const items = [item('a', { wear_count: 4 }), item('b')];
-      return json({ items, total: items.length, page: 1, page_size: 50 });
+      if (isTarget && state.mode === 'hang') return new Promise<Response>(() => {});
+      const list = isTarget ? items : [item('a', { wear_count: 4 }), item('b')];
+      return json({ items: list, total: list.length, page: 1, page_size: 50 });
     });
+  }
+  const old = () => new Date(Date.now() - 80 * DAY).toISOString();
+
+  it('keeps the KPIs and the main list, and shows a retryable notice, when stale fails', async () => {
+    mockSecondaryList('stale', { mode: 'fail' }, []);
     await renderScreen();
 
     expect(await screen.findByTestId('kpi-usage')).toBeTruthy();
     expect(screen.getByText('Las que más usas')).toBeTruthy();
+    // No full-screen error: only the second-chance slot carries the notice.
     expect(screen.queryByTestId('error-state')).toBeNull();
+    expect(await screen.findByTestId('second-chance-error')).toBeTruthy();
+    expect(screen.getByText('No se pudo cargar esta lista.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Reintentar/ })).toBeTruthy();
+    expect(screen.queryByTestId('rank-second-chance')).toBeNull();
+  });
+
+  it('shows the notice when the unworn list fails too', async () => {
+    mockSecondaryList('unworn', { mode: 'fail' }, []);
+    await renderScreen();
+
+    expect(await screen.findByTestId('second-chance-error')).toBeTruthy();
+    expect(screen.queryByTestId('error-state')).toBeNull();
+    expect(screen.getByTestId('kpi-usage')).toBeTruthy();
+  });
+
+  it('refetches only the failed list and brings the section back once it succeeds', async () => {
+    const state = { mode: 'fail' as 'fail' | 'hang' | 'ok' };
+    mockSecondaryList('stale', state, [
+      item('w', { wear_count: 3, last_worn_at: old(), subcategory: 'jersey' }),
+    ]);
+    await renderScreen();
+    await screen.findByTestId('second-chance-error');
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    state.mode = 'ok';
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+
+    expect(await screen.findByTestId('rank-second-chance')).toBeTruthy();
+    expect(screen.getByText('Hace 80 días')).toBeTruthy();
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+    // Only the stale request was repeated: active and unworn keep their data.
+    const repeated = (globalThis.fetch as jest.Mock).mock.calls
+      .slice(callsBefore)
+      .map(([request]: [Request]) => new URL(request.url).searchParams.get('sort'));
+    expect(repeated).toEqual(['last_worn_at']);
+  });
+
+  /** The `sort:order` of each request made since `from`. */
+  const sortsSince = (from: number) =>
+    (globalThis.fetch as jest.Mock).mock.calls.slice(from).map(([request]: [Request]) => {
+      const params = new URL(request.url).searchParams;
+      return `${params.get('sort')}:${params.get('order')}`;
+    });
+
+  it('refetches only the unworn list when that is the one that failed', async () => {
+    const state = { mode: 'fail' as 'fail' | 'hang' | 'ok' };
+    mockSecondaryList('unworn', state, [item('u', { subcategory: 'jersey' })]);
+    await renderScreen();
+    await screen.findByTestId('second-chance-error');
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    state.mode = 'ok';
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+
+    expect(await screen.findByTestId('rank-second-chance')).toBeTruthy();
+    expect(screen.getByText('Sin estrenar')).toBeTruthy();
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+    expect(sortsSince(callsBefore)).toEqual(['wear_count:asc']);
+  });
+
+  it('shows one notice when both lists fail, and retries both', async () => {
+    let failing = true;
+    (globalThis.fetch as jest.Mock).mockImplementation(async (request: Request) => {
+      const params = new URL(request.url).searchParams;
+      const secondary =
+        params.get('sort') === 'last_worn_at' ||
+        (params.get('sort') === 'wear_count' && params.get('order') === 'asc');
+      if (secondary && failing) {
+        return new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const list = secondary
+        ? [item('s', { wear_count: 2, last_worn_at: old() })]
+        : [item('a', { wear_count: 4 }), item('b')];
+      return json({ items: list, total: list.length, page: 1, page_size: 50 });
+    });
+    await renderScreen();
+
+    expect(await screen.findAllByTestId('second-chance-error')).toHaveLength(1);
+    expect(screen.queryByTestId('error-state')).toBeNull();
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    failing = false;
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+
+    expect(await screen.findByTestId('rank-second-chance')).toBeTruthy();
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+    expect(sortsSince(callsBefore).sort()).toEqual(['last_worn_at:asc', 'wear_count:asc']);
+  });
+
+  it('disables Reintentar while the retry is in flight, and keeps the notice up', async () => {
+    const state = { mode: 'fail' as 'fail' | 'hang' | 'ok' };
+    mockSecondaryList('stale', state, []);
+    await renderScreen();
+    await screen.findByTestId('second-chance-error');
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    state.mode = 'hang';
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Reintentar/ })).toBeDisabled());
+    const callsAfterFirst = (globalThis.fetch as jest.Mock).mock.calls.length;
+    expect(callsAfterFirst).toBe(callsBefore + 1);
+
+    // A second press while disabled does not start another request.
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBe(callsAfterFirst);
+    expect(screen.getByTestId('second-chance-error')).toBeTruthy();
   });
 
   it('does not fire another request when retrying while one is in flight', async () => {
