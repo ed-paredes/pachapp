@@ -158,6 +158,14 @@ reviewed slice (E1, E2, E3). Branch `feat/outfit-engine` from `main` `b8d4b7f`.
   Open (owner, later): regenerate right after an upload finishes vs next Hoy visit; per-sentence component tags
   for reason icons; sync prefetch of today's batch for a new day offline.
 
+- 2026-10-04: native review of `411b820..8360196` (38 files, 1904 lines), owner granted, `review-84f8f20647c4c3b4`
+  (reliability) approved and acknowledged. Fixes `0911ac0` (delegated writer): non-day IntegrityError -> 503
+  `WEAR_LOG_WRITE_FAILED` and the client asks "¿Cambiarlo por este?" only for `WEAR_LOG_CONFLICT` with
+  `details.outfit_id`; the pending conflict belongs to the look on screen (cleared when it changes, late 409
+  ignored); `exclude_sets` bound 200 on both sides, beyond it "Otra sugerencia" is exhausted instead of dropping
+  old sets. Checks: pytest 627, jest 378 (writer and parent), lint/format/types clean; RED probes.
+
 ## Next step
 
-Native review of `411b820..HEAD`, stacked PRs (E1, E2, E2c+E2b+E3), merge in order; follow-up: offline-ux flake.
+Stacked PRs #42 (E1) -> #43 (E2) -> E2c+E2b+E3 PR; merge in order (owner approved); then phone check of Hoy
+(rebuild APK) and E5 "Crear outfit con esta prenda". Follow-up: offline-ux load flake.
