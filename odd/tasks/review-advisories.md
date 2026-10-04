@@ -132,8 +132,15 @@ stacked on PR 1). Push and PR creation are the owner's decision.
   257/257 both. Deferred (owner): Armario refresh fan-out, FloatingTabBar `tabBarButton`, isNewGarment window,
   shared window-size test helper.
 
+- 2026-10-04: native review of slice `be7f22d..be0e4ca` (V4-V6 + doc, 19 files, 423 lines, medium,
+  `slice_budget_reached`): untracked excluded (owner's `SPEC-ML.md`), owner granted,
+  `review-7b3d031a732bdc72` one lens (reliability) approved and acknowledged (burned). Reviewed boundary ->
+  `be0e4ca`. One non-blocking WARNING (follow-up): Historial now blocks only on the active query, so a failed
+  unworn/stale query silently drops its section with no error or retry (`app/app/(tabs)/history.tsx:76-81`;
+  the test at `app/tests/history.test.tsx:181-198` does not check the failed section).
+
 ## Next step
 
-Native review of `be7f22d..HEAD` (401 lines, `slice_budget_reached`), then push, merge #34, retarget #35 to
-`main`, merge, delete branches. Follow-ups: deferred items above, cold-run jest flakes in `wardrobe.test.tsx`
-and `review.test.tsx`, `README.md` prettier formatting.
+Push, merge #34, retarget #35 to `main`, merge, delete branches. Follow-ups: Historial secondary-query
+failure state (review WARNING above), deferred items above, cold-run jest flakes in `wardrobe.test.tsx` and
+`review.test.tsx`, `README.md` prettier formatting.
