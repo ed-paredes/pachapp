@@ -57,31 +57,35 @@ formality, style_tags and a 768-d embedding, which the engine needs.
   accessories** from day one.
 - Weather/season out (spec). User management deferred (personal use).
 
-## Open decisions (ask the owner at the start of the next session, one at a time)
+## Owner decisions (2026-10-04, second round)
 
-1. Style score in the MVP: formality variance + style_tags Jaccard only, or also embedding cosine now (A15
-   provides embeddings; style_tags threshold is uncalibrated, 2 of 4 test garments got none).
-2. Hoy layout: hero + up to 4 alternatives from the 5 proposals (recommended) vs strict spec list; "Otra
-   sugerencia" = next cached proposal vs a new `generate` with a new seed.
-3. Presentation: `matchPercent` = round(score*100) or hidden until calibrated; look `name` from a template or
-   hidden; `formalityLabel` from formality.
-4. Refresh policy: regenerate once a day / on wardrobe change / on demand; what offline shows.
-5. Wear 409 UX (day already logged: replace or keep) and whether garments in laundry are excluded (spec:
-   only active).
-6. Order of follow-ups after the MVP: Favoritos, Historial calendar/stats, "Crear outfit con esta prenda",
-   dislike/preference learning.
+1. Style score uses embeddings now: C_style = mean of formality variance, style_tags Jaccard and mean pairwise
+   cosine of embeddings (same `embedding_model` only; a garment without an embedding contributes no cosine term).
+2. Hoy: the best of the 5 proposals is the look of the day, the other 4 go to "Otras opciones". "Otra
+   sugerencia" moves to the next cached proposal without calling the backend (works offline); when all 5 have
+   been shown it requests 5 new ones (new seed).
+3. "% match" hidden for now (score uncalibrated); show the explanation ("por qué"). Look name: hidden unless a
+   template gives something meaningful; formality label from formality.
+4. Refresh once a day: generate on the first Hoy visit of the day and again when the wardrobe changes (upload,
+   archive, laundry, edit); offline shows the last saved batch.
+5. "Me lo pongo" on a day already logged: ask "Hoy ya registraste otro outfit. ¿Cambiarlo por este?" and on
+   accept replace it (`PUT /wear-log/{date}`), recomputing wear counts of both outfits' garments.
+6. After the MVP: "Crear outfit con esta prenda" first (Detalle -> generate with `fixed_garment_ids`).
+- Eligibility per spec: only `status=active` garments (laundry and archived excluded).
 
 ## Proposed tasks (refine after the decisions)
 
 - [ ] **E1** Engine core (pure `backend/src/engine/`): candidate filtering, base enumeration with numpy masks,
   colour/style/novelty/preference scores, layers and accessories greedy, MMR to 5, explanations; unit tests +
   benchmark (5 of 300 under 1 s).
-- [ ] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe), `POST /wear-log` (+ PUT/DELETE) with the
-  transactional `wear_count`/`last_worn_at` recompute; contract tests; regenerate `app/src/api-client/schema.ts`
-  (`make gen-client`).
-- [ ] **E3** App Hoy: `useGenerateOutfits` (persisted on native), response -> `LookProposal`/`AltLook` mapper,
-  wire `onWear`/`onShuffle`, offline behaviour (saved proposal, actions disabled); UI task -> frontend-design +
-  ux-copy, critique + a11y on screenshots.
+- [ ] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe 5 min), `POST /wear-log` (409 when the day is
+  logged) + `PUT`/`DELETE /wear-log/{date}` with the transactional `wear_count`/`last_worn_at` recompute for
+  every affected garment; contract tests; regenerate `app/src/api-client/schema.ts` (`make gen-client`).
+- [ ] **E3** App Hoy: `useGenerateOutfits` (persisted on native, daily + wardrobe-change refresh), response ->
+  `LookProposal`/`AltLook` mapper (no match %), "Otra sugerencia" cycles cached proposals then regenerates,
+  "Me lo pongo" with the replace confirmation, offline behaviour (saved batch, wear disabled); UI task ->
+  frontend-design + ux-copy, critique + a11y on screenshots.
+- [ ] **E5** (after the MVP) "Crear outfit con esta prenda" in Detalle.
 - [ ] **E4** Owner check on the phone (rebuild APK with `make android-apk`).
 
 ## TDD / checks
@@ -106,4 +110,4 @@ reviewed slice (E1, E2, E3). Branch `feat/outfit-engine` from `main` `b8d4b7f`.
 
 ## Next step
 
-Next session: ask the open decisions (1-6), refine the tasks, then E1.
+E1 then E2 with one delegated writer (backend), one commit per task; then reviews and E3.
