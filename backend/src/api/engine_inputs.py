@@ -112,6 +112,7 @@ def build_generation_request(
     fixed_garment_ids: tuple[str, ...],
     replace_garment_id: str | None,
     seed: int,
+    exclude_sets: tuple[frozenset[str], ...] = (),
 ) -> GenerationRequest:
     garments = session.exec(select(Garment).where(Garment.status == GarmentStatus.active)).all()
     return GenerationRequest(
@@ -130,4 +131,5 @@ def build_generation_request(
         fixed_garment_ids=fixed_garment_ids,
         replace_garment_id=replace_garment_id,
         seed=seed,
+        exclude_sets=exclude_sets,
     )

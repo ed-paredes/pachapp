@@ -44,6 +44,7 @@ class Context:
     pair: Array  # (n, n, 6)
     tiebreak: Array  # (n,) seeded random keys
     recent_sets: frozenset[frozenset[str]]
+    excluded_sets: frozenset[frozenset[str]]  # sets the caller already showed
     slot: list[str]  # category value per garment
 
 
@@ -138,6 +139,7 @@ def build_context(request: GenerationRequest, garments: list[EngineGarment]) -> 
         pair=pair,
         tiebreak=tiebreak,
         recent_sets=recent_sets,
+        excluded_sets=frozenset(request.exclude_sets),
         slot=[str(g.category.value) if g.category else "" for g in garments],
     )
 

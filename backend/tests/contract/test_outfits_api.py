@@ -368,3 +368,42 @@ def test_the_history_window_matches_the_engine_rule_exactly(client: TestClient) 
         assert session.exec(select(WearLog)).all()
 
     assert days == [0, 13]
+
+
+def _set_of(proposal: dict) -> frozenset[str]:
+    return frozenset(item["garment_id"] for item in proposal["items"])
+
+
+def test_generate_excludes_the_sets_already_shown(client: TestClient) -> None:
+    basic_wardrobe(client)  # 8 possible sets
+    first = _generate(client).json()["proposals"]
+    shown = [[item["garment_id"] for item in reversed(p["items"])] for p in first]  # order differs
+
+    second = _generate(client, exclude_sets=shown).json()["proposals"]
+
+    assert first and second
+    assert not {_set_of(p) for p in first} & {_set_of(p) for p in second}
+
+
+def test_generate_with_every_set_excluded_is_a_normal_empty_200(client: TestClient) -> None:
+    ids = basic_wardrobe(client)
+    shown: list[list[str]] = []
+    for _ in range(10):  # bounded: a broken exclusion must fail, not hang
+        proposals = _generate(client, exclude_sets=shown).json()["proposals"]
+        if not proposals:
+            break
+        shown += [[i["garment_id"] for i in p["items"]] for p in proposals]
+
+    assert len(shown) == 8
+    assert _generate(client, exclude_sets=shown).status_code == 200
+    assert ids
+
+
+def test_generate_bounds_the_exclusion_payload(client: TestClient) -> None:
+    some = "3b7e0f0e-6a54-4e3b-9d1c-0a6a2f0a9c11"
+
+    assert _generate(client, exclude_sets=[[some]] * 50).status_code == 200
+    assert _generate(client, exclude_sets=[[some]] * 51).status_code == 422
+    assert _generate(client, exclude_sets=[[]]).status_code == 422
+    assert _generate(client, exclude_sets=[[some] * 16]).status_code == 422
+    assert _generate(client, exclude_sets=[["not-a-uuid"]]).status_code == 422

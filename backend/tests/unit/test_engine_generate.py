@@ -479,3 +479,52 @@ def test_history_lowers_the_novelty_of_recently_worn_garments() -> None:
     best = proposals[0]
     assert ids_of(best) != {"t1", "b1", "s1"}
     assert len(ids_of(best) & {"t1", "b1", "s1"}) <= 1
+
+
+# --- exclude_sets ("Otra sugerencia") -----------------------------------------
+
+
+def _sets(proposals) -> list[frozenset[str]]:
+    return [frozenset(i.garment_id for i in p.items) for p in proposals]
+
+
+def test_excluded_sets_are_never_proposed_again_and_order_does_not_matter() -> None:
+    wardrobe = synthetic_wardrobe(60)
+    first = _sets(generate_outfits(request(wardrobe)))
+
+    second = _sets(generate_outfits(request(wardrobe, exclude_sets=tuple(first))))
+
+    assert len(first) == 5 and len(second) == 5
+    assert not set(first) & set(second)
+    assert len(set(second)) == 5
+
+
+def test_the_next_best_proposals_follow_the_excluded_ones() -> None:
+    wardrobe = basic_wardrobe()  # 2 tops x 2 bottoms x 2 shoes = 8 sets
+    everything = _sets(generate_outfits(request(wardrobe)))
+
+    remaining = _sets(generate_outfits(request(wardrobe, exclude_sets=(everything[0],))))
+
+    assert everything[0] not in remaining
+    # 7 sets remain and no garment may be in more than 2 proposals: a distinct batch of 4
+    assert len(remaining) == 4 and len(set(remaining)) == 4
+
+
+def test_excluding_every_possible_set_gives_no_proposals() -> None:
+    wardrobe = basic_wardrobe()
+    every: list[frozenset[str]] = []
+    for _ in range(10):  # bounded: a broken exclusion must fail, not hang
+        more = _sets(generate_outfits(request(wardrobe, exclude_sets=tuple(every))))
+        if not more:
+            break
+        every += more
+
+    assert len(set(every)) == 8  # all of them were reachable, none repeated
+    assert generate_outfits(request(wardrobe, exclude_sets=tuple(every))) == []
+
+
+def test_an_exclusion_that_matches_nothing_changes_nothing() -> None:
+    wardrobe = basic_wardrobe()
+    plain = generate_outfits(request(wardrobe))
+
+    assert generate_outfits(request(wardrobe, exclude_sets=(frozenset({"nope"}),))) == plain

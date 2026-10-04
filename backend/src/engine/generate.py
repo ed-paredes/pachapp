@@ -227,12 +227,14 @@ def _totals(ctx: Context, members: Array) -> Array:
 
 
 def _not_recent(ctx: Context, members: Array) -> Array:
-    """ENG-REQ-005: drop the exact garment sets worn inside the window."""
-    if not ctx.recent_sets:
+    """ENG-REQ-005: drop the exact garment sets worn inside the window, and the
+    sets the caller already showed (`exclude_sets`)."""
+    blocked = ctx.recent_sets | ctx.excluded_sets
+    if not blocked:
         return np.ones(len(members), dtype=bool)
     ids = [g.id for g in ctx.garments]
     return np.array(
-        [frozenset(ids[i] for i in row if i >= 0) not in ctx.recent_sets for row in members],
+        [frozenset(ids[i] for i in row if i >= 0) not in blocked for row in members],
         dtype=bool,
     )
 

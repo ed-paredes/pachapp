@@ -77,6 +77,8 @@ class GenerationRequest:
     fixed_garment_ids: tuple[str, ...] = ()
     replace_garment_id: str | None = None
     seed: int = 0
+    # Garment-id sets already shown to the user (order-insensitive): never proposed again.
+    exclude_sets: tuple[frozenset[str], ...] = ()
 
 
 @dataclass(frozen=True)

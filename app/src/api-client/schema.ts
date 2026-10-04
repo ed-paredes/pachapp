@@ -566,6 +566,8 @@ export interface components {
             fixed_garment_ids?: string[] | null;
             /** Replace Garment Id */
             replace_garment_id?: string | null;
+            /** Exclude Sets */
+            exclude_sets?: string[][] | null;
             /** Seed */
             seed?: number | null;
         };
