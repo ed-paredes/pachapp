@@ -51,7 +51,6 @@ describe('useNow', () => {
       return { remove };
     });
     jest.setSystemTime(new Date(2026, 9, 3, 22, 0, 0));
-    const clear = jest.spyOn(globalThis, 'clearTimeout');
     const { result, unmount } = await renderHook(() => useNow());
     expect(result.current.getDate()).toBe(3);
 
@@ -65,6 +64,21 @@ describe('useNow', () => {
 
     await unmount();
     expect(remove).toHaveBeenCalled();
-    expect(clear).toHaveBeenCalled();
+  });
+
+  it('clears the exact timer it armed on unmount, so nothing fires later', async () => {
+    const start = new Date(2026, 9, 3, 23, 59, 0);
+    jest.setSystemTime(start);
+    // The hook arms its timer for the next tick plus a 50 ms margin; find it by that delay.
+    const delay = nextTick(start).getTime() - start.getTime() + 50;
+    const armed = jest.spyOn(globalThis, 'setTimeout');
+    const { unmount } = await renderHook(() => useNow());
+    const index = armed.mock.calls.findIndex((call) => call[1] === delay);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const timer = armed.mock.results[index].value;
+
+    const cleared = jest.spyOn(globalThis, 'clearTimeout');
+    await unmount();
+    expect(cleared).toHaveBeenCalledWith(timer);
   });
 });

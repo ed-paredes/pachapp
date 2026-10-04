@@ -31,6 +31,7 @@ describe('FormalityMeter', () => {
     async (level) => {
       await render(<FormalityMeter level={level} />);
       expect(screen.queryByRole('progressbar')).toBeNull();
+      expect(screen.toJSON()).toBeNull();
     },
   );
 });

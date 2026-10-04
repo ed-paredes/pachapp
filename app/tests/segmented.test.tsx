@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 
 import { Segmented } from '@/components/ui/Segmented';
 
@@ -58,5 +58,37 @@ describe('Segmented layout', () => {
     const style = StyleSheet.flatten(screen.getAllByRole('tab')[0].props.style);
     expect(style.minHeight).toBeGreaterThanOrEqual(44);
     expect(style.flexShrink).toBe(1);
+  });
+
+  it('stacks the counter under the label below 480 dp and keeps it inline from 480 dp', async () => {
+    const window = (width: number) => ({ width, height: 800, scale: 2, fontScale: 1 });
+    const spy = jest.spyOn(Dimensions, 'get');
+    const tab = () => StyleSheet.flatten(screen.getAllByRole('tab')[0].props.style);
+    try {
+      spy.mockReturnValue(window(479));
+      await render(
+        <Segmented
+          options={[...options]}
+          value="active"
+          onChange={() => undefined}
+          accessibilityLabel="Estado"
+        />,
+      );
+      expect(tab().flexDirection).toBe('column');
+      await cleanup();
+
+      spy.mockReturnValue(window(480));
+      await render(
+        <Segmented
+          options={[...options]}
+          value="active"
+          onChange={() => undefined}
+          accessibilityLabel="Estado"
+        />,
+      );
+      expect(tab().flexDirection).toBe('row');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
