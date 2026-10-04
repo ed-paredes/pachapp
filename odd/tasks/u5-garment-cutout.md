@@ -34,7 +34,7 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
 
 ## Tasks
 
-- [ ] **U5a** Evaluation tooling (reusable, like `make ml-eval`): run current BiRefNet vs BiRefNet + SegFormer
+- [x] **U5a** Evaluation tooling (reusable, like `make ml-eval`): run current BiRefNet vs BiRefNet + SegFormer
   (b3 and/or b2) vs BiRefNet + `u2net_cloth_seg` on the eval sets in `~/pachapp-data/eval` (and the owner's
   photos under `~/pachapp-data-test/images`), select person-worn photos, write contact sheets, a colour proxy
   (dominant colours before/after), per-image latency, peak VRAM and peak RAM; unit tests with fakes, no models
@@ -64,6 +64,18 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
 
 - 2026-10-04: feature document created; spec 09 (try-on) merged as #45.
 
+- 2026-10-04: U5a `a001b79` (delegated writer): `ml/garment_parse.py` (`GarmentParser`, `SegformerClothesParser`
+  b3/b2 fp16 on CUDA, `U2NetClothParser`, category -> class sets, `person_present`, `garment_mask`/`cut_garment`
+  with small-mask fallback, `erode_alpha`; thresholds `MIN_GARMENT_RATIO` 0.01, `MIN_PERSON_RATIO` 0.02,
+  `COLOR_ERODE_PX` 4), `ml/cutout_eval.py` + `make ml-cutout-eval CUTOUT_EVAL_ARGS=...` (BiRefNet mattes cached
+  then freed, one parser at a time, serial; warm median/p95 latency, nvidia-smi VRAM sampling, torch peak,
+  /proc RSS; contact sheets + `report.md` flagging dominant-colour changes; `--worn-only`, `--methods`,
+  `--limit`; optional `labels.json` for categories), settings `PACHAPP_ML_PARSE_B3/B2_REVISION` (moving refs
+  rejected). No new dependencies. Checks: ruff, format, ty clean; pytest 652. RED probes. Never run on real
+  models. Expected downloads: segformer b3 ~190 MB, b2 ~110 MB, u2net_cloth_seg ~170 MB.
+
 ## Next step
 
-U5a with one delegated writer; then ask the owner to stop the stack for U5b.
+U5b: stop API/worker/Expo, run `make ml-cutout-eval ENV_FILE=/home/educcio/code/pachapp/.env.lan
+CUTOUT_EVAL_ARGS="<eval dirs> --out /tmp/claude-1000/u5-eval --worn-only"` (eval dirs:
+`~/pachapp-data/eval/public-garments`, `public-sample`, `public-test-full`, plus `~/pachapp-data-test/images`).
