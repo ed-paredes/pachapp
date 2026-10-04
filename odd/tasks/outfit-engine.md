@@ -81,6 +81,15 @@ formality, style_tags and a 768-d embedding, which the engine needs.
 - [x] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe 5 min), `POST /wear-log` (409 when the day is
   logged) + `PUT`/`DELETE /wear-log/{date}` with the transactional `wear_count`/`last_worn_at` recompute for
   every affected garment; contract tests; regenerate `app/src/api-client/schema.ts` (`make gen-client`).
+- [ ] **E2c** Review fixes (E1 `review-5c5192fd42bf70bf`, E2 `review-73dda50dacae5f45`, both approved): colour
+  explanation from the hue relation, not the penalised score; negative/out-of-range seed -> 400/422, not 500;
+  fixed-layer benchmark best-of-3 + result assertions; wear-log IntegrityError handled without `assert` (FK
+  races return the error envelope); no-repeat window bounds matching the engine (`0 <= days_ago <
+  no_repeat_days`, no future logs) with edge-day tests; reject future wear dates (default chosen by the parent,
+  no use case yet); embedding blob length checked against `embedding_dim` (log and skip).
+- [ ] **E2b** `POST /outfits/generate` accepts the garment sets already shown (`exclude_sets`) and returns the
+  next best distinct proposals (owner decision 2026-10-04: "Otra sugerencia" after the 5 cached ones excludes
+  the seen looks).
 - [ ] **E3** App Hoy: `useGenerateOutfits` (persisted on native, daily + wardrobe-change refresh), response ->
   `LookProposal`/`AltLook` mapper (no match %), "Otra sugerencia" cycles cached proposals then regenerates,
   "Me lo pongo" with the replace confirmation, offline behaviour (saved batch, wear disabled); UI task ->
@@ -127,6 +136,10 @@ reviewed slice (E1, E2, E3). Branch `feat/outfit-engine` from `main` `b8d4b7f`.
 - Writer note for E3: the seed only breaks exact ties (ENG-REQ-019), so "request 5 new ones with a new seed"
   would usually return the same proposals -> needs another mechanism (owner decision).
 
+- 2026-10-04: native reviews, owner granted both: E1 `b8d4b7f..42fb1fa` `review-5c5192fd42bf70bf` and E2
+  `42fb1fa..411b820` `review-73dda50dacae5f45` (reliability), approved and acknowledged; findings -> E2c. Owner
+  decision: the seed only breaks ties, so "more looks" excludes the sets already shown (E2b).
+
 ## Next step
 
-Native reviews of E1 (`b8d4b7f..42fb1fa`) and E2 (`42fb1fa..HEAD`), decide the "new proposals" mechanism, then E3.
+E2c, E2b and E3 with one delegated writer, one commit per task; then review of the slice and the stacked PRs.
