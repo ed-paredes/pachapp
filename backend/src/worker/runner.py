@@ -77,20 +77,26 @@ Step = Callable[[StepContext], None]
 
 
 def deferred_step(_ctx: StepContext) -> None:
-    """No-op for steps waiting on 08-local-vision.md step 4 (ai_attributes,
-    embedding): progress still advances so the table stays monotonic."""
+    """No-op placeholder for a step without an implementation yet: progress
+    still advances so the table stays monotonic."""
 
 
 def default_steps(
-    settings: Settings, remover_factory: Callable[[], Any] | None = None
+    settings: Settings,
+    remover_factory: Callable[[], Any] | None = None,
+    models_factory: Callable[[], Any] | None = None,
 ) -> Mapping[JobStep, Step]:
-    """Production step registry. `ai_attributes` and `embedding` stay deferred
-    until 08 step 4 (A15). `remover_factory` builds the `BackgroundRemover`
-    lazily on the first job; tests inject a fake, production uses BiRefNet."""
+    """Production step registry. `remover_factory` builds the `BackgroundRemover`
+    and `models_factory` the embedder + zero-shot classifier (`worker.ai.AiModels`),
+    both lazily on the first job; tests inject fakes, production uses BiRefNet
+    and SigLIP."""
     # Imported here: the step modules import this module for errors/StepContext.
+    from worker.ai import LazyModels, production_models_factory
+    from worker.steps.ai_attributes import make_ai_attributes_step
     from worker.steps.color import color_step
     from worker.steps.consolidate import consolidate_step
     from worker.steps.cutout import make_cutout_step, production_remover_factory
+    from worker.steps.embedding import make_embedding_step
     from worker.steps.preprocess import preprocess_step
 
     steps: dict[JobStep, Step] = {step: deferred_step for step in STEP_ORDER}
@@ -99,6 +105,9 @@ def default_steps(
         remover_factory or production_remover_factory(settings)
     )
     steps[JobStep.color] = color_step
+    models = LazyModels(models_factory or production_models_factory(settings))
+    steps[JobStep.ai_attributes] = make_ai_attributes_step(models)
+    steps[JobStep.embedding] = make_embedding_step(models)
     steps[JobStep.consolidate] = consolidate_step
     return steps
 

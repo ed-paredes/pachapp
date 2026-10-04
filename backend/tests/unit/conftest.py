@@ -47,3 +47,12 @@ def _clean_pachapp_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(key, raising=False)
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _offline_ai_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`default_steps` must never load SigLIP in a test (VIS-REQ-029): without an
+    injected `models_factory` it gets the offline fakes."""
+    from ai_fakes import make_models
+
+    monkeypatch.setattr("worker.ai.production_models_factory", lambda settings: make_models)

@@ -4,9 +4,8 @@
 or the cutout soft-failed (ING-SCN-005). It is only ever raised here, never
 cleared: only "Revisión terminada" (API-REQ-019) sets it back to false.
 
-Seam for 08 step 4 (A15): the AI-dependent triggers (`ai_confidence` below
-`needs_review_threshold`, top-1/top-2 margin, exhausted local-classifier retry) are
-added to `_review_triggers` once `ai_attributes` exists.
+The AI-dependent triggers (low-confidence category/pattern, VIS-REQ-016) are
+raised by `ai_attributes` itself; `consolidate` keeps whatever it set.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ def _review_triggers(
         reasons.append("low_color_confidence")
     if ctx.data.get("cutout_soft_failure"):
         reasons.append("cutout_soft_failure")
-    # 08 step 4 seam: ai_confidence / margin / classifier-retry triggers go here.
     return reasons
 
 
