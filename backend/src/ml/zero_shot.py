@@ -182,7 +182,16 @@ class ZeroShotClassifier:
     def label_embeddings(self, attribute: str) -> np.ndarray:
         return self._label_embs[attribute]
 
-    def classify(self, img_emb: np.ndarray) -> ZeroShotResult:
+    def classify(
+        self, img_emb: np.ndarray, *, needs_review_threshold: float | None = None
+    ) -> ZeroShotResult:
+        """`needs_review_threshold` overrides the constructor value for this call
+        (the worker passes the live `setting.needs_review_threshold`)."""
+        threshold = (
+            self.needs_review_threshold
+            if needs_review_threshold is None
+            else needs_review_threshold
+        )
         img = l2_normalize(img_emb)
         preds: dict[str, AttributeConfidence] = {}
         low: list[str] = []
@@ -198,7 +207,7 @@ class ZeroShotClassifier:
             probs = softmax_probs(img, self._label_embs[attr])
             idx, top1, _ = top_two(probs)
             preds[attr] = make(self._values[attr][idx], top1)
-            if is_low_confidence(probs, self.needs_review_threshold, self.margin_threshold):
+            if is_low_confidence(probs, threshold, self.margin_threshold):
                 low.append(attr)
 
         # Subcategory: winning prompt within the chosen category (VIS-REQ-012);
@@ -212,7 +221,7 @@ class ZeroShotClassifier:
         f_probs = softmax_probs(img, self._label_embs["formality"])
         f_value, f_conf = formality_from_probs(f_probs, [int(v) for v in self._values["formality"]])
         preds["formality"] = make(f_value, f_conf)
-        if f_conf < self.needs_review_threshold:
+        if f_conf < threshold:
             low.append("formality")
 
         tags = self._values["style_tags"]
