@@ -73,8 +73,8 @@ afterEach(() => {
 });
 
 describe('shouldPersistQuery', () => {
-  const query = (queryKey: unknown[], status = 'success') =>
-    ({ queryKey, state: { status } }) as unknown as Parameters<typeof shouldPersistQuery>[0];
+  const query = (queryKey: unknown[], state: { data?: unknown } = { data: {} }) =>
+    ({ queryKey, state }) as unknown as Parameters<typeof shouldPersistQuery>[0];
 
   it('keeps successful garment lists, infinite lists, details, settings and the sync stamp', () => {
     expect(shouldPersistQuery(query([...queryKeys.garments.list({ status: ['active'] })]))).toBe(
@@ -86,11 +86,31 @@ describe('shouldPersistQuery', () => {
     expect(shouldPersistQuery(query([...queryKeys.sync.last]))).toBe(true);
   });
 
-  it('never keeps jobs, health or queries that are not successful', () => {
+  it('never keeps jobs, health or queries without data', () => {
     expect(shouldPersistQuery(query([...queryKeys.jobs.detail('j1')]))).toBe(false);
     expect(shouldPersistQuery(query(['health']))).toBe(false);
-    expect(shouldPersistQuery(query([...queryKeys.garments.list({})], 'error'))).toBe(false);
-    expect(shouldPersistQuery(query([...queryKeys.garments.list({})], 'pending'))).toBe(false);
+    // Nothing to save yet (pending or failed before any data).
+    expect(shouldPersistQuery(query([...queryKeys.garments.list({})], { data: undefined }))).toBe(
+      false,
+    );
+  });
+});
+
+describe('a failed refetch', () => {
+  it('keeps the saved data on disk: it must not wipe the offline copy', async () => {
+    setPlatform('android');
+    const client = makeClient();
+    const key = queryKeys.garments.list({ status: ['active'] });
+    client.setQueryData(key, LIST);
+    // Offline refetch: the query turns to `error` but keeps its data.
+    globalThis.fetch = jest.fn(() => Promise.reject(new TypeError('Network request failed')));
+    await client
+      .fetchQuery({ queryKey: key, queryFn: () => Promise.reject(new TypeError('x')) })
+      .catch(() => undefined);
+    expect(client.getQueryState(key)?.status).toBe('error');
+
+    const query = client.getQueryCache().find({ queryKey: key });
+    expect(query && shouldPersistQuery(query)).toBe(true);
   });
 });
 

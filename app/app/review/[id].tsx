@@ -16,6 +16,7 @@ import type { components } from '@/api-client/schema';
 import { Chip } from '@/components/Chip';
 import { BackButton, GarmentHero } from '@/components/GarmentHero';
 import { HeroImage } from '@/components/GarmentImage';
+import { OfflineNote, useOfflineBlock } from '@/components/OfflineBanner';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { LoadingState } from '@/components/LoadingState';
@@ -65,6 +66,7 @@ const NEUTRAL_HERO = '#A39A8E';
 /** The fields column never grows past this on wide screens. */
 const FIELDS_MAX_WIDTH = 560;
 const SAVE_ERROR = 'No se pudo guardar el cambio. Inténtalo de nuevo.';
+const OFFLINE_SAVE_ERROR = 'Sin conexión: este cambio no se puede guardar ahora.';
 
 type FieldName =
   | 'category'
@@ -227,6 +229,7 @@ function ReviewForm({
   const router = useRouter();
   const patch = usePatchGarment(garment.id);
   const complete = useCompleteReview(garment.id);
+  const offline = useOfflineBlock();
   // Frozen on first render: editing never clears the highlight, only "Revisión terminada".
   const [highlights] = useState(() =>
     computeHighlights(garment, needsReviewThreshold, colorReviewThreshold),
@@ -252,6 +255,11 @@ function ReviewForm({
     body: GarmentPatch,
     shown: Draft[K],
   ): Promise<boolean> => {
+    if (offline) {
+      // Nothing is sent or shown as saved; the field says why.
+      setErrors((current) => ({ ...current, [field]: OFFLINE_SAVE_ERROR }));
+      return false;
+    }
     setErrors((current) => ({ ...current, [field]: undefined }));
     setDraft((current) => ({ ...current, [field]: shown }));
     try {
@@ -273,6 +281,7 @@ function ReviewForm({
 
   const finish = async () => {
     setCompleteError(null);
+    if (offline) return;
     // Text still being typed is saved first; if that fails the review stays open with its error.
     if (!(await flushText())) return;
     try {
@@ -705,7 +714,8 @@ function ReviewForm({
                 {completeError}
               </Text>
             ) : null}
-            <Button label="Revisión terminada" onPress={() => void finish()} />
+            <OfflineNote />
+            <Button label="Revisión terminada" disabled={offline} onPress={() => void finish()} />
           </View>
         </View>
       </View>

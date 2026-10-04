@@ -47,11 +47,12 @@ export default function TodayScreen() {
   });
 
   // Wardrobe size reuses the two queries above: the no-proposal state must not flash the wrong copy.
+  // Data wins over an error, so a failed refetch (backend offline) keeps showing what was saved.
   const wardrobeSize: number | 'loading' | 'unknown' =
-    laundry.isError || active.isError
-      ? 'unknown'
-      : laundry.data && active.data
-        ? laundry.data.total + active.data.total
+    laundry.data && active.data
+      ? laundry.data.total + active.data.total
+      : laundry.isError || active.isError
+        ? 'unknown'
         : 'loading';
 
   const laundryTotal = laundry.data?.total ?? 0;

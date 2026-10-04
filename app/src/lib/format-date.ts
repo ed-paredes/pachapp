@@ -21,6 +21,15 @@ export function formatLastWorn(iso: string | null, now: Date = new Date()): stri
     : `${month} ${date.getFullYear()}`;
 }
 
+/** "hoy", "el 4 oct" or "el 4 oct 2025": when something was saved, to follow "lo guardado". */
+export function formatSavedAt(timestamp: number, now: Date = new Date()): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'antes';
+  if (date.toDateString() === now.toDateString()) return 'hoy';
+  const base = `el ${date.getDate()} ${MONTHS[date.getMonth()]}`;
+  return date.getFullYear() === now.getFullYear() ? base : `${base} ${date.getFullYear()}`;
+}
+
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MONTH_NAMES = [
   'enero',
