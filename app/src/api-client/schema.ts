@@ -207,6 +207,94 @@ export interface paths {
         patch: operations["patch_settings_settings_patch"];
         trace?: never;
     };
+    "/outfits/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate
+         * @description Up to 5 scored proposals; nothing is persisted (ENG-REQ-021, D6). A small
+         *     or empty wardrobe is a normal `200` with fewer or no proposals (ENG-REQ-022).
+         */
+        post: operations["generate_outfits_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/outfits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Outfit
+         * @description Persist a proposal the first time the owner interacts with it (D6).
+         *
+         *     A generated outfit with the same garment set created in the last 5 minutes
+         *     is returned as is with `200` (FBH-REQ-018); its rating and favourite flag
+         *     are not overwritten.
+         */
+        post: operations["create_outfit_outfits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wear-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Wear Log
+         * @description Log the outfit worn on `date` (default: today). `409` when that day is
+         *     already logged: the client may then offer `PUT /wear-log/{date}`.
+         */
+        post: operations["create_wear_log_wear_log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wear-log/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace Wear Log
+         * @description Replace the outfit of an already logged day; the counters of both the
+         *     old and the new outfit's garments are recomputed in the same transaction.
+         */
+        put: operations["replace_wear_log_wear_log__date__put"];
+        post?: never;
+        /** Delete Wear Log */
+        delete: operations["delete_wear_log_wear_log__date__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -259,6 +347,31 @@ export interface components {
          * @enum {string}
          */
         ConfidenceSource: "zero_shot" | "knn" | "blend" | "llm" | "user";
+        /**
+         * CreateOutfitRequest
+         * @description `POST /outfits` (FBH-REQ-017).
+         */
+        CreateOutfitRequest: {
+            source: components["schemas"]["OutfitSource"];
+            /** Items */
+            items: components["schemas"]["OutfitItemInput"][];
+            /** Score */
+            score?: number | null;
+            score_breakdown?: components["schemas"]["ScoreBreakdown"] | null;
+            /** Explanation */
+            explanation?: string | null;
+            /**
+             * Rating
+             * @default 0
+             * @enum {integer}
+             */
+            rating: -1 | 0 | 1;
+            /**
+             * Is Favorite
+             * @default false
+             */
+            is_favorite: boolean;
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -444,6 +557,28 @@ export interface components {
          * @enum {string}
          */
         GarmentStatus: "active" | "laundry" | "archived";
+        /**
+         * GenerateOutfitsRequest
+         * @description `POST /outfits/generate` (ENG-REQ-020).
+         */
+        GenerateOutfitsRequest: {
+            /** Fixed Garment Ids */
+            fixed_garment_ids?: string[] | null;
+            /** Replace Garment Id */
+            replace_garment_id?: string | null;
+            /** Seed */
+            seed?: number | null;
+        };
+        /** GenerateOutfitsResponse */
+        GenerateOutfitsResponse: {
+            /** Proposals */
+            proposals: components["schemas"]["OutfitProposal"][];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -488,6 +623,93 @@ export interface components {
             progress: number;
             /** Error */
             error: string | null;
+        };
+        /** OutfitItemInput */
+        OutfitItemInput: {
+            /**
+             * Garment Id
+             * Format: uuid
+             */
+            garment_id: string;
+            slot: components["schemas"]["OutfitSlot"];
+            /** Layer */
+            layer?: number | null;
+        };
+        /** OutfitItemProposal */
+        OutfitItemProposal: {
+            /** Garment Id */
+            garment_id: string;
+            slot: components["schemas"]["OutfitSlot"];
+            /** Layer */
+            layer: number | null;
+        };
+        /** OutfitItemResponse */
+        OutfitItemResponse: {
+            /** Garment Id */
+            garment_id: string;
+            slot: components["schemas"]["OutfitSlot"];
+            /** Layer */
+            layer: number | null;
+        };
+        /** OutfitProposal */
+        OutfitProposal: {
+            /** Items */
+            items: components["schemas"]["OutfitItemProposal"][];
+            /** Score */
+            score: number;
+            score_breakdown: components["schemas"]["ScoreBreakdown"];
+            /** Explanation */
+            explanation: string;
+        };
+        /** OutfitResponse */
+        OutfitResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            source: components["schemas"]["OutfitSource"];
+            /** Items */
+            items: components["schemas"]["OutfitItemResponse"][];
+            /** Score */
+            score: number | null;
+            score_breakdown: components["schemas"]["ScoreBreakdown"] | null;
+            /** Explanation */
+            explanation: string | null;
+            /** Is Favorite */
+            is_favorite: boolean;
+            /** Rating */
+            rating: number;
+            /** Name */
+            name: string | null;
+        };
+        /**
+         * OutfitSlot
+         * @enum {string}
+         */
+        OutfitSlot: "top" | "bottom" | "one_piece" | "mid_layer" | "outerwear" | "shoes" | "accessory";
+        /**
+         * OutfitSource
+         * @enum {string}
+         */
+        OutfitSource: "generated" | "manual";
+        /**
+         * ScoreBreakdown
+         * @description `outfit.score_breakdown` (docs/specs/02-data-model.md).
+         */
+        ScoreBreakdown: {
+            /** Color */
+            color: number;
+            /** Style */
+            style: number;
+            /** Novelty */
+            novelty: number;
+            /** Preference */
+            preference: number;
+            /** Total */
+            total: number;
         };
         /**
          * Season
@@ -560,6 +782,47 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WearLogCreate
+         * @description `POST /wear-log` (FBH-REQ-007); `date` defaults to the server's local today.
+         */
+        WearLogCreate: {
+            /**
+             * Outfit Id
+             * Format: uuid
+             */
+            outfit_id: string;
+            /** Date */
+            date?: string | null;
+        };
+        /** WearLogEntry */
+        WearLogEntry: {
+            /** Id */
+            id: string;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Outfit Id */
+            outfit_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WearLogReplace
+         * @description `PUT /wear-log/{date}` (FBH-REQ-008).
+         */
+        WearLogReplace: {
+            /**
+             * Outfit Id
+             * Format: uuid
+             */
+            outfit_id: string;
         };
     };
     responses: never;
@@ -1057,6 +1320,241 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_outfits_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateOutfitsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateOutfitsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_outfit_outfits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOutfitRequest"];
+            };
+        };
+        responses: {
+            /** @description Same generated outfit within 5 minutes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutfitResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutfitResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_wear_log_wear_log_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WearLogCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WearLogEntry"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_wear_log_wear_log__date__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WearLogReplace"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WearLogEntry"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_wear_log_wear_log__date__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
