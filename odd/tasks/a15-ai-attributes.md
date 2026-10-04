@@ -41,7 +41,7 @@ formality, style score from formality, style_tags and embeddings). The ML code a
   `embedding_model`, `embedding_dim`; `consolidate` behaviour unchanged except for the new fields.
 - [x] **T3** Backfill command + `make` target for existing garments (idempotent, skips user-set fields, reports
   counts), with tests.
-- [ ] **T4** Owner check on real data: run the backfill on the owner's wardrobe and upload a photo from the app;
+- [ ] **T4** Owner check (backfill done 2026-10-04; upload check pending) on real data: run the backfill on the owner's wardrobe and upload a photo from the app;
   attributes and embeddings filled, Revisión shows them.
 
 ## Acceptance criteria
@@ -91,6 +91,18 @@ worktree `~/code/pachapp-worktrees/a15` (the main checkout is busy with `feat/of
   threshold, open question). Per-garment time (VIS-REQ-026 < 2 s) not measured. Parent spot check: ruff, ruff
   format, ty clean; pytest 487 passed.
 
+- 2026-10-04: T4 part 1 (parent): db backed up (`~/pachapp-data-test/db/pachapp.sqlite3.bak-pre-a15`), `make
+  backfill-ai ENV_FILE=/home/educcio/code/pachapp/.env.lan` on the owner's test wardrobe: processed=4, all 768-d
+  embeddings, only empty fields filled, user values intact; it re-flagged 2 reviewed garments (low-confidence
+  pattern). Owner decision: a garment already reviewed (`user_verified`) is filled but not sent back to review.
+- 2026-10-04: native review `c57d9cd..1ffbd64` (14 files, 1367 lines, medium), owner granted,
+  `review-39ea3a15e25de022` (reliability) approved and acknowledged. Fixed with the owner decision in `7067342`:
+  `user_verified` guard on needs_review; backfill no longer lists subcategory as pending when the category is
+  kept (it never converged); model load failures in both steps are `RetryableStepError` with the user message.
+  New tests, each probed RED; pytest 490 passed; ruff/format/ty clean. Restored the backup and re-ran the
+  backfill: processed=4, no garment flagged; a second run processed=0 skipped=4.
+
 ## Next step
 
-T4 on the owner's data (backup the db first), native review of the branch, PR.
+T4 part 2: owner uploads a photo with the worker started from this worktree (`make run-worker
+ENV_FILE=/home/educcio/code/pachapp/.env.lan`) and checks Revisión; then PR and merge (owner's call).
