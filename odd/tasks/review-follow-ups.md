@@ -115,7 +115,15 @@ Forecast ~150-200 authored lines (under the ~400 budget): one branch `chore/revi
   only Armario or the whole app; instant paint / offline wanted; new counts endpoint OK. Gaps: counts from
   code reading only; AsyncStorage limits, infinite-query persistence and persister versions unverified.
 
+- 2026-10-04: owner kept the F1 behaviour: the notice replaces the whole second-chance card even when only one
+  secondary list failed.
+- 2026-10-04: native review of `df24db3..216ca7e` (16 files, 488 lines, medium, `slice_budget_reached`), owner
+  granted, `review-770249cd17ec7d62` one lens (reliability) approved and acknowledged (burned). Reviewed
+  boundary -> `216ca7e`. Non-blocking: WARNING partial list hidden when one list fails (= the owner decision
+  above, kept; untested mixed state); SUGGESTION add tests for an unworn-only retry (repeats only the unworn
+  request) and both lists failing at once (follow-up).
+
 ## Next step
 
-Native review of `df24db3..HEAD`, then PR. Owner: confirm the partial-list behaviour (F1 gap) and the R1
-decisions before any caching work.
+Push and open the PR (merge is the owner's call). Follow-ups: unworn-retry and both-fail tests (review
+SUGGESTION); R1 implementation once the owner answers its decisions.
