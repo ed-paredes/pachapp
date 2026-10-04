@@ -4,6 +4,7 @@ import { offlineEnabled } from '@/offline/persistence';
 import { reportReachable, reportUnreachable } from '@/offline/reachability';
 
 import { API_BASE_URL } from './config';
+import { isNetworkError, RequestTimeoutError } from './errors';
 import type { paths } from './schema';
 
 /**
@@ -18,27 +19,52 @@ import type { paths } from './schema';
 export const READ_TIMEOUT_MS = 15000;
 
 /**
+ * Gives a read its own timeout without losing the caller's cancellation (React Query aborts the
+ * request through `request.signal`). `AbortSignal.any` is not assumed to exist on Hermes, so the
+ * two signals are joined by hand and the listener is removed in `dispose`.
+ */
+function withReadTimeout(request: Request) {
+  const controller = new AbortController();
+  const caller = request.signal;
+  let timedOut = false;
+  const onCallerAbort = () => controller.abort();
+  if (caller.aborted) controller.abort();
+  else caller.addEventListener('abort', onCallerAbort);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, READ_TIMEOUT_MS);
+  return {
+    request: new Request(request, { signal: controller.signal }),
+    timedOut: () => timedOut,
+    dispose: () => {
+      clearTimeout(timer);
+      caller.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
+/**
  * Sends the request and records whether the backend answered: any HTTP response (even a 5xx)
- * means reachable, a rejected `fetch` or a timed out read means it is not. Uploads and other
- * writes get no timeout, since a large photo over Wi-Fi can legitimately take long.
+ * means reachable, a network failure or a timed out read means it is not. A request the caller
+ * aborted says nothing about the backend and changes nothing. Uploads and other writes get no
+ * timeout, since a large photo over Wi-Fi can legitimately take long.
  */
 async function trackedFetch(request: Request): Promise<Response> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let outgoing = request;
-  if (offlineEnabled() && request.method === 'GET') {
-    const controller = new AbortController();
-    timer = setTimeout(() => controller.abort(), READ_TIMEOUT_MS);
-    outgoing = new Request(request, { signal: controller.signal });
-  }
+  const guarded = offlineEnabled() && request.method === 'GET' ? withReadTimeout(request) : null;
   try {
-    const response = await globalThis.fetch(outgoing);
+    const response = await globalThis.fetch(guarded?.request ?? request);
     reportReachable();
     return response;
   } catch (error) {
-    reportUnreachable();
+    if (guarded?.timedOut() && !request.signal.aborted) {
+      reportUnreachable();
+      throw new RequestTimeoutError();
+    }
+    if (!request.signal.aborted && isNetworkError(error)) reportUnreachable();
     throw error;
   } finally {
-    clearTimeout(timer);
+    guarded?.dispose();
   }
 }
 

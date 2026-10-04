@@ -47,11 +47,21 @@ export function unwrap<T>(result: { data?: T; error?: unknown; response: Respons
   return data as T;
 }
 
+/** Thrown by the HTTP layer when a native read got no answer within `READ_TIMEOUT_MS`. */
+export class RequestTimeoutError extends Error {
+  constructor() {
+    super('The request timed out');
+    this.name = 'RequestTimeoutError';
+  }
+}
+
 /**
- * True when a request failed before the server answered (no connection, refused, timed out):
- * `fetch` rejects with a `TypeError` or an abort error. Any HTTP answer, even a 5xx, is an
- * `ApiError` and means the backend is reachable.
+ * True when a request failed before the server answered: `fetch` rejects with a `TypeError`
+ * (no connection, refused, DNS) or our own `RequestTimeoutError`. Everything else is not a
+ * network failure: an HTTP answer, even a 5xx, is an `ApiError` (the backend is reachable), a
+ * caller abort (`AbortError`) was the app's own decision, and a `SyntaxError` from a body that
+ * does not parse or any other programming error is a bug to surface, not a lost connection.
  */
 export function isNetworkError(error: unknown): boolean {
-  return !(error instanceof ApiError);
+  return error instanceof TypeError || error instanceof RequestTimeoutError;
 }
