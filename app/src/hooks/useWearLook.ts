@@ -71,8 +71,14 @@ export function useWearLook() {
       try {
         return unwrap(await apiClient.POST('/wear-log', { body: { outfit_id: id } }));
       } catch (error) {
-        if (error instanceof ApiError && error.code === 'WEAR_LOG_CONFLICT') {
-          const date = error.details?.date;
+        // Only a conflict that names the day's existing entry opens the replace question; any
+        // other failure (e.g. `WEAR_LOG_WRITE_FAILED`) is a plain error the user can retry.
+        if (
+          error instanceof ApiError &&
+          error.code === 'WEAR_LOG_CONFLICT' &&
+          typeof error.details?.outfit_id === 'string'
+        ) {
+          const date = error.details.date;
           throw new WearConflictError(
             id,
             typeof date === 'string' ? date : localDateKey(new Date()),

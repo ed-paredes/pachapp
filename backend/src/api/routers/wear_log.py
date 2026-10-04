@@ -18,6 +18,7 @@ from api.errors import (
     OUTFIT_NOT_FOUND,
     WEAR_LOG_CONFLICT,
     WEAR_LOG_NOT_FOUND,
+    WEAR_LOG_WRITE_FAILED,
     AppError,
     ErrorResponse,
 )
@@ -107,13 +108,16 @@ def recompute_wear_stats(session: Session, garment_ids: set[str]) -> None:
         400: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
     },
 )
 def create_wear_log(
     body: WearLogCreate, session: Annotated[Session, Depends(get_session)]
 ) -> WearLogEntry:
     """Log the outfit worn on `date` (default: today). `409` when that day is
-    already logged: the client may then offer `PUT /wear-log/{date}`."""
+    already logged: the client may then offer `PUT /wear-log/{date}`. `503
+    WEAR_LOG_WRITE_FAILED` when the insert failed for another reason (nothing was
+    logged, retrying is safe): it carries no `outfit_id`, so it is never a conflict."""
     outfit_id = str(body.outfit_id)
     day = body.date or clock.local_today()
     _require_not_future(day)
@@ -133,9 +137,9 @@ def create_wear_log(
         # Not the day: another constraint failed (e.g. the outfit was deleted meanwhile).
         _require_outfit(session, outfit_id)
         raise AppError(
-            WEAR_LOG_CONFLICT,
+            WEAR_LOG_WRITE_FAILED,
             "No se pudo registrar el outfit. Inténtalo de nuevo.",
-            409,
+            503,
             {"date": day.isoformat()},
         ) from None
     recompute_wear_stats(session, _garment_ids(session, outfit_id))

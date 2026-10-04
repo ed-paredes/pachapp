@@ -9,8 +9,10 @@ import { useIsOffline } from '@/offline/reachability';
 
 import { fetchGarmentDetail } from './useGarments';
 import {
+  excludedSets,
   generateOptions,
   latestSavedBatch,
+  MAX_EXCLUDE_SETS,
   pruneOutfits,
   useGenerateOutfits,
   useWardrobeVersion,
@@ -112,20 +114,37 @@ export function useTodayLooks({ now, wardrobeSize, notify }: Options) {
     .flatMap((entry) => toAltLook(String(entry.position), entry.proposal, index) ?? []);
 
   const [requesting, setRequesting] = useState(false);
-  const [conflict, setConflict] = useState<{ outfitId: string; date: string } | null>(null);
+  const [pending, setPending] = useState<{
+    outfitId: string;
+    date: string;
+    round: number;
+    position: number;
+  } | null>(null);
+  // The question belongs to the look it was asked for: another look on screen drops it.
+  const conflict =
+    pending && pending.round === state.round && pending.position === current?.position
+      ? pending
+      : null;
   const wear = useWearLook();
 
   const unseen = available.find(
     (entry) => entry !== current && !state.shown.includes(entry.position),
   );
-  const canRequestMore = !!fresh && !offline && !state.exhausted;
+  // The API bounds the excluded sets: past it, nothing more can be asked for today.
+  const exhausted =
+    state.exhausted ||
+    excludedSets(queryClient, date, version, state.round + 1).length > MAX_EXCLUDE_SETS;
+  const canRequestMore = !!fresh && !offline && !exhausted;
 
-  const show = (position: number) =>
+  const show = (position: number) => {
+    setPending(null);
     save({ ...state, current: position, shown: [...new Set([...state.shown, position])] });
+  };
 
   const shuffle = async () => {
     if (unseen) return show(unseen.position);
     if (!canRequestMore || requesting) return undefined;
+    setPending(null);
     setRequesting(true);
     try {
       const next = state.round + 1;
@@ -146,24 +165,26 @@ export function useTodayLooks({ now, wardrobeSize, notify }: Options) {
     ? undefined
     : offline
       ? MESSAGES.noMoreOffline
-      : state.exhausted
+      : exhausted
         ? MESSAGES.noMore
         : undefined;
 
   const wearCurrent = (variables: { outfitId?: string; replaceDate?: string } = {}) => {
     if (!current) return;
+    const { round } = state;
+    const { position } = current;
     wear.mutate(
       { proposal: current.proposal, ...variables },
       {
         onSuccess: () => {
-          setConflict(null);
+          setPending(null);
           notify(variables.replaceDate ? MESSAGES.replaced : MESSAGES.worn);
         },
         onError: (error) => {
           if (error instanceof WearConflictError) {
-            setConflict({ outfitId: error.outfitId, date: error.date });
+            setPending({ outfitId: error.outfitId, date: error.date, round, position });
           } else {
-            setConflict(null);
+            setPending(null);
             notify(MESSAGES.wearFailed);
           }
         },
@@ -199,7 +220,7 @@ export function useTodayLooks({ now, wardrobeSize, notify }: Options) {
     wear: () => wearCurrent(),
     confirmReplace: () =>
       conflict && wearCurrent({ outfitId: conflict.outfitId, replaceDate: conflict.date }),
-    cancelReplace: () => setConflict(null),
+    cancelReplace: () => setPending(null),
     retry: () => void batchQuery.refetch(),
   };
 }

@@ -13,7 +13,7 @@ from engine.constants import SEED_MAX
 from shared.enums import OutfitSlot, OutfitSource
 from shared.schemas import ScoreBreakdown
 
-MAX_EXCLUDE_SETS = 50
+MAX_EXCLUDE_SETS = 200
 MAX_SET_SIZE = 15  # 3 base slots + mid_layer + outerwear + up to 10 accessories
 
 

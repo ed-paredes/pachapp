@@ -217,7 +217,7 @@ def test_a_foreign_key_race_is_a_404_not_a_server_error(client: TestClient, monk
     assert client.post("/wear-log", json={"outfit_id": x}).status_code == 201  # still usable
 
 
-def test_an_unexplained_integrity_error_is_a_409_envelope(client: TestClient, monkeypatch) -> None:
+def test_an_unexplained_integrity_error_is_a_503(client: TestClient, monkeypatch) -> None:
     from api.routers import wear_log
 
     _wardrobe(client)
@@ -226,10 +226,11 @@ def test_an_unexplained_integrity_error_is_a_409_envelope(client: TestClient, mo
 
     response = client.post("/wear-log", json={"outfit_id": "3b7e0f0e-6a54-4e3b-9d1c-0a6a2f0a9c11"})
 
-    assert response.status_code == 409
+    assert response.status_code == 503
     error = response.json()["error"]
-    assert error["code"] == "WEAR_LOG_CONFLICT"
+    assert error["code"] == "WEAR_LOG_WRITE_FAILED"
     assert error["message"] == "No se pudo registrar el outfit. Inténtalo de nuevo."
+    assert "outfit_id" not in error["details"]  # nothing is logged: not a conflict
 
 
 def test_future_wear_dates_are_rejected_with_400(client: TestClient) -> None:

@@ -286,6 +286,33 @@ describe('Hoy: Otra sugerencia', () => {
   });
 });
 
+describe('Hoy: the exclusion bound', () => {
+  it('stops asking for new rounds once the API bound would be passed, keeping every old set', async () => {
+    const client = makeClient();
+    const date = localDateKey(new Date());
+    // 3 rounds of 70 + the 5 on screen = 215 sets shown: one more request would need > 200.
+    for (let round = 0; round < 3; round += 1) {
+      client.setQueryData(queryKeys.outfits.generate(date, 0, round), batch(100 + round * 70, 70));
+    }
+    client.setQueryData(queryKeys.outfits.generate(date, 0, 3), batch(1));
+    client.setQueryData(queryKeys.outfits.today(date, 0), {
+      round: 3,
+      current: 0,
+      shown: [0, 1, 2, 3, 4],
+      exhausted: false,
+    });
+    mockApi();
+    await renderToday(client);
+    await lookOfTheDay();
+
+    expect(screen.getByText(/No quedan más combinaciones por hoy/)).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Otra sugerencia' }).props.accessibilityState.disabled,
+    ).toBe(true);
+    expect(generateBodies).toHaveLength(0);
+  });
+});
+
 describe('Hoy: Me lo pongo', () => {
   it('saves the outfit, logs it for today, confirms and refreshes garments and Historial', async () => {
     mockApi();
@@ -340,6 +367,67 @@ describe('Hoy: Me lo pongo', () => {
 
     await fireEvent.press(screen.getByRole('button', { name: 'Mantener el anterior' }));
 
+    expect(screen.queryByTestId('replace-question')).toBeNull();
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
+  it('treats a transient write failure as an error to retry, never as a replace question', async () => {
+    mockApi({
+      wearLog: [
+        json(
+          {
+            error: {
+              code: 'WEAR_LOG_WRITE_FAILED',
+              message: 'No se pudo registrar el outfit. Inténtalo de nuevo.',
+              details: { date: '2026-10-04' },
+            },
+          },
+          503,
+        ),
+      ],
+    });
+    await renderToday();
+    await lookOfTheDay();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Me lo pongo' }));
+
+    expect(
+      await screen.findByText('No pudimos registrar el look. Inténtalo de nuevo.'),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('replace-question')).toBeNull();
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
+  it('does not open the question for a conflict that names no existing entry', async () => {
+    mockApi({
+      wearLog: [
+        json(
+          { error: { code: 'WEAR_LOG_CONFLICT', message: 'x', details: { date: '2026-10-04' } } },
+          409,
+        ),
+      ],
+    });
+    await renderToday();
+    await lookOfTheDay();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Me lo pongo' }));
+
+    expect(
+      await screen.findByText('No pudimos registrar el look. Inténtalo de nuevo.'),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('replace-question')).toBeNull();
+  });
+
+  it('drops the question when another look comes on screen, so the earlier one is never logged', async () => {
+    mockApi({ wearLog: [conflict()] });
+    await renderToday();
+    await lookOfTheDay();
+    await fireEvent.press(screen.getByRole('button', { name: 'Me lo pongo' }));
+    await screen.findByText('Hoy ya registraste otro outfit');
+
+    await fireEvent.press(screen.getAllByRole('button', { name: /^Ver look / })[0]);
+
+    expect(await screen.findByText('Look número 2 coherente de arriba abajo.')).toBeTruthy();
     expect(screen.queryByTestId('replace-question')).toBeNull();
     expect(calls.some((call) => call.method === 'PUT')).toBe(false);
   });

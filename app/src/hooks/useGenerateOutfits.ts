@@ -10,18 +10,21 @@ export type GenerateResponse = components['schemas']['GenerateOutfitsResponse'];
 export type ApiProposal = components['schemas']['OutfitProposal'];
 
 /** The API accepts at most this many excluded sets per request. */
-export const MAX_EXCLUDE_SETS = 50;
+export const MAX_EXCLUDE_SETS = 200;
 
 /** The garment ids of a proposal, sorted: the identity of a look (order does not matter). */
 export function proposalSet(proposal: ApiProposal): string[] {
   return proposal.items.map((item) => item.garment_id).sort();
 }
 
-/** One `POST /outfits/generate`; `exclude` are the sets already shown today. */
+/**
+ * One `POST /outfits/generate`; `exclude` are the sets already shown today (never more than
+ * `MAX_EXCLUDE_SETS`: Hoy stops asking for new rounds before that, it never drops old sets).
+ */
 export async function fetchGenerate(exclude: string[][]): Promise<GenerateResponse> {
   return unwrap(
     await apiClient.POST('/outfits/generate', {
-      body: exclude.length ? { exclude_sets: exclude.slice(-MAX_EXCLUDE_SETS) } : {},
+      body: exclude.length ? { exclude_sets: exclude } : {},
     }),
   );
 }

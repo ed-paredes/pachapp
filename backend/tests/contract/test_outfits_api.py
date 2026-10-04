@@ -402,8 +402,8 @@ def test_generate_with_every_set_excluded_is_a_normal_empty_200(client: TestClie
 def test_generate_bounds_the_exclusion_payload(client: TestClient) -> None:
     some = "3b7e0f0e-6a54-4e3b-9d1c-0a6a2f0a9c11"
 
-    assert _generate(client, exclude_sets=[[some]] * 50).status_code == 200
-    assert _generate(client, exclude_sets=[[some]] * 51).status_code == 422
+    assert _generate(client, exclude_sets=[[some]] * 200).status_code == 200
+    assert _generate(client, exclude_sets=[[some]] * 201).status_code == 422
     assert _generate(client, exclude_sets=[[]]).status_code == 422
     assert _generate(client, exclude_sets=[[some] * 16]).status_code == 422
     assert _generate(client, exclude_sets=[["not-a-uuid"]]).status_code == 422
