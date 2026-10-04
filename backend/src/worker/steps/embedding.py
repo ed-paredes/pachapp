@@ -11,12 +11,12 @@ from __future__ import annotations
 from shared.models import Garment
 from worker.ai import LazyModels, apply_embedding
 from worker.runner import PermanentStepError, Step, StepContext
-from worker.steps.ai_attributes import MSG_AI, image_embedding
+from worker.steps.ai_attributes import MSG_AI, image_embedding, load_models
 
 
 def make_embedding_step(models: LazyModels) -> Step:
     def embedding_step(ctx: StepContext) -> None:
-        loaded = models.get()
+        loaded = load_models(models)
         vector = image_embedding(ctx, loaded)
         with ctx.session_factory() as session:
             garment = session.get(Garment, ctx.garment_id)

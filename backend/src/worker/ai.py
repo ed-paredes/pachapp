@@ -125,7 +125,9 @@ def user_owned_fields(session: Session, garment: Garment) -> set[str]:
 def apply_classification(garment: Garment, result: ZeroShotResult, fields: set[str]) -> list[str]:
     """Write the predicted `fields` and their `ai_confidence` entries (other
     entries, e.g. user ones, are kept). Raises `needs_review` only when a field
-    this call wrote is a low-confidence trigger attribute (VIS-REQ-016); it is
+    this call wrote is a low-confidence trigger attribute (VIS-REQ-016) and the
+    owner has not already reviewed the garment (`user_verified`: filling an empty
+    field must not send it back to review, owner decision 2026-10-04); it is
     never cleared. Returns the fields written, in `AI_FIELDS` order."""
     if "category" not in fields:
         # The subcategory prediction belongs to the *predicted* category; do not
@@ -150,7 +152,9 @@ def apply_classification(garment: Garment, result: ZeroShotResult, fields: set[s
         written.append(name)
     if written:
         garment.ai_confidence = confidence
-        if any(a in REVIEW_TRIGGER_ATTRIBUTES and a in written for a in result.low_confidence):
+        if not garment.user_verified and any(
+            a in REVIEW_TRIGGER_ATTRIBUTES and a in written for a in result.low_confidence
+        ):
             garment.needs_review = True
         garment.updated_at = datetime.now(UTC)
     return written

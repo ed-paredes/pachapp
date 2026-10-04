@@ -133,6 +133,19 @@ def _first(factory) -> Garment:
         return session.exec(select(Garment)).first()  # type: ignore[return-value]
 
 
+def test_a_kept_category_does_not_leave_the_garment_pending_forever(factory, settings) -> None:
+    _add(factory, settings, category=GarmentCategory.top)  # typed by hand, no subcategory
+    backfill(settings, factory, LazyModels(lambda: _models()))
+
+    def forbidden() -> AiModels:
+        raise AssertionError("models must not load when nothing is pending")
+
+    counts = backfill(settings, factory, LazyModels(forbidden))
+
+    assert (counts.processed, counts.skipped, counts.failed) == (0, 1, 0)
+    assert _first(factory).subcategory is None
+
+
 def test_user_set_fields_are_preserved_and_need_no_review(factory, settings) -> None:
     user = {"value": "denim", "confidence": 1.0, "source": "user"}
     garment_id = _add(
@@ -172,6 +185,20 @@ def test_needs_review_is_raised_only_from_the_fields_it_wrote(factory, settings)
 
     assert _get(factory, with_user_category).needs_review is False  # category not written
     assert _get(factory, without).needs_review is True
+
+
+def test_a_reviewed_garment_is_filled_but_not_flagged_again(factory, settings) -> None:
+    ambiguous = vector_for(category=("top", "bottom"))
+    reviewed = _add(factory, settings, user_verified=True)
+
+    models = make_models(ambiguous, margin_threshold=0.99)
+    models.embedder.model_id = MODEL_ID  # type: ignore[attr-defined]
+
+    backfill(settings, factory, LazyModels(lambda: models))
+
+    garment = _get(factory, reviewed)
+    assert garment.category is not None  # low-confidence value still written
+    assert garment.needs_review is False  # owner decision 2026-10-04
 
 
 def test_never_clears_needs_review(factory, settings) -> None:

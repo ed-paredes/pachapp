@@ -23,8 +23,9 @@ from shared.models import AiCorrection, Garment, Job, Setting
 from shared.settings import Settings
 from worker.ai import AiModels, LazyModels
 from worker.claim import claim_next_job
-from worker.runner import StepContext, default_steps, run_job
-from worker.steps.ai_attributes import make_ai_attributes_step
+from worker.runner import RetryableStepError, StepContext, default_steps, run_job
+from worker.steps.ai_attributes import MSG_AI, make_ai_attributes_step
+from worker.steps.embedding import make_embedding_step
 
 
 @pytest.fixture
@@ -64,6 +65,19 @@ def _get(factory, garment_id: str) -> Garment:
         garment = session.get(Garment, garment_id)
         assert garment is not None
         return garment
+
+
+def test_a_model_load_failure_is_a_retryable_step_error(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    ctx = StepContext(job_id="j", garment_id=garment_id, settings=settings, session_factory=factory)
+
+    def broken() -> AiModels:
+        raise RuntimeError("CUDA out of memory")
+
+    for make in (make_ai_attributes_step, make_embedding_step):
+        with pytest.raises(RetryableStepError) as err:
+            make(LazyModels(broken))(ctx)
+        assert err.value.user_message == MSG_AI
 
 
 def _run_step(factory, settings, models: AiModels, garment_id: str, **data) -> StepContext:

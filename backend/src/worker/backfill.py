@@ -68,6 +68,11 @@ def _todo(session: Session, garment: Garment, model_id: str) -> tuple[set[str], 
     """(attributes to fill, whether the embedding must be written)."""
     owned = user_owned_fields(session, garment)
     missing = {name for name in AI_FIELDS if getattr(garment, name) is None} - owned
+    if "category" not in missing:
+        # `apply_classification` only writes a subcategory with the category it
+        # predicts; with a kept category it can never be filled, so it is not
+        # pending (otherwise the garment would be reprocessed on every run).
+        missing.discard("subcategory")
     stale = garment.embedding is None or garment.embedding_model != model_id
     return missing, stale
 

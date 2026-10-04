@@ -35,6 +35,15 @@ logger = logging.getLogger(__name__)
 MSG_AI = "No se pudo analizar la prenda. Inténtalo de nuevo."
 
 
+def load_models(models: LazyModels) -> AiModels:
+    """The process models, built on first use; a failed build (download, CUDA
+    init, out of memory) is a transient step error with the user message."""
+    try:
+        return models.get()
+    except Exception as exc:  # noqa: BLE001 - model load errors are transient
+        raise RetryableStepError(f"model load failed: {exc}", user_message=MSG_AI) from exc
+
+
 def image_embedding(ctx: StepContext, models: AiModels) -> np.ndarray:
     """The job's image embedding: computed once, then reused from `ctx.data`.
     Source image: cutout, else the preprocessed image, else the stored files
@@ -63,7 +72,7 @@ def image_embedding(ctx: StepContext, models: AiModels) -> np.ndarray:
 
 def make_ai_attributes_step(models: LazyModels) -> Step:
     def ai_attributes_step(ctx: StepContext) -> None:
-        loaded = models.get()
+        loaded = load_models(models)
         vector = image_embedding(ctx, loaded)
         with ctx.session_factory() as session:
             threshold = needs_review_threshold(session)
