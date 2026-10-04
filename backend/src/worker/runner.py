@@ -96,6 +96,7 @@ def default_steps(
     from worker.steps.color import color_step
     from worker.steps.consolidate import consolidate_step
     from worker.steps.cutout import make_cutout_step, production_remover_factory
+    from worker.steps.embedding import make_embedding_step
     from worker.steps.preprocess import preprocess_step
 
     steps: dict[JobStep, Step] = {step: deferred_step for step in STEP_ORDER}
@@ -106,6 +107,7 @@ def default_steps(
     steps[JobStep.color] = color_step
     models = LazyModels(models_factory or production_models_factory(settings))
     steps[JobStep.ai_attributes] = make_ai_attributes_step(models)
+    steps[JobStep.embedding] = make_embedding_step(models)
     steps[JobStep.consolidate] = consolidate_step
     return steps
 

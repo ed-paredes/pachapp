@@ -348,3 +348,82 @@ def test_model_error_is_retried_once_then_fails_the_job(factory, settings) -> No
 
     assert len(models.embedder.images) == 2  # first attempt + one retry
     assert _get(factory, garment_id).category is None
+
+
+# --- embedding step (T2, VIS-REQ-002) -------------------------------------
+
+
+def _run_embedding(factory, settings, models: AiModels, garment_id: str, **data) -> StepContext:
+    from worker.steps.embedding import make_embedding_step
+
+    ctx = StepContext(
+        job_id="j", garment_id=garment_id, settings=settings, session_factory=factory, data=data
+    )
+    make_embedding_step(LazyModels(lambda: models))(ctx)
+    return ctx
+
+
+def test_embedding_step_persists_bytes_model_and_dim(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    models = make_models()
+
+    _run_embedding(factory, settings, models, garment_id, image=IMG)
+
+    garment = _get(factory, garment_id)
+    vector = models.embedder.vector  # type: ignore[attr-defined]
+    assert garment.embedding == vector.astype(np.float32).tobytes()
+    assert garment.embedding_model == "fake/embedder@rev-1"
+    assert garment.embedding_dim == vector.shape[0] == models.embedder.dim
+    np.testing.assert_array_equal(np.frombuffer(garment.embedding, dtype=np.float32), vector)
+
+
+def test_embedding_step_reuses_the_vector_from_ai_attributes(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    models = make_models()
+
+    ctx = _run_step(factory, settings, models, garment_id, image=IMG)
+    _run_embedding(factory, settings, models, garment_id, **ctx.data)
+
+    assert len(models.embedder.images) == 1  # type: ignore[attr-defined]
+    assert _get(factory, garment_id).embedding is not None
+
+
+def test_embedding_step_computes_the_vector_when_it_is_missing(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    models = make_models()
+
+    _run_embedding(factory, settings, models, garment_id, image=IMG)  # e.g. a retry from this step
+
+    assert len(models.embedder.images) == 1  # type: ignore[attr-defined]
+
+
+def test_full_pipeline_writes_attributes_embedding_and_consolidates(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    _queue_job(factory, settings, garment_id)
+    models = make_models(vector_for(category="shoes", pattern="textured"))
+
+    assert _run_job(factory, settings, _steps(settings, lambda: models)) == JobStatus.done
+
+    garment = _get(factory, garment_id)
+    assert garment.category == GarmentCategory.shoes
+    assert garment.pattern == GarmentPattern.textured
+    assert set(garment.ai_confidence) >= {"category", "pattern", "formality", "style_tags"}
+    assert garment.embedding == models.embedder.vector.astype(np.float32).tobytes()  # type: ignore[attr-defined]
+    assert garment.embedding_model == "fake/embedder@rev-1"
+    assert garment.embedding_dim == models.embedder.dim
+    assert garment.colors is not None  # consolidate did not wipe the earlier steps' output
+    assert len(models.embedder.images) == 1  # type: ignore[attr-defined]  # one inference per job
+
+
+def test_rerunning_the_whole_job_gives_the_same_result(factory, settings) -> None:
+    garment_id = _add_garment(factory)
+    models = make_models(vector_for(category="bottom", formality=4))
+    steps = _steps(settings, lambda: models)
+
+    _queue_job(factory, settings, garment_id)
+    assert _run_job(factory, settings, steps) == JobStatus.done
+    first = _snapshot(_get(factory, garment_id))
+    _queue_job(factory, settings, garment_id)  # re-run, as a retry/re-upload would
+    assert _run_job(factory, settings, steps) == JobStatus.done
+
+    assert _snapshot(_get(factory, garment_id)) == first
