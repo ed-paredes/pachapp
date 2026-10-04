@@ -7,11 +7,16 @@ import type { components } from '@/api-client/schema';
 
 export type SettingsPatch = components['schemas']['SettingsPatch'];
 
+/** One `GET /settings` request; shared by the hook and the offline sync. */
+export async function fetchSettings() {
+  return unwrap(await apiClient.GET('/settings'));
+}
+
 /** `GET /settings`. */
 export function useSettings() {
   return useQuery({
     queryKey: queryKeys.settings,
-    queryFn: async () => unwrap(await apiClient.GET('/settings')),
+    queryFn: fetchSettings,
   });
 }
 

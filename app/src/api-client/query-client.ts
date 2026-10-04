@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { applyPersistedDefaults, offlineEnabled } from '@/offline/persistence';
+
 /**
  * Shared TanStack Query client. Automatic retries are disabled: every
  * screen that depends on a network request surfaces its own explicit
@@ -13,3 +15,6 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+// Native keeps the garment cache on disk (see `OfflineProvider`); web is unchanged.
+if (offlineEnabled()) applyPersistedDefaults(queryClient);
