@@ -306,6 +306,36 @@ describe('screens while the backend is unreachable', () => {
     expect(screen.queryByText(OFFLINE_NOTE)).toBeNull();
   });
 
+  it('Detalle closes an open delete confirmation when the backend goes away, and sends nothing', async () => {
+    const client = makeClient();
+    client.setQueryData(queryKeys.garments.detail('g1'), GARMENT);
+    const fetchMock = jest.fn(async () => json(GARMENT));
+    globalThis.fetch = fetchMock;
+    reportReachable();
+    await renderIn(client, <DetailScreen />);
+    await settle();
+
+    await fireEvent.press(screen.getByLabelText('Eliminar prenda'));
+    expect(screen.getByTestId('delete-confirm')).toBeTruthy();
+    fetchMock.mockClear();
+
+    await act(async () => reportUnreachable());
+
+    expect(screen.queryByTestId('delete-confirm')).toBeNull();
+    expect(screen.queryByLabelText('Eliminar definitivamente')).toBeNull();
+    expect(screen.getByText(OFFLINE_NOTE)).toBeTruthy();
+    expect(screen.getByLabelText('Eliminar prenda').props.accessibilityState.disabled).toBe(true);
+    expect(
+      (fetchMock.mock.calls as unknown as [Request][]).filter(
+        ([request]) => request.method === 'DELETE',
+      ),
+    ).toHaveLength(0);
+
+    // Back online the confirmation does not reopen by itself.
+    await act(async () => reportReachable());
+    expect(screen.queryByTestId('delete-confirm')).toBeNull();
+  });
+
   it('Detalle on web ignores the offline state entirely', async () => {
     setPlatform('web');
     const client = makeClient();

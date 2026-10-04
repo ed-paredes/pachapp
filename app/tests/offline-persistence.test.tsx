@@ -175,9 +175,11 @@ describe('OfflineProvider', () => {
 
     globalThis.fetch = jest.fn(() => Promise.reject(new TypeError('Network request failed')));
     const client = makeClient();
-    await renderHook(() => null, { wrapper: wrapperFor(client) });
+    const { result } = await renderHook(() => useIsRestoring(), { wrapper: wrapperFor(client) });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The restore has run (the buster check is part of it) and found nothing usable.
+    await waitFor(() => expect(result.current).toBe(false));
+    expect(AsyncStorage.getItem).toHaveBeenCalledWith(PERSIST_STORAGE_KEY);
     expect(client.getQueryData(queryKeys.garments.list({ status: ['active'] }))).toBeUndefined();
   });
 
@@ -186,11 +188,17 @@ describe('OfflineProvider', () => {
     const client = makeClient();
     await renderHook(() => null, { wrapper: wrapperFor(client) });
 
-    client.setQueryData(queryKeys.garments.list({ status: ['active'] }), LIST);
+    // A marker only this web client holds: a throttled write left over from an earlier native
+    // test cannot carry it, so the assertion below cannot be tripped by test order.
+    client.setQueryData(queryKeys.garments.list({ status: ['active'] }), {
+      ...LIST,
+      items: [{ id: 'web-only-marker' }],
+    });
     // Longer than the persister's 1 s write throttle.
     await new Promise((resolve) => setTimeout(resolve, 1300));
 
-    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    const writes = (AsyncStorage.setItem as jest.Mock).mock.calls.map(([, value]) => String(value));
+    expect(writes.some((value) => value.includes('web-only-marker'))).toBe(false);
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
   });
@@ -234,7 +242,10 @@ describe('saving the cache', () => {
     earlier.setQueryData(queryKeys.garments.list({ status: ['laundry'] }), LIST);
     await saveEarlierRun(earlier);
     const logged = warn();
-    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValue(new Error('disk full'));
+    jest
+      .spyOn(AsyncStorage, 'setItem')
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValueOnce(new Error('disk full'));
 
     await expect(save(fullClient())).resolves.toBeUndefined();
 
