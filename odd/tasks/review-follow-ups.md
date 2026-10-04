@@ -123,7 +123,12 @@ Forecast ~150-200 authored lines (under the ~400 budget): one branch `chore/revi
   above, kept; untested mixed state); SUGGESTION add tests for an unworn-only retry (repeats only the unworn
   request) and both lists failing at once (follow-up).
 
+- 2026-10-04: review SUGGESTION done inline `07fe057` (one test file, owner asked): unworn-only retry repeats only
+  `wear_count:asc`; both lists failing show one notice and the retry repeats both. RED probes (retry always
+  refetches both; `failedLists` ignores unworn) failed 4 and 3 tests; reverted. Checks: prettier/lint/typecheck
+  clean; jest 265/265.
+
 ## Next step
 
-Push and open the PR (merge is the owner's call). Follow-ups: unworn-retry and both-fail tests (review
-SUGGESTION); R1 implementation once the owner answers its decisions.
+Push, open the PR and merge (owner approved 2026-10-04). Follow-up: R1 implementation once the owner answers
+its decisions.
