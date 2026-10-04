@@ -135,7 +135,12 @@ slice (O1+O2, then O3, then O4) on branch `feat/offline-app` from `main` `c57d9c
   review worktree `~/code/pachapp-worktrees/review-o1o2`. Their non-blocking findings -> task O5. Stacked PRs
   opened: #38 `offline/01-cache-images` -> main, #39 `offline/02-offline-ux` -> #38.
 
+- 2026-10-04: owner phone test (APK installed by the owner): with the API running, a new photo stayed "en cola"
+  until the worker was started (expected); after syncing, API + worker + Expo stopped, app closed and reopened:
+  owner reports it works perfectly (saved wardrobe, images and offline UX). Recovery when the API comes back not
+  yet tested on the phone.
+
 ## Next step
 
-Review the O4 slice (`7616bf5..HEAD`) and open its PR stacked on #39; owner installs the APK and tests with the
-stack stopped; then O5. Merge order #38, #39, O4 PR once the phone test passes (owner's call).
+Phone check of the recovery path (start the API, banner clears within ~15 s without restarting), then O5, review
+of the O4+O5 slice, mark #40 ready and merge #38, #39, #40 in order (owner's call).
