@@ -154,7 +154,14 @@ slice (O1+O2, then O3, then O4) on branch `feat/offline-app` from `main` `c57d9c
   To re-check on the next APK: combined abort signal on Hermes (pull-to-refresh / leaving a screen must not mark
   offline), delete confirmation closing offline, recovery banner.
 
+- 2026-10-04: native review of O4+O5 `7616bf5..` (21 files, 1508 lines, medium), owner granted,
+  `review-7f856a5bafdc6b2b` (reliability) approved and acknowledged. Findings fixed inline `0732ada`: PowerShell
+  `$LASTEXITCODE = 0` -> `$global:LASTEXITCODE = 0` (a script-scoped copy could hide later native failures; the
+  observed Gradle failure was still caught, so it is defensive); the "gives up quietly" test now waits for both
+  warnings; `settleQueries` drops entries without data (new test, RED probe). Checks: prettier/lint/typecheck
+  clean; jest 347/347; script parse ok. Commit assessed separately (small, after the reviewed boundary).
+
 ## Next step
 
-Native review of the O4+O5 slice (`7616bf5..HEAD`), mark #40 ready, rebuild the APK for the phone re-check,
+Mark #40 ready; rebuild the APK for the phone re-check (abort on Hermes, delete confirmation offline, recovery);
 merge #38, #39, #40 in order (owner's call).
