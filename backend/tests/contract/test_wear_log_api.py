@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from conftest import TODAY, add_garment, basic_wardrobe, days_ago, db
 from fastapi.testclient import TestClient
 from sqlmodel import select
@@ -191,3 +193,62 @@ def test_a_lost_race_for_the_same_day_is_still_a_clean_409(client: TestClient, m
     assert response.status_code == 409
     assert response.json()["error"]["details"]["outfit_id"] == x
     assert _stats(client, ids["t2"]) == (0, None)
+
+
+def test_a_foreign_key_race_is_a_404_not_a_server_error(client: TestClient, monkeypatch) -> None:
+    from api.routers import wear_log
+
+    _, x, _ = _wardrobe(client)
+    real = wear_log._require_outfit
+    calls = {"n": 0}
+
+    def stale(session, outfit_id):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None  # the first look-up still sees the outfit...
+        real(session, outfit_id)  # ...but it is gone by the time the insert fails
+
+    monkeypatch.setattr(wear_log, "_require_outfit", stale)
+
+    response = client.post("/wear-log", json={"outfit_id": "3b7e0f0e-6a54-4e3b-9d1c-0a6a2f0a9c11"})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "OUTFIT_NOT_FOUND"
+    assert client.post("/wear-log", json={"outfit_id": x}).status_code == 201  # still usable
+
+
+def test_an_unexplained_integrity_error_is_a_503(client: TestClient, monkeypatch) -> None:
+    from api.routers import wear_log
+
+    _wardrobe(client)
+    # The outfit look-up always passes, so the FK violation survives the re-check.
+    monkeypatch.setattr(wear_log, "_require_outfit", lambda session, outfit_id: None)
+
+    response = client.post("/wear-log", json={"outfit_id": "3b7e0f0e-6a54-4e3b-9d1c-0a6a2f0a9c11"})
+
+    assert response.status_code == 503
+    error = response.json()["error"]
+    assert error["code"] == "WEAR_LOG_WRITE_FAILED"
+    assert error["message"] == "No se pudo registrar el outfit. Inténtalo de nuevo."
+    assert "outfit_id" not in error["details"]  # nothing is logged: not a conflict
+
+
+def test_future_wear_dates_are_rejected_with_400(client: TestClient) -> None:
+    _, x, y = _wardrobe(client)
+    tomorrow = (TODAY + dt.timedelta(days=1)).isoformat()
+
+    post = client.post("/wear-log", json={"outfit_id": x, "date": tomorrow})
+    client.post("/wear-log", json={"outfit_id": x})
+    put = client.put(f"/wear-log/{tomorrow}", json={"outfit_id": y})
+
+    for response in (post, put):
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "INVALID_WEAR_DATE"
+        assert (
+            response.json()["error"]["message"]
+            == "No puedes registrar un outfit en una fecha futura."
+        )
+    assert (
+        client.post("/wear-log", json={"outfit_id": y, "date": TODAY.isoformat()}).status_code
+        == 409
+    )

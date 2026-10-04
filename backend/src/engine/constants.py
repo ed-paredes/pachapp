@@ -12,6 +12,7 @@ BASE_TOP_K = 300  # bases kept after stage 1
 BASE_TOP_K_MAX = 2000  # safety cap when K is widened (ENG-REQ-025)
 BASE_TOP_K_GROWTH = 2  # K is multiplied by this while fewer than 5 proposals
 PROPOSAL_COUNT = 5
+SEED_MAX = 2**32 - 1  # `seed` is a non-negative 32-bit integer (API and engine)
 STAGE1_CHUNK_ROWS = 400_000  # base combinations scored per numpy block
 STAGE2_CHUNK_ROWS = 200_000  # (base, candidate) rows scored per numpy block
 MAX_ACCESSORIES_CAP = 10  # internal bound on accessory columns

@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from engine import constants as C
-from engine.types import EngineGarment, GenerationRequest
+from engine.types import EngineGarment, GenerationRequest, InvalidRequest
 from shared.enums import GarmentCategory, GarmentPattern, GarmentStatus
 
 Array = NDArray[Any]
@@ -44,6 +44,7 @@ class Context:
     pair: Array  # (n, n, 6)
     tiebreak: Array  # (n,) seeded random keys
     recent_sets: frozenset[frozenset[str]]
+    excluded_sets: frozenset[frozenset[str]]  # sets the caller already showed
     slot: list[str]  # category value per garment
 
 
@@ -62,6 +63,8 @@ def build_context(request: GenerationRequest, garments: list[EngineGarment]) -> 
     index = {g.id: i for i, g in enumerate(garments)}
     settings = request.settings
 
+    if not 0 <= request.seed <= C.SEED_MAX:
+        raise InvalidRequest(f"La semilla debe ser un número entre 0 y {C.SEED_MAX}.")
     rng = np.random.default_rng(request.seed)
     tiebreak = rng.random(n)
 
@@ -136,6 +139,7 @@ def build_context(request: GenerationRequest, garments: list[EngineGarment]) -> 
         pair=pair,
         tiebreak=tiebreak,
         recent_sets=recent_sets,
+        excluded_sets=frozenset(request.exclude_sets),
         slot=[str(g.category.value) if g.category else "" for g in garments],
     )
 

@@ -4,13 +4,17 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from engine.constants import SEED_MAX
 from shared.enums import OutfitSlot, OutfitSource
 from shared.schemas import ScoreBreakdown
+
+MAX_EXCLUDE_SETS = 200
+MAX_SET_SIZE = 15  # 3 base slots + mid_layer + outerwear + up to 10 accessories
 
 
 class GenerateOutfitsRequest(BaseModel):
@@ -18,7 +22,13 @@ class GenerateOutfitsRequest(BaseModel):
 
     fixed_garment_ids: list[UUID] | None = None  # slot inferred from the category
     replace_garment_id: UUID | None = None  # left out of every proposal
-    seed: int | None = None  # tie-break only (ENG-REQ-019); `null` = 0
+    # Sets already shown ("Otra sugerencia"): none of them is proposed again.
+    exclude_sets: (
+        list[Annotated[list[UUID], Field(min_length=1, max_length=MAX_SET_SIZE)]] | None
+    ) = Field(default=None, max_length=MAX_EXCLUDE_SETS)
+    seed: int | None = Field(
+        default=None, ge=0, le=SEED_MAX
+    )  # tie-break only (ENG-REQ-019); `null` = 0
 
 
 class OutfitItemProposal(BaseModel):

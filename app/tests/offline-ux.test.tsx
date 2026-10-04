@@ -422,8 +422,10 @@ describe('screens while the backend is unreachable', () => {
     await renderIn(client, <TodayScreen />);
 
     await refetchFailed(client, queryKeys.garments.list({ status: ['laundry'], page_size: 2 }));
-    // 12 saved garments: the saved figure shows instead of the "count unknown" state.
-    expect(screen.getByText(/Ya tienes 12 prendas en tu armario/)).toBeTruthy();
+    // 12 saved garments: Hoy renders from the saved lists, with no look saved yet to show.
+    expect(screen.getByTestId('problem-state')).toBeTruthy();
+    expect(screen.getByText('Aún no hay un look guardado')).toBeTruthy();
+    expect(screen.queryByTestId('empty-state')).toBeNull();
   });
 
   it('Armario shows the saved grid and no second warning for the failed refresh', async () => {

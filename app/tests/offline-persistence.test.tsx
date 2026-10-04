@@ -87,6 +87,14 @@ describe('shouldPersistQuery', () => {
     expect(shouldPersistQuery(query([...queryKeys.sync.last]))).toBe(true);
   });
 
+  it("keeps Hoy's generated batch, its bookkeeping and the wardrobe version (a POST read as a query)", () => {
+    expect(shouldPersistQuery(query([...queryKeys.outfits.generate('2026-10-04', 0, 0)]))).toBe(
+      true,
+    );
+    expect(shouldPersistQuery(query([...queryKeys.outfits.today('2026-10-04', 0)]))).toBe(true);
+    expect(shouldPersistQuery(query([...queryKeys.outfits.version]))).toBe(true);
+  });
+
   it('never keeps jobs, health or queries without data', () => {
     expect(shouldPersistQuery(query([...queryKeys.jobs.detail('j1')]))).toBe(false);
     expect(shouldPersistQuery(query(['health']))).toBe(false);
@@ -121,6 +129,9 @@ describe('applyPersistedDefaults', () => {
     // Not 30 days: a timer above ~24.8 days overflows and fires at once, dropping the query.
     expect(client.getQueryDefaults(queryKeys.garments.list({})).gcTime).toBe(Infinity);
     expect(client.getQueryDefaults(queryKeys.settings).gcTime).toBe(Infinity);
+    expect(client.getQueryDefaults(queryKeys.outfits.generate('2026-10-04', 0, 0)).gcTime).toBe(
+      Infinity,
+    );
     expect(client.getQueryDefaults(queryKeys.jobs.detail('j1')).gcTime).toBeUndefined();
   });
 });
@@ -145,6 +156,25 @@ describe('OfflineProvider', () => {
     await waitFor(async () => expect(await savedRoots()).toContain('garments'));
     expect(await savedRoots()).not.toContain('jobs');
     expect((await stored())?.buster).toBe(cacheBuster());
+  });
+
+  it("on native restores Hoy's saved batch, which is never a mutation", async () => {
+    setPlatform('android');
+    const earlier = makeClient();
+    const key = queryKeys.outfits.generate('2026-10-04', 0, 0);
+    const saved = { proposals: [{ explanation: 'Look guardado.' }], generated_at: 'x' };
+    earlier.setQueryData(key, saved);
+    earlier.setQueryData(queryKeys.garments.list({ status: ['active'] }), LIST); // what the helper waits for
+    await saveEarlierRun(earlier);
+    expect(await savedRoots()).toContain('outfits');
+
+    globalThis.fetch = jest.fn(() => Promise.reject(new TypeError('Network request failed')));
+    const client = makeClient();
+    const { result } = await renderHook(() => useIsRestoring(), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current).toBe(false));
+    expect(client.getQueryData(key)).toEqual(saved);
+    expect(client.getMutationCache().getAll()).toHaveLength(0);
   });
 
   it('on native syncs the wardrobe once the saved copy is back', async () => {

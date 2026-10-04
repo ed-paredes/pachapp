@@ -59,6 +59,7 @@ def generate(
         if body.replace_garment_id is None
         else str(body.replace_garment_id),
         seed=body.seed or 0,
+        exclude_sets=tuple(frozenset(str(i) for i in ids) for ids in body.exclude_sets or ()),
     )
     try:
         proposals = generate_outfits(request)

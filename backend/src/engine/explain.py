@@ -30,7 +30,30 @@ def _capitalize(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def _color_sentence(ctx: Context, members: list[int], color_score: float) -> str:
+def _hue_relation(ctx: Context, members: list[int], first: str, second: str) -> str:
+    """The hue relation of two colours, from the colours themselves: the colour
+    score also carries the loud-pattern penalty, which says nothing about hue."""
+    hues = []
+    for name in (first, second):
+        i = next(
+            i
+            for i in members
+            if ctx.slot[i] != "accessory"
+            and ctx.garments[i].colors
+            and ctx.garments[i].colors[0].name == name
+            and ctx.garments[i].is_neutral is False
+        )
+        hues.append(float(ctx.ghue[i]))
+    delta = abs(hues[0] - hues[1])
+    delta = min(delta, 360.0 - delta)
+    if delta <= C.HUE_ANALOGOUS_MAX_DEG:
+        return "tonos análogos que armonizan"
+    if delta >= C.HUE_COMPLEMENTARY_MIN_DEG:
+        return "colores complementarios con contraste"
+    return "un contraste de color atrevido"
+
+
+def _color_sentence(ctx: Context, members: list[int]) -> str:
     clothing = [ctx.garments[i] for i in members if ctx.slot[i] != "accessory"]
     names: list[str] = []
     for g in clothing:
@@ -43,12 +66,7 @@ def _color_sentence(ctx: Context, members: list[int], color_score: float) -> str
     ]
     if len(non_neutral) >= 2:
         first, second = non_neutral[0], non_neutral[1]
-        if color_score >= C.HUE_SCORE_ANALOGOUS - 1e-9:
-            relation = "tonos análogos que armonizan"
-        elif color_score >= C.HUE_SCORE_COMPLEMENTARY - 1e-9:
-            relation = "colores complementarios con contraste"
-        else:
-            relation = "un contraste de color atrevido"
+        relation = _hue_relation(ctx, members, first, second)
         return _capitalize(f"{first} y {second}: {relation}.")
     if len(non_neutral) == 1:
         return _capitalize(f"{non_neutral[0]} con neutros: una combinación fácil.")
@@ -100,7 +118,7 @@ def explain(ctx: Context, members: list[int], comps: Array) -> str:
     for k in chosen:
         name = _ORDER[k]
         if name == "color":
-            sentences.append(_color_sentence(ctx, members, float(comps[0])))
+            sentences.append(_color_sentence(ctx, members))
         elif name == "style":
             sentences.append(_style_sentence(ctx, members))
         elif name == "novelty":

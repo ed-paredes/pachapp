@@ -7,26 +7,43 @@
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | null;
+  /** The envelope's `details` (e.g. the `date` of a `WEAR_LOG_CONFLICT`), when it has any. */
+  readonly details: Record<string, unknown> | null;
 
-  constructor(message: string, status: number, code: string | null = null) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    details: Record<string, unknown> | null = null,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
-type Envelope = { error?: { code?: unknown; message?: unknown } };
+type Envelope = { error?: { code?: unknown; message?: unknown; details?: unknown } };
 
-function readEnvelope(body: unknown): { code: string | null; message: string | null } {
+function readEnvelope(body: unknown): {
+  code: string | null;
+  message: string | null;
+  details: Record<string, unknown> | null;
+} {
   const inner = (body as Envelope | null | undefined)?.error;
   if (inner && typeof inner === 'object') {
+    const details = inner.details;
     return {
       code: typeof inner.code === 'string' ? inner.code : null,
       message: typeof inner.message === 'string' && inner.message ? inner.message : null,
+      details:
+        details && typeof details === 'object' && !Array.isArray(details)
+          ? (details as Record<string, unknown>)
+          : null,
     };
   }
-  return { code: null, message: null };
+  return { code: null, message: null, details: null };
 }
 
 /**
@@ -37,11 +54,12 @@ function readEnvelope(body: unknown): { code: string | null; message: string | n
 export function unwrap<T>(result: { data?: T; error?: unknown; response: Response }): T {
   const { data, error, response } = result;
   if (!response.ok || error !== undefined) {
-    const { code, message } = readEnvelope(error);
+    const { code, message, details } = readEnvelope(error);
     throw new ApiError(
       message ?? `Request failed with status ${response.status}`,
       response.status,
       code,
+      details,
     );
   }
   return data as T;

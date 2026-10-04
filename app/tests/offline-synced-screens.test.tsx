@@ -154,7 +154,8 @@ async function expectScreensShowSyncedGarments(client: QueryClient) {
   await renderIn(client, <TodayScreen />);
   await settle();
   expect(screen.queryByTestId('error-state')).toBeNull();
-  expect(screen.getByText(/Ya tienes 5 prendas en tu armario/)).toBeTruthy();
+  expect(screen.getByTestId('problem-state')).toBeTruthy(); // no look was ever saved
+  expect(screen.queryByTestId('empty-state')).toBeNull();
   await cleanup();
 
   await renderIn(client, <HistoryScreen />);

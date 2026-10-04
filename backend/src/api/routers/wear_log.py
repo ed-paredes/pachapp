@@ -14,9 +14,11 @@ from sqlmodel import Session, col, select
 from api import clock
 from api.deps import get_session
 from api.errors import (
+    INVALID_WEAR_DATE,
     OUTFIT_NOT_FOUND,
     WEAR_LOG_CONFLICT,
     WEAR_LOG_NOT_FOUND,
+    WEAR_LOG_WRITE_FAILED,
     AppError,
     ErrorResponse,
 )
@@ -35,6 +37,16 @@ def _entry(log: WearLog) -> WearLogEntry:
 def _require_outfit(session: Session, outfit_id: str) -> None:
     if session.get(Outfit, outfit_id) is None:
         raise AppError(OUTFIT_NOT_FOUND, "El outfit no existe.", 404, {"outfit_id": outfit_id})
+
+
+def _require_not_future(day: dt.date) -> None:
+    if day > clock.local_today():
+        raise AppError(
+            INVALID_WEAR_DATE,
+            "No puedes registrar un outfit en una fecha futura.",
+            400,
+            {"date": day.isoformat()},
+        )
 
 
 def _log_for(session: Session, day: dt.date) -> WearLog | None:
@@ -92,16 +104,24 @@ def recompute_wear_stats(session: Session, garment_ids: set[str]) -> None:
     "/wear-log",
     response_model=WearLogEntry,
     status_code=status.HTTP_201_CREATED,
-    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
 )
 def create_wear_log(
     body: WearLogCreate, session: Annotated[Session, Depends(get_session)]
 ) -> WearLogEntry:
     """Log the outfit worn on `date` (default: today). `409` when that day is
-    already logged: the client may then offer `PUT /wear-log/{date}`."""
+    already logged: the client may then offer `PUT /wear-log/{date}`. `503
+    WEAR_LOG_WRITE_FAILED` when the insert failed for another reason (nothing was
+    logged, retrying is safe): it carries no `outfit_id`, so it is never a conflict."""
     outfit_id = str(body.outfit_id)
-    _require_outfit(session, outfit_id)
     day = body.date or clock.local_today()
+    _require_not_future(day)
+    _require_outfit(session, outfit_id)
     existing = _log_for(session, day)
     if existing is not None:
         raise _conflict(existing)
@@ -112,8 +132,16 @@ def create_wear_log(
     except IntegrityError:  # lost a race with another request for the same day
         session.rollback()
         raced = _log_for(session, day)
-        assert raced is not None
-        raise _conflict(raced) from None
+        if raced is not None:
+            raise _conflict(raced) from None
+        # Not the day: another constraint failed (e.g. the outfit was deleted meanwhile).
+        _require_outfit(session, outfit_id)
+        raise AppError(
+            WEAR_LOG_WRITE_FAILED,
+            "No se pudo registrar el outfit. Inténtalo de nuevo.",
+            503,
+            {"date": day.isoformat()},
+        ) from None
     recompute_wear_stats(session, _garment_ids(session, outfit_id))
     session.commit()
     return _entry(log)
@@ -122,13 +150,14 @@ def create_wear_log(
 @router.put(
     "/wear-log/{date}",
     response_model=WearLogEntry,
-    responses={404: {"model": ErrorResponse}},
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
 def replace_wear_log(
     date: dt.date, body: WearLogReplace, session: Annotated[Session, Depends(get_session)]
 ) -> WearLogEntry:
     """Replace the outfit of an already logged day; the counters of both the
     old and the new outfit's garments are recomputed in the same transaction."""
+    _require_not_future(date)
     log = _require_log(session, date)
     new_id = str(body.outfit_id)
     _require_outfit(session, new_id)

@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ToastProvider } from '../src/components/ui';
+
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
@@ -36,6 +38,9 @@ function mockApi(
   active: { items: Item[]; total: number },
 ) {
   (globalThis.fetch as jest.Mock).mockImplementation(async (request: Request) => {
+    if (new URL(request.url).pathname === '/outfits/generate') {
+      return json({ proposals: [], generated_at: '2026-10-04T08:00:00Z' });
+    }
     const params = new URL(request.url).searchParams;
     const source = params.get('status') === 'laundry' ? laundry : active;
     return json({ ...source, page: 1, page_size: 50 });
@@ -52,7 +57,9 @@ async function renderScreen() {
       }}
     >
       <QueryClientProvider client={client}>
-        <TodayScreen />
+        <ToastProvider>
+          <TodayScreen />
+        </ToastProvider>
       </QueryClientProvider>
     </SafeAreaProvider>,
   );
@@ -81,15 +88,13 @@ describe('TodayScreen (Hoy)', () => {
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/add');
   });
 
-  it('says proposals are coming soon, with the count, when there are garments', async () => {
+  it('explains what a look needs when the wardrobe has garments but no look comes out', async () => {
     mockApi({ items: [], total: 2 }, { items: [item('a')], total: 3 });
     await renderScreen();
 
-    expect(await screen.findByText('Tus propuestas diarias llegan pronto')).toBeTruthy();
+    expect(await screen.findByText('Todavía no podemos armar un look')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Ya tienes 5 prendas en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.',
-      ),
+      screen.getByText(/Tienes 5 prendas en tu armario, pero faltan prendas activas/),
     ).toBeTruthy();
     expect(
       screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
@@ -104,9 +109,7 @@ describe('TodayScreen (Hoy)', () => {
     await renderScreen();
 
     expect(
-      await screen.findByText(
-        'Ya tienes 1 prenda en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.',
-      ),
+      await screen.findByText(/Tienes 1 prenda en tu armario, pero faltan prendas activas/),
     ).toBeTruthy();
   });
 
@@ -114,8 +117,9 @@ describe('TodayScreen (Hoy)', () => {
     (globalThis.fetch as jest.Mock).mockRejectedValue(new Error('offline'));
     await renderScreen();
 
-    expect(await screen.findByText('Tus propuestas diarias llegan pronto')).toBeTruthy();
-    expect(screen.queryByText(/Ya tienes/)).toBeNull();
+    // The wardrobe size is unknown and so is the look: no count is claimed.
+    expect(await screen.findByTestId('problem-state')).toBeTruthy();
+    expect(screen.queryByText(/Tienes \d+ prenda/)).toBeNull();
     expect(
       screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
     ).toBeNull();
@@ -130,7 +134,7 @@ describe('TodayScreen (Hoy)', () => {
     expect(
       screen.queryByText('Aún no tienes suficientes prendas para generar un outfit'),
     ).toBeNull();
-    expect(screen.queryByText('Tus propuestas diarias llegan pronto')).toBeNull();
+    expect(screen.queryByText('Todavía no podemos armar un look')).toBeNull();
   });
 
   it('shows a dated greeting and no weather, look or engine-only controls', async () => {
@@ -180,7 +184,7 @@ describe('TodayScreen (Hoy)', () => {
   it('hides the usage notice while nothing has been worn', async () => {
     mockApi({ items: [], total: 0 }, { items: [item('a'), item('b')], total: 2 });
     await renderScreen();
-    await screen.findByText('Tus propuestas diarias llegan pronto');
+    await screen.findByText('Todavía no podemos armar un look');
 
     expect(screen.queryByTestId('tip-usage')).toBeNull();
   });

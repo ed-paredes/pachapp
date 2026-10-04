@@ -57,12 +57,14 @@ describe('TodayView', () => {
     expect(screen.queryByText('Look del día')).toBeNull();
   });
 
-  it('shows the coming-soon state with the garment count and opens Armario', async () => {
+  it('explains what a look needs when the wardrobe has garments and opens Armario', async () => {
     const onOpenWardrobe = jest.fn();
     await renderView(<TodayView {...base} wardrobeSize={1} onOpenWardrobe={onOpenWardrobe} />);
 
-    expect(screen.getByTestId('soon-state')).toBeTruthy();
-    expect(screen.getByText(/Ya tienes 1 prenda en tu armario/)).toBeTruthy();
+    expect(screen.getByTestId('no-looks-state')).toBeTruthy();
+    expect(
+      screen.getByText(/Tienes 1 prenda en tu armario, pero faltan prendas activas/),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Añadir prendas' })).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Ver tu armario' }));
     expect(onOpenWardrobe).toHaveBeenCalled();
