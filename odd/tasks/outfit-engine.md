@@ -81,16 +81,16 @@ formality, style_tags and a 768-d embedding, which the engine needs.
 - [x] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe 5 min), `POST /wear-log` (409 when the day is
   logged) + `PUT`/`DELETE /wear-log/{date}` with the transactional `wear_count`/`last_worn_at` recompute for
   every affected garment; contract tests; regenerate `app/src/api-client/schema.ts` (`make gen-client`).
-- [ ] **E2c** Review fixes (E1 `review-5c5192fd42bf70bf`, E2 `review-73dda50dacae5f45`, both approved): colour
+- [x] **E2c** Review fixes (E1 `review-5c5192fd42bf70bf`, E2 `review-73dda50dacae5f45`, both approved): colour
   explanation from the hue relation, not the penalised score; negative/out-of-range seed -> 400/422, not 500;
   fixed-layer benchmark best-of-3 + result assertions; wear-log IntegrityError handled without `assert` (FK
   races return the error envelope); no-repeat window bounds matching the engine (`0 <= days_ago <
   no_repeat_days`, no future logs) with edge-day tests; reject future wear dates (default chosen by the parent,
   no use case yet); embedding blob length checked against `embedding_dim` (log and skip).
-- [ ] **E2b** `POST /outfits/generate` accepts the garment sets already shown (`exclude_sets`) and returns the
+- [x] **E2b** `POST /outfits/generate` accepts the garment sets already shown (`exclude_sets`) and returns the
   next best distinct proposals (owner decision 2026-10-04: "Otra sugerencia" after the 5 cached ones excludes
   the seen looks).
-- [ ] **E3** App Hoy: `useGenerateOutfits` (persisted on native, daily + wardrobe-change refresh), response ->
+- [x] **E3** App Hoy: `useGenerateOutfits` (persisted on native, daily + wardrobe-change refresh), response ->
   `LookProposal`/`AltLook` mapper (no match %), "Otra sugerencia" cycles cached proposals then regenerates,
   "Me lo pongo" with the replace confirmation, offline behaviour (saved batch, wear disabled); UI task ->
   frontend-design + ux-copy, critique + a11y on screenshots.
@@ -140,6 +140,24 @@ reviewed slice (E1, E2, E3). Branch `feat/outfit-engine` from `main` `b8d4b7f`.
   `42fb1fa..411b820` `review-73dda50dacae5f45` (reliability), approved and acknowledged; findings -> E2c. Owner
   decision: the seed only breaks ties, so "more looks" excludes the sets already shown (E2b).
 
+- 2026-10-04: E2c `4ddc550`, E2b `5833f1d`, E3 `f37f4dd` (delegated writer). E2c: hue-relation explanation,
+  seed 0..2^32-1 (422 / `InvalidRequest`), fixed-layer benchmark best-of-3 + asserts, IntegrityError without
+  assert (409 or 404), history window `today-n < date <= today`, future wear dates 400 `INVALID_WEAR_DATE`,
+  embedding size checked. E2b: `exclude_sets` (<= 50 sets of 1-15 ids), order-insensitive, K widening keeps
+  searching, empty 200 when exhausted. E3: `useGenerateOutfits` (POST as a query, key date + wardrobe version +
+  round, stale until end of day, persisted root `outfits`), `useTodayLooks` (shown/round state per day),
+  `useWearLook` (POST /outfits -> /wear-log, 409 -> in-card "¿Cambiarlo por este?" -> PUT), `look-mapper`
+  (no match %, reasons = explanation sentences, formality label "Casual · Formalidad 2/5", alternative titles from
+  the two lead pieces), offline: saved batch (or last day's with a note), wear disabled, shuffle cycles cached;
+  empty states "Todavía no podemos armar un look" / "No quedan más combinaciones por hoy". Critique/a11y formal
+  passes: conflict question moved into the look card with live region + focus; two-line alt titles.
+  Checks: pytest 620 -> 627; app prettier/lint/typecheck clean, jest 374. Parent spot check: ruff/ty clean,
+  pytest 627; jest 374/374 in 2 full runs, but one full run failed `offline-ux` "Armario shows the saved grid and
+  no second warning for the failed refresh" (waitFor status 'error' timed out; file alone 5/5) -> load-related
+  flake, follow-up. Screenshots `/tmp/claude-1000/pachapp-e3-shots/` read back.
+  Open (owner, later): regenerate right after an upload finishes vs next Hoy visit; per-sentence component tags
+  for reason icons; sync prefetch of today's batch for a new day offline.
+
 ## Next step
 
-E2c, E2b and E3 with one delegated writer, one commit per task; then review of the slice and the stacked PRs.
+Native review of `411b820..HEAD`, stacked PRs (E1, E2, E2c+E2b+E3), merge in order; follow-up: offline-ux flake.
