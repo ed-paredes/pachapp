@@ -6,11 +6,10 @@ import { useGarments } from '@/hooks/useGarments';
 import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { formatToday, greeting } from '@/lib/format-date';
-import { USAGE_PAGE_SIZE, wardrobeUsage } from '@/lib/wardrobe-usage';
+import { LAUNDRY_FILTERS, LAUNDRY_NAMES, USAGE_FILTERS } from '@/lib/wardrobe-filters';
+import { wardrobeUsage } from '@/lib/wardrobe-usage';
 
 type NamedGarment = Parameters<typeof garmentName>[0];
-
-const LAUNDRY_NAMES = 2;
 
 function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
@@ -38,13 +37,8 @@ export default function TodayScreen() {
   const now = useNow();
   const proposal: LookProposal | undefined = undefined;
 
-  const laundry = useGarments({ status: ['laundry'], page_size: LAUNDRY_NAMES });
-  const active = useGarments({
-    status: ['active'],
-    sort: 'wear_count',
-    order: 'desc',
-    page_size: USAGE_PAGE_SIZE,
-  });
+  const laundry = useGarments(LAUNDRY_FILTERS);
+  const active = useGarments(USAGE_FILTERS);
 
   // Wardrobe size reuses the two queries above: the no-proposal state must not flash the wrong copy.
   // Data wins over an error, so a failed refetch (backend offline) keeps showing what was saved.

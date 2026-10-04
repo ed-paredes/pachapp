@@ -140,6 +140,14 @@ function Detail({ garment }: { garment: Garment }) {
   const remove = useDeleteGarment(id);
   const offline = useOfflineBlock();
   const [confirming, setConfirming] = useState(false);
+  // Losing the backend while the confirmation is open closes it: deleting needs the server, and
+  // the offline note above the actions already says why. The confirm button is also disabled
+  // for the render in between.
+  const [wasOffline, setWasOffline] = useState(offline);
+  if (offline !== wasOffline) {
+    setWasOffline(offline);
+    if (offline) setConfirming(false);
+  }
   const [actionError, setActionError] = useState<string | null>(null);
 
   const jobId = garment.job?.id;
@@ -168,6 +176,8 @@ function Detail({ garment }: { garment: Garment }) {
   };
 
   const confirmDelete = async () => {
+    // Never send a delete the app already knows cannot reach the backend.
+    if (offline) return;
     setActionError(null);
     try {
       await remove.mutateAsync();
@@ -304,12 +314,12 @@ function Detail({ garment }: { garment: Garment }) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Eliminar definitivamente"
-              accessibilityState={{ disabled: remove.isPending }}
-              disabled={remove.isPending}
+              accessibilityState={{ disabled: remove.isPending || offline }}
+              disabled={remove.isPending || offline}
               onPress={() => void confirmDelete()}
               style={(state) => [
                 styles.danger,
-                remove.isPending && styles.disabled,
+                (remove.isPending || offline) && styles.disabled,
                 pressFeedback(state),
               ]}
             >

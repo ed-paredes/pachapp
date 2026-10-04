@@ -41,7 +41,7 @@ APP := cd app &&
 NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
-	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval
+	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval android-apk
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -117,3 +117,8 @@ ml-cutouts: ## Write BiRefNet cutouts of the eval photos for inspection
 
 ml-eval: ## Evaluate zero-shot accuracy on labeled eval photos (EVAL_DIR=... to override)
 	$(BACKEND) uv run python -m ml.eval $(EVAL_DIR)
+
+# Runs on Windows (Android Studio, Node and the SDK live there); see README.
+# Pass flags with: make android-apk ANDROID_ARGS="-Install"
+android-apk: ## Build the Android release APK on Windows (scripts/build-android.ps1)
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$$(wslpath -w scripts/build-android.ps1)" $(ANDROID_ARGS)

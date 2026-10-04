@@ -1,11 +1,21 @@
-import type { QueryClient } from '@tanstack/react-query';
+import { hashKey, type QueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@/api-client/errors';
 import { queryKeys, type GarmentFilters } from '@/api-client/query-keys';
 import { fetchGarmentDetail, fetchGarmentList, nextGarmentPage } from '@/hooks/useGarments';
 import { fetchSettings } from '@/hooks/useSettings';
 import { CATEGORY_ORDER } from '@/lib/labels';
-import { USAGE_PAGE_SIZE } from '@/lib/wardrobe-usage';
+import {
+  ALL_STATUS,
+  armarioFilters,
+  countFilters,
+  DEFAULT_STATUS,
+  LAUNDRY_FILTERS,
+  type ListFilters,
+  STALE_FILTERS,
+  UNWORN_FILTERS,
+  USAGE_FILTERS,
+} from '@/lib/wardrobe-filters';
 
 import { garmentImageUrls, prefetchGarmentImages } from './images';
 import { runPool } from './pool';
@@ -13,47 +23,39 @@ import { runPool } from './pool';
 /** Simultaneous requests while syncing: enough to be quick, few enough for a home PC. */
 export const SYNC_CONCURRENCY = 4;
 
-const ARMARIO_PAGE_SIZE = 50;
-const DEFAULT_STATUS: GarmentFilters['status'] = ['active', 'laundry'];
-const ALL_STATUS: GarmentFilters['status'] = ['active', 'laundry', 'archived'];
-
-type ListFilters = Omit<GarmentFilters, 'page'>;
-
-/** Every garment lives in this list; its pages give the ids whose details are synced. */
-const ALL_FILTERS: ListFilters = {
-  status: ALL_STATUS,
-  sort: 'created_at',
-  order: 'desc',
-  page_size: ARMARIO_PAGE_SIZE,
-};
-
 /**
- * The Armario grid as each status view shows it. These filters must stay identical to the ones
- * the screens build (`app/(tabs)/wardrobe.tsx`), or the screens will not find the synced data.
+ * Every filter below comes from `@/lib/wardrobe-filters`, the same builders and constants the
+ * screens use, so the synced data always lands under the keys the screens read.
+ *
+ * Every garment lives in the all-status list; its pages give the ids whose details are synced.
  */
-const INFINITE_FILTERS: ListFilters[] = [
-  { ...ALL_FILTERS, status: DEFAULT_STATUS },
-  { ...ALL_FILTERS, status: ['active'] },
-  { ...ALL_FILTERS, status: ['laundry'] },
-  { ...ALL_FILTERS, status: ['archived'] },
+const ALL_FILTERS: ListFilters = armarioFilters({ status: ALL_STATUS });
+
+/** The Armario grid as each status view shows it. */
+const STATUS_VIEWS: NonNullable<GarmentFilters['status']>[] = [
+  DEFAULT_STATUS,
+  ['active'],
+  ['laundry'],
+  ['archived'],
 ];
+const INFINITE_FILTERS: ListFilters[] = STATUS_VIEWS.map((status) => armarioFilters({ status }));
 
 /**
  * Plain lists the screens read: the Armario counters and review banner (page size 1), Hoy and
- * Historial. Same rule as above: keep them identical to the screens' filters.
+ * Historial.
  */
 const LIST_FILTERS: GarmentFilters[] = [
-  { status: DEFAULT_STATUS, page_size: 1 },
-  { status: ['active'], page_size: 1 },
-  { status: ['laundry'], page_size: 1 },
-  { status: ['archived'], page_size: 1 },
-  { status: ALL_STATUS, page_size: 1 },
-  { status: DEFAULT_STATUS, needs_review: true, page_size: 1 },
-  ...CATEGORY_ORDER.map((category) => ({ status: DEFAULT_STATUS, category, page_size: 1 })),
-  { status: ['laundry'], page_size: 2 },
-  { status: ['active'], sort: 'wear_count', order: 'desc', page_size: USAGE_PAGE_SIZE },
-  { status: ['active'], sort: 'wear_count', order: 'asc', page_size: 4 },
-  { status: ['active'], sort: 'last_worn_at', order: 'asc', page_size: 4 },
+  countFilters({ status: DEFAULT_STATUS }),
+  countFilters({ status: ['active'] }),
+  countFilters({ status: ['laundry'] }),
+  countFilters({ status: ['archived'] }),
+  countFilters({ status: ALL_STATUS }),
+  countFilters({ status: DEFAULT_STATUS, needs_review: true }),
+  ...CATEGORY_ORDER.map((category) => countFilters({ status: DEFAULT_STATUS, category })),
+  LAUNDRY_FILTERS,
+  USAGE_FILTERS,
+  UNWORN_FILTERS,
+  STALE_FILTERS,
 ];
 
 type Page = Awaited<ReturnType<typeof fetchGarmentList>>;
@@ -84,7 +86,41 @@ async function syncDetail(queryClient: QueryClient, id: string): Promise<void> {
 
 export type SyncResult = { ok: true; syncedAt: number } | { ok: false; error: unknown };
 
-let running: Promise<SyncResult> | null = null;
+/** One run at a time per client; a second call joins it. */
+const running = new WeakMap<QueryClient, Promise<SyncResult>>();
+
+/**
+ * Drops what the saved cache has no reason to keep after a successful sync: details of garments
+ * that are not in the wardrobe any more, and garment lists under filters nobody syncs (one-off
+ * filter combinations the user browsed once). Queries a screen is watching right now stay.
+ *
+ * Size: the persisted cache is a single AsyncStorage row. Around 300 garments it measures about
+ * 0.5-1.2 MB (five Armario lists repeat every garment, plus one detail each). The Android row
+ * limit is about 2 MB, so growth must stay bounded: without pruning, every filter ever browsed
+ * and every deleted garment would stay forever. Past roughly 600 garments the single row no
+ * longer fits and a chunked persister would be needed (see `createPersister`).
+ */
+export function pruneSyncedCache(queryClient: QueryClient, garmentIds: ReadonlySet<string>): void {
+  const keptLists = new Set<string>(
+    [...INFINITE_FILTERS, ALL_FILTERS].map((filters) =>
+      hashKey(queryKeys.garments.infinite(filters)),
+    ),
+  );
+  LIST_FILTERS.forEach((filters) => keptLists.add(hashKey(queryKeys.garments.list(filters))));
+
+  const cache = queryClient.getQueryCache();
+  for (const query of cache.findAll({ queryKey: queryKeys.garments.all })) {
+    if (query.getObserversCount() > 0) continue;
+    const [, kind, detail] = query.queryKey;
+    const stale =
+      kind === 'detail'
+        ? !garmentIds.has(String(detail))
+        : kind === 'list'
+          ? !keptLists.has(query.queryHash)
+          : false;
+    if (stale) cache.remove(query);
+  }
+}
 
 async function runSync(queryClient: QueryClient): Promise<SyncResult> {
   try {
@@ -104,6 +140,8 @@ async function runSync(queryClient: QueryClient): Promise<SyncResult> {
     // Last: the images are the heaviest part and a few missing ones do not spoil the data.
     await prefetchGarmentImages(garmentImageUrls(everything.flatMap((page) => page.items)));
 
+    pruneSyncedCache(queryClient, new Set(ids));
+
     const syncedAt = Date.now();
     queryClient.setQueryData(queryKeys.sync.last, syncedAt);
     return { ok: true, syncedAt };
@@ -116,12 +154,13 @@ async function runSync(queryClient: QueryClient): Promise<SyncResult> {
 /**
  * Copies the whole wardrobe (every list page and every garment detail, plus settings) into the
  * query cache under the keys the screens use, and their thumbnails and cutouts onto disk, so
- * it can be browsed offline. One run at a time;
- * a second call joins the running one. A failed run keeps the previous sync stamp.
+ * it can be browsed offline. One run at a time per
+ * client; a second call joins the running one. A failed run keeps the previous sync stamp.
  */
 export function syncWardrobe(queryClient: QueryClient): Promise<SyncResult> {
-  running ??= runSync(queryClient).finally(() => {
-    running = null;
-  });
-  return running;
+  const current = running.get(queryClient);
+  if (current) return current;
+  const started = runSync(queryClient).finally(() => running.delete(queryClient));
+  running.set(queryClient, started);
+  return started;
 }
