@@ -48,7 +48,7 @@ outfit engine, iOS.
   (e.g. "Sin conexión con tu armario · mostrando lo guardado el 4 oct"); disable mutations (upload, edit,
   wear, laundry, archive, delete, settings) with an explanation; cached data is never replaced by full-screen
   errors; recover automatically when the backend answers again.
-- [ ] **O5** Hardening from the O1+O2 and O3 reviews (all non-blocking, recorded 2026-10-04):
+- [x] **O5** Hardening from the O1+O2 and O3 reviews (all non-blocking, recorded 2026-10-04):
   (a) `http-client.ts` native GET timeout drops the caller's abort signal (React Query cancellation no longer
   aborts) and a caller abort is reported as unreachable -> combine signals, ignore caller aborts in
   reachability; (b) `isNetworkError` returns true for any non-ApiError -> only fetch TypeError / timeout abort,
@@ -140,7 +140,21 @@ slice (O1+O2, then O3, then O4) on branch `feat/offline-app` from `main` `c57d9c
   owner reports it works perfectly (saved wardrobe, images and offline UX). Recovery when the API comes back not
   yet tested on the phone.
 
+- 2026-10-04: O5 (delegated writer) `3fc81a5` (a, b: caller abort joined to the native GET timeout by a manual
+  combiner, no `AbortSignal.any`; caller aborts never mark offline; `RequestTimeoutError`; `isNetworkError` =
+  TypeError or timeout), `ec75d43` (c: persister settles restored/saved queries to success; d: prune details of
+  garments not synced and unsynced lists after a successful sync, keep observed queries, lean retry without
+  details on a failed write, never throws; e: `src/lib/wardrobe-filters.ts` shared by screens and sync +
+  integration test rendering Armario/Hoy/Historial/Detalle from synced data with the API down; f: syncer
+  foreground tests; j: single-flight per QueryClient), `cdabc14` (g: buster test waits for restore; h: web test
+  uses a web-only marker; i: Detalle closes/disables delete confirmation offline). Checks: prettier/lint/
+  typecheck clean; jest 329 -> 345 -> 346/346; offline suites 5 runs 62/62; RED probes per item (several first
+  passed vacuously and were tightened). Screen audit: every screen already data-first. Parent spot check: jest
+  346/346. Owner-visible: lists browsed under one-off filters are pruned after the next successful sync.
+  To re-check on the next APK: combined abort signal on Hermes (pull-to-refresh / leaving a screen must not mark
+  offline), delete confirmation closing offline, recovery banner.
+
 ## Next step
 
-Phone check of the recovery path (start the API, banner clears within ~15 s without restarting), then O5, review
-of the O4+O5 slice, mark #40 ready and merge #38, #39, #40 in order (owner's call).
+Native review of the O4+O5 slice (`7616bf5..HEAD`), mark #40 ready, rebuild the APK for the phone re-check,
+merge #38, #39, #40 in order (owner's call).
