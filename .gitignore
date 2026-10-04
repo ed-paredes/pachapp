@@ -61,3 +61,7 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 *.swp
+
+# --- Owner working notes (kept out of the repo) ---
+/SPEC-ML.md
+/rediseño/
