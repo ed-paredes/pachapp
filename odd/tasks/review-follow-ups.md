@@ -31,20 +31,20 @@ Out: U5 garment-only cutout, ux-probador R1, outfit engine.
 
 ## Tasks
 
-- [ ] **F1** Historial secondary-query failure notice. Compact inline error (new small component or a
+- [x] **F1** Historial secondary-query failure notice. Compact inline error (new small component or a
   `compact` variant of `ErrorState`) with "Reintentar" in the second-chance card slot when `unworn` or `stale`
   failed with no data; retry refetches only the failed queries and is disabled while fetching. Tests: stale
   fails -> notice + Reintentar, no full-screen `error-state`; retry with success -> section appears; unworn
   fails; retrying disabled; `HistoryView` unit test for the new prop. UI task: load frontend-design + ux-copy;
   design-critique + accessibility-review on screenshots before closing.
-- [ ] **F2** Cold-run flakes. `review.test.tsx`: gate the mocked 500 behind a deferred promise so the spinner is
+- [x] **F2** Cold-run flakes. `review.test.tsx`: gate the mocked 500 behind a deferred promise so the spinner is
   asserted before the response settles. `wardrobe.test.tsx`: diagnose the flaky test (cold runs) and fix it
   the same way, or record the evidence if it cannot be reproduced.
-- [ ] **F3** Shared window-size test helper `app/tests/helpers/window.ts`, adopted by
+- [x] **F3** Shared window-size test helper `app/tests/helpers/window.ts`, adopted by
   `garment-detail.test.tsx`, `segmented.test.tsx` and `add-capture-tips.test.tsx`; same assertions.
 - [x] **F4** Docs: FloatingTabBar JSDoc + `_layout.tsx` note (hide tabs with `href: null` only); `NEW_WINDOW_MS`
   comment stating the 7-day rolling rule; `README.md` formatted with prettier.
-- [ ] **R1 (research, pending)** Persisted query cache to reduce requests on refresh/tab switches: options
+- [x] **R1 (research, done; implementation pending owner decisions)** Persisted query cache to reduce requests on refresh/tab switches: options
   (`@tanstack/query-persist-client` with localStorage on web / AsyncStorage on native, staleTime tuning,
   narrower refetch keys), trade-offs (stale data after server-side changes, storage size, image URLs), and a
   recommendation. Not implemented in this feature.
@@ -81,6 +81,41 @@ Forecast ~150-200 authored lines (under the ~400 budget): one branch `chore/revi
   `README.md` formatted, table alignment only). Checks: app prettier/lint/typecheck clean; README prettier
   clean. Jest not run (comments only).
 
+- 2026-10-04: F3 (delegated writer) `017d767`: `app/tests/helpers/window.ts` `withWindowWidths(height, fn)`
+  (spies `Dimensions.get`, restores in `finally`), adopted by garment-detail, segmented and add-capture-tips;
+  assertions unchanged. RED probe: helper ignoring the width fails all 3. 41+/27-.
+- 2026-10-04: F2 (delegated writer) `1165de4`: review "shows loading, then an error with retry, and a 404 state"
+  and wardrobe "shows the grid skeleton while loading" gate the response behind a deferred promise. Wardrobe
+  flake reproduced once in a combined cold run ("hides the 'Añadir prenda' tile under Archivadas", message not
+  captured); inferred cause: the tab switch briefly shows the skeleton, so `waitFor(tile is null)` passed early;
+  fix asserts card present + tile absent in one `waitFor`. Proof: review alone 10/10 cold runs; wardrobe +
+  review + history 10/10 cold runs. 42+/11-.
+- 2026-10-04: F1 (delegated writer) `35e4648`: new `SectionError` (card style like `RankCard`, title kept, "No se
+  pudo cargar esta lista." + primary "Reintentar" 44 dp, `accessibilityRole="alert"`, label "Reintentar:
+  <title>"); `HistoryView` prop `secondChanceError`; `history.tsx` `failedLists` (unworn/stale with no data and
+  error), retry refetches only those, disabled while fetching; full-screen block for `active` untouched. Tests:
+  notice without `error-state`, retry restores the section and repeats only the failed request, unworn
+  failure, disabled while retrying, HistoryView unit tests; RED probes (prop ignored, refetch-all, retrying
+  false, unworn ignored) all failed as expected. Screenshots (web build + mock API, playwright-core):
+  scratchpad `pw/follow-ups/` phone 390x844 and desktop 1440x900; design-critique fixed the button contrast
+  (primary ink instead of white on white); a11y: single alert announcement, focus ring visible, text ~6:1;
+  screen reader not tested. Open product gap: when only one secondary list fails, the notice replaces the
+  whole card, hiding the other list's items. 195+/7-.
+- 2026-10-04: checks after each writer commit: prettier/lint/typecheck clean; jest 257/257, 257/257, 263/263.
+  Parent spot check: jest 263/263; screenshots read back.
+- 2026-10-04: R1 research (delegated, read-only). Findings: no staleTime (0) and gcTime 5 min defaults; pull-to-
+  refresh refetches every active `['garments','list']` query (Armario grid, 4-6 `useTotal` counters, review
+  banner, category chips, plus mounted Hoy/Historial); tab switches do not refetch; cold start ~10-13 list
+  requests. Options ranked: (1) in-memory tuning (narrow the Armario refresh to grid + counters, modest
+  staleTime for non-grid lists), ~15-40 lines; (2) one `GET /garments/counts` endpoint replacing 5-7
+  `page_size: 1` requests, ~100-170 lines across backend + app; (3) persisted cache
+  (`@tanstack/react-query-persist-client` + localStorage / AsyncStorage, already a dependency) only improves
+  first paint and offline reads, does not cut requests, ~40-70 lines + 2 deps; (4) HTTP ETag/304 skipped
+  (saves bytes, not requests; unreliable on native). Owner decisions: acceptable staleness window; refresh
+  only Armario or the whole app; instant paint / offline wanted; new counts endpoint OK. Gaps: counts from
+  code reading only; AsyncStorage limits, infinite-query persistence and persister versions unverified.
+
 ## Next step
 
-F1-F3 with one delegated writer, one commit per task.
+Native review of `df24db3..HEAD`, then PR. Owner: confirm the partial-list behaviour (F1 gap) and the R1
+decisions before any caching work.
