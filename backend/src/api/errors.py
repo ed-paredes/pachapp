@@ -26,6 +26,7 @@ OUTFIT_NOT_FOUND = "OUTFIT_NOT_FOUND"
 INVALID_OUTFIT = "INVALID_OUTFIT"
 WEAR_LOG_CONFLICT = "WEAR_LOG_CONFLICT"  # FBH-REQ-007: the day is already logged
 WEAR_LOG_NOT_FOUND = "WEAR_LOG_NOT_FOUND"
+INVALID_WEAR_DATE = "INVALID_WEAR_DATE"  # a wear date cannot be in the future
 
 
 class AppError(Exception):

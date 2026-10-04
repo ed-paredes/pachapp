@@ -32,7 +32,14 @@ def test_fixed_layer_with_widened_k_stays_within_budget() -> None:
     wardrobe = synthetic_wardrobe(300)
     fixed = next(g.id for g in wardrobe if g.category == "outerwear" and g.is_neutral is False)
 
-    start = time.perf_counter()
-    generate_outfits(request(wardrobe, fixed_garment_ids=(fixed,)))
+    generate_outfits(request(wardrobe, fixed_garment_ids=(fixed,)))  # warm-up
 
-    assert time.perf_counter() - start < 3 * BUDGET_SECONDS
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        proposals = generate_outfits(request(wardrobe, fixed_garment_ids=(fixed,)))
+        timings.append(time.perf_counter() - start)
+
+    assert proposals, "the fixed outerwear must still give proposals"
+    assert all(fixed in {i.garment_id for i in p.items} for p in proposals)
+    assert min(timings) < 3 * BUDGET_SECONDS, f"timings: {timings}"

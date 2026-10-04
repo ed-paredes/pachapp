@@ -277,3 +277,94 @@ def test_post_outfit_validation_errors(client: TestClient) -> None:
     assert unknown.json()["error"]["message"] == "Alguna prenda del outfit no existe."
     assert wrong_slot.status_code == 400 and wrong_slot.json()["error"]["code"] == "INVALID_OUTFIT"
     assert empty.status_code == bad_rating.status_code == repeated.status_code == 422
+
+
+def test_generate_rejects_a_negative_or_oversized_seed_with_422(client: TestClient) -> None:
+    basic_wardrobe(client)
+
+    assert _generate(client, seed=-1).status_code == 422
+    assert _generate(client, seed=2**32).status_code == 422
+    assert _generate(client, seed=2**32 - 1).status_code == 200
+    assert _generate(client, seed=0).status_code == 200
+
+
+def _only_set(client: TestClient) -> list[str]:
+    cat = Cat
+    return [
+        add_garment(client, cat.top),
+        add_garment(client, cat.bottom),
+        add_garment(client, cat.shoes),
+    ]
+
+
+def _log_directly(client: TestClient, outfit_id: str, day) -> None:
+    from shared.models import WearLog
+
+    with db(client) as session:
+        session.add(WearLog(date=day, outfit_id=outfit_id))
+        session.commit()
+
+
+def test_the_wear_window_excludes_exactly_no_repeat_days_ago(client: TestClient) -> None:
+    outfit = _persist(client, _only_set(client)).json()  # default no_repeat_days = 14
+    _log_directly(client, outfit["id"], days_ago(14))
+
+    assert len(_generate(client).json()["proposals"]) == 1  # 14 days ago is outside the window
+
+
+def test_the_wear_window_includes_the_day_before_the_limit(client: TestClient) -> None:
+    outfit = _persist(client, _only_set(client)).json()
+    _log_directly(client, outfit["id"], days_ago(13))
+
+    assert _generate(client).json()["proposals"] == []
+
+
+def test_a_wear_log_in_the_future_never_blocks_a_set(client: TestClient) -> None:
+    outfit = _persist(client, _only_set(client)).json()
+    _log_directly(client, outfit["id"], days_ago(-1))  # tomorrow, written straight to the table
+
+    assert len(_generate(client).json()["proposals"]) == 1
+
+
+def test_an_embedding_blob_that_does_not_match_its_dimension_is_ignored(caplog) -> None:
+    import logging
+
+    import numpy as np
+
+    from api.engine_inputs import _engine_garment
+
+    good = np.array([1.0, 0.0, 0.0], dtype=np.float32).tobytes()
+
+    def row(blob: bytes | None, dim: int | None) -> Garment:
+        return Garment(
+            img_original="x",
+            category=Cat.top,
+            embedding=blob,
+            embedding_model="m",
+            embedding_dim=dim,
+        )
+
+    assert _engine_garment(row(good, 3)).embedding == (1.0, 0.0, 0.0)
+    with caplog.at_level(logging.WARNING, logger="api.engine_inputs"):
+        assert _engine_garment(row(good, 4)).embedding is None  # wrong dimension
+        assert _engine_garment(row(good + b"\x00", 3)).embedding is None  # not a multiple of 4
+        assert _engine_garment(row(None, None)).embedding is None
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 2
+
+
+def test_the_history_window_matches_the_engine_rule_exactly(client: TestClient) -> None:
+    """The engine ignores out-of-window entries anyway; the query must not even load them."""
+
+    from api.engine_inputs import _history
+    from shared.models import WearLog
+
+    outfit = _persist(client, _only_set(client)).json()
+    for offset in (-1, 0, 13, 14, 15):
+        _log_directly(client, outfit["id"], days_ago(offset))
+
+    today = days_ago(0)
+    with db(client) as session:
+        days = sorted((today - entry.day).days for entry in _history(session, today, 14))
+        assert session.exec(select(WearLog)).all()
+
+    assert days == [0, 13]

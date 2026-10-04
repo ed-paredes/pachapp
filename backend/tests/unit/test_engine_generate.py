@@ -9,7 +9,7 @@ from datetime import timedelta
 import pytest
 from engine_fakes import TODAY, basic_wardrobe, garment, ids_of, request, synthetic_wardrobe
 
-from engine import EngineSettings, WornOutfit, generate_outfits
+from engine import EngineSettings, InvalidRequest, WornOutfit, generate_outfits
 from engine import constants as C
 from shared.enums import GarmentCategory as Cat
 
@@ -250,6 +250,16 @@ def test_the_seed_does_not_change_a_result_without_ties() -> None:
     )
 
 
+@pytest.mark.parametrize("seed", [-1, C.SEED_MAX + 1])
+def test_an_out_of_range_seed_is_an_invalid_request(seed: int) -> None:
+    with pytest.raises(InvalidRequest):
+        generate_outfits(request(basic_wardrobe(), seed=seed))
+
+
+def test_the_largest_valid_seed_is_accepted() -> None:
+    assert generate_outfits(request(basic_wardrobe(), seed=C.SEED_MAX))
+
+
 def test_the_seed_breaks_exact_ties_deterministically() -> None:
     clones = [garment(f"t{i}", Cat.top) for i in range(12)]
     wardrobe = [*clones, garment("b", Cat.bottom), garment("s", Cat.shoes)]
@@ -353,6 +363,36 @@ def test_non_neutral_colour_explanations() -> None:
 
     assert _explain(weights, one) == "Rojo con neutros: una combinación fácil."
     assert _explain(weights, analogous) == "Rojo y naranja: tonos análogos que armonizan."
+
+
+def _loud_pair(hue_a: float, hue_b: float) -> list:
+    from shared.enums import GarmentPattern
+
+    striped = GarmentPattern.striped
+    return [
+        garment("t", Cat.top, colour="rojo", hue=hue_a, pattern=striped),
+        garment("b", Cat.bottom, colour="azul", hue=hue_b, pattern=striped),
+        garment("s", Cat.shoes),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("hue_b", "relation"),
+    [
+        (40, "tonos análogos que armonizan"),
+        (200, "colores complementarios con contraste"),
+        (90, "un contraste de color atrevido"),
+    ],
+)
+def test_colour_explanation_follows_the_hue_not_the_loud_pattern_penalty(
+    hue_b: float, relation: str
+) -> None:
+    """Two striped garments lower the colour score by 0.4: the sentence must
+    still describe the hue relation (an analogous 0.9 -> 0.5 is not complementary)."""
+    weights = EngineSettings(1, 0, 0, 0)
+
+    # the "other" case scores 0 after the penalty, so a second sentence may follow
+    assert _explain(weights, _loud_pair(20, hue_b)).startswith(f"Rojo y azul: {relation}.")
 
 
 def test_novelty_led_explanation_names_the_least_recently_worn_garment() -> None:

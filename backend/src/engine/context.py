@@ -16,7 +16,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from engine import constants as C
-from engine.types import EngineGarment, GenerationRequest
+from engine.types import EngineGarment, GenerationRequest, InvalidRequest
 from shared.enums import GarmentCategory, GarmentPattern, GarmentStatus
 
 Array = NDArray[Any]
@@ -62,6 +62,8 @@ def build_context(request: GenerationRequest, garments: list[EngineGarment]) -> 
     index = {g.id: i for i, g in enumerate(garments)}
     settings = request.settings
 
+    if not 0 <= request.seed <= C.SEED_MAX:
+        raise InvalidRequest(f"La semilla debe ser un número entre 0 y {C.SEED_MAX}.")
     rng = np.random.default_rng(request.seed)
     tiebreak = rng.random(n)
 

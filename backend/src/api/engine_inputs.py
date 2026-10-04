@@ -7,6 +7,7 @@ no-repeat window, the liked/disliked garment pairs and the settings row.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date, timedelta
 from itertools import combinations
@@ -26,11 +27,22 @@ from shared.enums import GarmentStatus
 from shared.models import Garment, Outfit, OutfitItem, Setting, WearLog
 from shared.schemas import ColorEntry
 
+logger = logging.getLogger(__name__)
+
 
 def _engine_garment(row: Garment) -> EngineGarment:
     embedding = None
-    if row.embedding is not None and len(row.embedding) % 4 == 0:
-        embedding = tuple(np.frombuffer(row.embedding, dtype=np.float32).tolist())
+    if row.embedding is not None:
+        size = len(row.embedding)
+        if size % 4 == 0 and (row.embedding_dim is None or size == row.embedding_dim * 4):
+            embedding = tuple(np.frombuffer(row.embedding, dtype=np.float32).tolist())
+        else:
+            logger.warning(
+                "garment %s: embedding blob of %d bytes does not match embedding_dim=%s; ignored",
+                row.id,
+                size,
+                row.embedding_dim,
+            )
     return EngineGarment(
         id=row.id,
         category=row.category,
@@ -64,9 +76,10 @@ def _items_by_outfit(session: Session, outfit_ids: set[str]) -> dict[str, set[st
 
 
 def _history(session: Session, today: date, no_repeat_days: int) -> tuple[WornOutfit, ...]:
+    # The engine's no-repeat rule: `0 <= days_ago < no_repeat_days`, never a future log.
     logs = session.exec(
         select(WearLog).where(
-            WearLog.date > today - timedelta(days=max(no_repeat_days, 0)) - timedelta(days=1)
+            WearLog.date > today - timedelta(days=max(no_repeat_days, 0)), WearLog.date <= today
         )
     ).all()
     items = _items_by_outfit(session, {log.outfit_id for log in logs})

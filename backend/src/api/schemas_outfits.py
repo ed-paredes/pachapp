@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from engine.constants import SEED_MAX
 from shared.enums import OutfitSlot, OutfitSource
 from shared.schemas import ScoreBreakdown
 
@@ -18,7 +19,9 @@ class GenerateOutfitsRequest(BaseModel):
 
     fixed_garment_ids: list[UUID] | None = None  # slot inferred from the category
     replace_garment_id: UUID | None = None  # left out of every proposal
-    seed: int | None = None  # tie-break only (ENG-REQ-019); `null` = 0
+    seed: int | None = Field(
+        default=None, ge=0, le=SEED_MAX
+    )  # tie-break only (ENG-REQ-019); `null` = 0
 
 
 class OutfitItemProposal(BaseModel):
