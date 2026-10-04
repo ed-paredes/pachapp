@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     ml_knn_min_verified: int = Field(default=30, gt=0)
     ml_llm_fallback: bool = False
     ml_eval_dir: Path | None = None
+    # Human-parsing models used by the garment cutout evaluation (U5). Optional commit
+    # pins (VIS-REQ-002 spirit): unset means "latest at download time", and the
+    # evaluation report records which revision was loaded. A moving ref is rejected.
+    ml_parse_b3_revision: str | None = None
+    ml_parse_b2_revision: str | None = None
 
     @field_validator("data_dir", mode="before")
     @classmethod
@@ -157,6 +162,13 @@ class Settings(BaseSettings):
             self.ml_embed_revision, env_var="PACHAPP_ML_EMBED_REVISION", req_id="VIS-REQ-002"
         )
         _reject_moving_revision(self.ml_embed_revision, env_var="PACHAPP_ML_EMBED_REVISION")
+
+        for value, env_var in (
+            (self.ml_parse_b3_revision, "PACHAPP_ML_PARSE_B3_REVISION"),
+            (self.ml_parse_b2_revision, "PACHAPP_ML_PARSE_B2_REVISION"),
+        ):
+            if value is not None:
+                _reject_moving_revision(value, env_var=env_var)
 
         # The vision LLM is an opt-in fallback (08-local-vision.md,
         # VIS-REQ-021): its three settings are required, fail-fast, only when
