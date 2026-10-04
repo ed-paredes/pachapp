@@ -33,13 +33,13 @@ formality, style score from formality, style_tags and embeddings). The ML code a
 
 ## Tasks
 
-- [ ] **T1** `ai_attributes` worker step: embed the cutout (or the preprocessed image if no cutout), run the
+- [x] **T1** `ai_attributes` worker step: embed the cutout (or the preprocessed image if no cutout), run the
   zero-shot classifier, write the attributes and `ai_confidence`, set `needs_review` per VIS-REQ-016, never
   overwrite user-set fields; respect the API/ML process boundary (VIS-REQ-005) and keep `make test` offline
   (VIS-REQ-029: synthetic embeddings/fakes in tests).
-- [ ] **T2** `embedding` worker step: persist the image embedding computed in T1 (no second inference),
+- [x] **T2** `embedding` worker step: persist the image embedding computed in T1 (no second inference),
   `embedding_model`, `embedding_dim`; `consolidate` behaviour unchanged except for the new fields.
-- [ ] **T3** Backfill command + `make` target for existing garments (idempotent, skips user-set fields, reports
+- [x] **T3** Backfill command + `make` target for existing garments (idempotent, skips user-set fields, reports
   counts), with tests.
 - [ ] **T4** Owner check on real data: run the backfill on the owner's wardrobe and upload a photo from the app;
   attributes and embeddings filled, Revisión shows them.
@@ -73,6 +73,24 @@ worktree `~/code/pachapp-worktrees/a15` (the main checkout is busy with `feat/of
 - 2026-10-04: groundwork exploration (delegated) for the outfit engine found the deferred steps; owner chose A15
   first. Feature document created.
 
+- 2026-10-04: T1 `2cd931c`, T2 `0b644d0`, T3 `28d2b46` (delegated writer). T1: `worker/ai.py` (lazy models once per
+  process, fakes injected in tests) + `steps/ai_attributes.py`: embed the cutout once (fallbacks: preprocessed
+  image, stored file), zero-shot at alpha = 1, `ai_confidence[field] = {value, confidence, source: "zero_shot"}`,
+  `classify()` takes the live `setting.needs_review_threshold`; needs_review only raised (never cleared) for a
+  low-confidence category/pattern the step wrote; user-owned fields (source user, an `ai_correction` row, or a
+  hand-typed value without ai_confidence) never overwritten; subcategory only when the step wrote category. T2:
+  `steps/embedding.py` persists the T1 vector (computes it on a retry), float32 bytes, `embedding_model`
+  `id@revision`, `embedding_dim` from the model; consolidate keeps the fields; re-run idempotent. T3:
+  `worker/backfill.py` + `make backfill-ai` (ENV_FILE honoured; `worker.reembed` name left free): every status,
+  fills empty non-user fields, re-embeds on model change without rewriting attributes, skips garments with an
+  open job, re-reads before writing, per-garment failure isolation (exit 1), aborts if the loaded model id
+  differs, prints counts; batches through `ml/pipeline.py`; stop the worker first. Checks (backend; the
+  worktree has no app node_modules): ruff, ruff format, ty, pytest 470 -> 475 -> 487. RED probes per task.
+  Writer smoke on a scratch copy of the owner's test data: 4 garments processed in 25.3 s incl. model load,
+  768-d embeddings; all four `top`/`solid`, 2 of 4 needs_review, 2 of 4 empty style_tags (uncalibrated
+  threshold, open question). Per-garment time (VIS-REQ-026 < 2 s) not measured. Parent spot check: ruff, ruff
+  format, ty clean; pytest 487 passed.
+
 ## Next step
 
-T1-T3 with one delegated writer.
+T4 on the owner's data (backup the db first), native review of the branch, PR.
