@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, type ImageStyle, useWindowDimensions, View } from 'react-native';
 
 import { useImageTransition } from '@/hooks/useImageTransition';
+import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { fitWithin, type Size } from '@/lib/fit-within';
 import { colors, radii, spacing, tint } from '@/theme';
 
@@ -52,7 +53,7 @@ export function GarmentImage({ uri, tintColor, testID, accessibilityLabel }: Gar
       source={{ uri }}
       style={[styles.fill, tintColor ? styles.transparent : null, tintColor ? webShadow : null]}
       contentFit="contain"
-      cachePolicy="memory-disk"
+      cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
       transition={{ duration, effect: 'cross-dissolve' }}
       accessibilityLabel={accessibilityLabel}
       testID={testID}
@@ -108,7 +109,7 @@ export function HeroImage({
           tintColor ? [styles.transparent, webShadow] : { backgroundColor: colors.plinth },
         ]}
         contentFit="contain"
-        cachePolicy="memory-disk"
+        cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
         transition={{ duration, effect: 'cross-dissolve' }}
         onLoad={(event) =>
           setLoaded({ uri, size: { width: event.source.width, height: event.source.height } })

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
+import { OfflineNote, useOfflineBlock } from '@/components/OfflineBanner';
 import { Button } from '@/components/ui';
 import { colors, fontFamilies, radii } from '@/theme';
 
@@ -23,6 +24,7 @@ const GALLERY = {
  * no drag-and-drop affordance because the upload path only takes what the pickers return.
  */
 export function UploadZone({ onCamera, onGallery, error }: UploadZoneProps) {
+  const offline = useOfflineBlock();
   return (
     <View style={styles.zone} testID="upload-zone">
       <View style={styles.mark}>
@@ -33,15 +35,17 @@ export function UploadZone({ onCamera, onGallery, error }: UploadZoneProps) {
         Haz una foto o elige varias de la galería. Puedes seguir añadiendo mientras se procesan.
       </Text>
       <View style={styles.actions}>
-        <Button label="Hacer foto" icon={CAMERA} onPress={onCamera} />
+        <Button label="Hacer foto" icon={CAMERA} disabled={offline} onPress={onCamera} />
         <Button
           label="Galería"
           accessibilityLabel="Elegir de la galería"
           icon={GALLERY}
           variant="secondary"
+          disabled={offline}
           onPress={onGallery}
         />
       </View>
+      <OfflineNote centered />
       {error ? (
         <Text style={styles.error} accessibilityRole="alert">
           {error}

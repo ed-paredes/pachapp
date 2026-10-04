@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Pill } from '@/components/ui';
 import { pressFeedback } from '@/components/ui/feedback';
+import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { colors, fontFamilies, radii, shadows, tint } from '@/theme';
 
 export type RankItem = {
@@ -46,7 +47,13 @@ export function RankCard({ title, items, onOpen, onSuggest, testID }: RankCardPr
           >
             <View style={[styles.thumb, { backgroundColor: tint(item.color) }]}>
               {item.thumbUri ? (
-                <Image source={{ uri: item.thumbUri }} style={styles.image} contentFit="contain" />
+                <Image
+                  source={{ uri: item.thumbUri }}
+                  style={styles.image}
+                  contentFit="contain"
+                  cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
+                  testID={`rank-thumb-${item.id}`}
+                />
               ) : null}
             </View>
             <View style={styles.text}>

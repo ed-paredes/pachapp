@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, Text, View, type ImageStyle, type ViewStyle } from 'react-native';
 
 import { useImageTransition } from '@/hooks/useImageTransition';
+import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { colors, fontFamilies, radii, shadows, tint } from '@/theme';
 
@@ -119,7 +120,7 @@ export function LookItems({ pieces, tilted = false, flat = false }: LookItemsPro
                 source={{ uri: piece.imageUri }}
                 style={[styles.image, flat || Platform.OS !== 'web' ? null : webShadow]}
                 contentFit="contain"
-                cachePolicy="memory-disk"
+                cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
                 transition={{ duration, effect: 'cross-dissolve' }}
                 accessibilityLabel={piece.name}
                 testID={`look-piece-${piece.garmentId}`}
@@ -213,7 +214,7 @@ export function LookCanvas({
                 source={{ uri: piece.imageUri as string }}
                 style={styles.accessoryImage}
                 contentFit="contain"
-                cachePolicy="memory-disk"
+                cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
                 accessibilityLabel={piece.name}
               />
             </View>

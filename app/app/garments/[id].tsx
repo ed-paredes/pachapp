@@ -47,6 +47,7 @@ import { useGarment } from '@/hooks/useGarments';
 import { useJob } from '@/hooks/useJob';
 import { formatLastWorn } from '@/lib/format-date';
 import { garmentName } from '@/lib/garment-name';
+import { OfflineNote, useOfflineBlock } from '@/components/OfflineBanner';
 import { imageUrl } from '@/lib/image-url';
 import { categoryLabel, PATTERN_LABELS, STYLE_LABELS } from '@/lib/labels';
 import {
@@ -137,7 +138,16 @@ function Detail({ garment }: { garment: Garment }) {
   const reactivate = useReactivateGarment(id);
   const retry = useRetryGarment(id);
   const remove = useDeleteGarment(id);
+  const offline = useOfflineBlock();
   const [confirming, setConfirming] = useState(false);
+  // Losing the backend while the confirmation is open closes it: deleting needs the server, and
+  // the offline note above the actions already says why. The confirm button is also disabled
+  // for the render in between.
+  const [wasOffline, setWasOffline] = useState(offline);
+  if (offline !== wasOffline) {
+    setWasOffline(offline);
+    if (offline) setConfirming(false);
+  }
   const [actionError, setActionError] = useState<string | null>(null);
 
   const jobId = garment.job?.id;
@@ -166,6 +176,8 @@ function Detail({ garment }: { garment: Garment }) {
   };
 
   const confirmDelete = async () => {
+    // Never send a delete the app already knows cannot reach the backend.
+    if (offline) return;
     setActionError(null);
     try {
       await remove.mutateAsync();
@@ -227,7 +239,7 @@ function Detail({ garment }: { garment: Garment }) {
           <Button
             label="Reintentar procesamiento"
             variant="secondary"
-            disabled={retry.isPending}
+            disabled={retry.isPending || offline}
             onPress={() => void run(() => retry.mutateAsync())}
           />
         </Card>
@@ -252,13 +264,15 @@ function Detail({ garment }: { garment: Garment }) {
         </Text>
       ) : null}
 
+      <OfflineNote />
+
       <View style={styles.actions}>
         <ActionTile icon={ICONS.review} label="Revisar" onPress={edit} />
         {garment.status === 'laundry' ? (
           <ActionTile
             icon={ICONS.activate}
             label="Marcar como activa"
-            disabled={patch.isPending}
+            disabled={patch.isPending || offline}
             onPress={() =>
               void run(() => patch.mutateAsync({ status: 'active' }), 'Marcada como activa')
             }
@@ -268,7 +282,7 @@ function Detail({ garment }: { garment: Garment }) {
             icon={ICONS.laundry}
             label="A lavar"
             accessibilityLabel="Marcar como lavando"
-            disabled={patch.isPending}
+            disabled={patch.isPending || offline}
             onPress={() =>
               void run(() => patch.mutateAsync({ status: 'laundry' }), 'Marcada como lavando')
             }
@@ -278,14 +292,14 @@ function Detail({ garment }: { garment: Garment }) {
           <ActionTile
             icon={ICONS.unarchive}
             label="Reactivar"
-            disabled={reactivate.isPending}
+            disabled={reactivate.isPending || offline}
             onPress={() => void run(() => reactivate.mutateAsync(), 'Prenda reactivada')}
           />
         ) : (
           <ActionTile
             icon={ICONS.archive}
             label="Archivar"
-            disabled={archive.isPending}
+            disabled={archive.isPending || offline}
             onPress={() => void run(() => archive.mutateAsync(), 'Prenda archivada')}
           />
         )}
@@ -300,12 +314,12 @@ function Detail({ garment }: { garment: Garment }) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Eliminar definitivamente"
-              accessibilityState={{ disabled: remove.isPending }}
-              disabled={remove.isPending}
+              accessibilityState={{ disabled: remove.isPending || offline }}
+              disabled={remove.isPending || offline}
               onPress={() => void confirmDelete()}
               style={(state) => [
                 styles.danger,
-                remove.isPending && styles.disabled,
+                (remove.isPending || offline) && styles.disabled,
                 pressFeedback(state),
               ]}
             >
@@ -317,8 +331,10 @@ function Detail({ garment }: { garment: Garment }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Eliminar prenda"
+          accessibilityState={{ disabled: offline }}
+          disabled={offline}
           onPress={() => setConfirming(true)}
-          style={styles.deleteLink}
+          style={[styles.deleteLink, offline && styles.disabled]}
         >
           <Text style={styles.deleteText}>Eliminar prenda</Text>
         </Pressable>

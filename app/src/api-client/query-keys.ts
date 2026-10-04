@@ -20,4 +20,6 @@ export const queryKeys = {
     detail: (id: string) => ['jobs', id] as const,
   },
   settings: ['settings'] as const,
+  /** Bookkeeping of the offline sync (native only); persisted with the cache. */
+  sync: { last: ['sync', 'last'] as const },
 };

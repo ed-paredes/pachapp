@@ -1,11 +1,13 @@
-import { QueryClientProvider } from '@tanstack/react-query';
+import { useIsRestoring } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
+import { OfflineChrome } from '@/components/OfflineBanner';
 import { ToastProvider, WebFocusRing } from '@/components/ui';
+import { OfflineProvider } from '@/offline/OfflineProvider';
 import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
 
 // Keep the splash up until the fonts are ready. Failing to do so only means a
@@ -13,8 +15,18 @@ import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
+  return (
+    <OfflineProvider client={queryClient}>
+      <AppShell />
+    </OfflineProvider>
+  );
+}
+
+function AppShell() {
   const [fontsLoaded, fontError] = useFonts(fontAssets);
-  const ready = fontsLoaded || fontError !== null;
+  // On native the saved cache is read before the first screen, so screens never flash an empty state.
+  const restoring = useIsRestoring();
+  const ready = (fontsLoaded || fontError !== null) && !restoring;
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
@@ -24,8 +36,8 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
+    <ToastProvider>
+      <OfflineChrome>
         <WebFocusRing />
         <Stack
           screenOptions={{
@@ -49,7 +61,7 @@ export default function RootLayout() {
           {/* Ajustes draws its own back button and title, like Revisión. */}
           <Stack.Screen name="settings" options={{ headerShown: false }} />
         </Stack>
-      </ToastProvider>
-    </QueryClientProvider>
+      </OfflineChrome>
+    </ToastProvider>
   );
 }

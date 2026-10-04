@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { queryKeys, type GarmentFilters } from '@/api-client/query-keys';
+import { queryKeys } from '@/api-client/query-keys';
 import type { components } from '@/api-client/schema';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
@@ -26,17 +26,22 @@ import {
   type SegmentedOption,
   Title,
 } from '@/components/ui';
+import { useIsOffline } from '@/offline/reachability';
 import { flattenGarmentPages, useGarments, useInfiniteGarments } from '@/hooks/useGarments';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/labels';
+import {
+  ALL_STATUS,
+  armarioFilters,
+  countFilters,
+  DEFAULT_STATUS,
+  type CountFilters,
+} from '@/lib/wardrobe-filters';
 import { CONTENT_MAX_WIDTH, gridColumns, spacing } from '@/theme';
 
 type Category = components['schemas']['GarmentCategory'];
 type GarmentStatus = components['schemas']['GarmentStatus'];
-type CountFilters = Pick<GarmentFilters, 'status' | 'category' | 'needs_review'>;
 
-const PAGE_SIZE = 50;
 const GAP = spacing.md;
-const DEFAULT_STATUS: GarmentStatus[] = ['active', 'laundry'];
 
 /**
  * `null` = default view: active + laundry together (UI-REQ-004). No segment is highlighted
@@ -55,13 +60,13 @@ const STATUS_SEGMENTS: { value: SegmentValue; label: string }[] = [
 
 function statusFilter(choice: StatusChoice): GarmentStatus[] {
   if (choice === null) return DEFAULT_STATUS;
-  if (choice === 'all') return ['active', 'laundry', 'archived'];
+  if (choice === 'all') return ALL_STATUS;
   return [choice];
 }
 
 /** Total of a list query: one cheap request (page size 1) per counter. */
 function useTotal(filters: CountFilters): number | undefined {
-  return useGarments({ ...filters, page_size: 1 }).data?.total;
+  return useGarments(countFilters(filters)).data?.total;
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -89,19 +94,18 @@ export default function WardrobeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const status = statusFilter(statusChoice);
-  const filters: Omit<GarmentFilters, 'page'> = {
+  const filters = armarioFilters({
     status,
-    sort: 'created_at',
-    order: 'desc',
-    page_size: PAGE_SIZE,
-    ...(category ? { category } : {}),
-    ...(needsReview ? { needs_review: true } : {}),
-  };
+    category: category ?? undefined,
+    needs_review: needsReview,
+  });
   const query = useInfiniteGarments(filters);
   const filtered = category !== null || statusChoice !== null || needsReview;
   const items = flattenGarmentPages(query.data?.pages);
   // A failed next page / refresh / background poll after the first page loaded.
-  const softError = query.isError && query.data ? query.error : null;
+  // Offline the banner already says so, so a failed refresh adds no second warning.
+  const offline = useIsOffline();
+  const softError = query.isError && query.data && !offline ? query.error : null;
 
   // Eyebrow numbers, status counters (scoped to the category) and the review banner.
   const review = needsReview ? undefined : { needs_review: true as const };
@@ -117,7 +121,7 @@ export default function WardrobeScreen() {
     archived: useTotal({ ...scope, status: ['archived'] }),
     all: useTotal({ ...scope, status: statusFilter('all') }),
   };
-  const reviewQuery = useGarments({ status: DEFAULT_STATUS, ...review, page_size: 1 });
+  const reviewQuery = useGarments(countFilters({ status: DEFAULT_STATUS, ...review }));
   const pendingReview = needsReview ? 0 : (reviewQuery.data?.total ?? 0);
 
   const clearFilters = () => {
