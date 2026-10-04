@@ -5,7 +5,19 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-FORBIDDEN_MODULES = {"sqlite3", "sqlmodel", "httpx", "sqlalchemy"}
+FORBIDDEN_MODULES = {
+    "sqlite3",
+    "sqlmodel",
+    "httpx",
+    "sqlalchemy",
+    # No ML stack either: the engine is numpy-only (D1) and API-safe.
+    "ml",
+    "torch",
+    "open_clip",
+    "rembg",
+    "transformers",
+    "sklearn",
+}
 
 
 def _iter_engine_source_files() -> list[Path]:
