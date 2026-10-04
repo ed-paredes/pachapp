@@ -80,6 +80,7 @@ Todo corre como procesos locales en el PC del usuario (sin contenedores, sin ser
 | `06-feedback-history.md` | Acciones de feedback, contrato de `POST /outfits` para persistir una propuesta, política de persistencia de outfits, `wear_log`, favoritos, historial/estadísticas. |
 | `07-app-ui.md` | Pantallas, navegación, estados, renderizado de outfits con capas, diferencias web/nativo, polling de jobs. |
 | `08-local-vision.md` | Recorte (BiRefNet), atributos (zero-shot SigLIP + kNN, LLM solo como respaldo opcional) y embedding, paquete `ml`, settings `PACHAPP_ML_*`. |
+| `09-virtual-tryon.md` | Probador virtual "Verlo puesto" con CatVTON (borrador, uso personal): spike obligatorio, maniquí, pasadas por prenda, caché de renders, jobs en el worker, API `/tryon`, vista Collage / Puesto. |
 
 ## Tabla de trazabilidad (decisión de c4.md → secciones de spec)
 
