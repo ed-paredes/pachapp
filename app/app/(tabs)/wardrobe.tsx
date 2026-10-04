@@ -26,6 +26,7 @@ import {
   type SegmentedOption,
   Title,
 } from '@/components/ui';
+import { useIsOffline } from '@/offline/reachability';
 import { flattenGarmentPages, useGarments, useInfiniteGarments } from '@/hooks/useGarments';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/labels';
 import { CONTENT_MAX_WIDTH, gridColumns, spacing } from '@/theme';
@@ -101,7 +102,9 @@ export default function WardrobeScreen() {
   const filtered = category !== null || statusChoice !== null || needsReview;
   const items = flattenGarmentPages(query.data?.pages);
   // A failed next page / refresh / background poll after the first page loaded.
-  const softError = query.isError && query.data ? query.error : null;
+  // Offline the banner already says so, so a failed refresh adds no second warning.
+  const offline = useIsOffline();
+  const softError = query.isError && query.data && !offline ? query.error : null;
 
   // Eyebrow numbers, status counters (scoped to the category) and the review banner.
   const review = needsReview ? undefined : { needs_review: true as const };

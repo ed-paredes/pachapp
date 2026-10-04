@@ -8,6 +8,8 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
+import { apiClient } from '@/api-client/http-client';
+
 import {
   cacheBuster,
   createPersister,
@@ -15,7 +17,11 @@ import {
   PERSIST_MAX_AGE_MS,
   shouldPersistQuery,
 } from './persistence';
+import { getBackendStatus, subscribeBackendStatus } from './reachability';
 import { syncWardrobe } from './sync';
+
+/** How often to look for the backend while it is unreachable. */
+export const RECONNECT_INTERVAL_MS = 15000;
 
 /**
  * Re-syncs when the app comes back to the foreground after a failed run (the PC was off when it
@@ -38,6 +44,47 @@ function WardrobeSyncer() {
     });
     return () => subscription.remove();
   }, [client, restoring]);
+
+  return null;
+}
+
+/**
+ * While the backend is unreachable, asks it for `/health` every 15 s and when the app returns to
+ * the foreground. The first answer flips the status back to online (the request itself reports
+ * it, see `trackedFetch`); then the screens refresh and the wardrobe syncs again, no restart.
+ */
+function ReconnectWatcher() {
+  const client = useQueryClient();
+
+  useEffect(() => {
+    let offlineBefore = getBackendStatus() === 'offline';
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const ping = () => void apiClient.GET('/health').catch(() => undefined);
+    const stop = () => {
+      clearInterval(timer);
+      timer = undefined;
+    };
+    const apply = () => {
+      const offline = getBackendStatus() === 'offline';
+      if (offline && !timer) timer = setInterval(ping, RECONNECT_INTERVAL_MS);
+      if (!offline) stop();
+      if (offlineBefore && !offline) {
+        void client.refetchQueries({ type: 'active' });
+        void syncWardrobe(client);
+      }
+      offlineBefore = offline;
+    };
+    apply();
+    const unsubscribe = subscribeBackendStatus(apply);
+    const appState = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && getBackendStatus() === 'offline') ping();
+    });
+    return () => {
+      unsubscribe();
+      appState.remove();
+      stop();
+    };
+  }, [client]);
 
   return null;
 }
@@ -71,6 +118,7 @@ export function OfflineProvider({
   return (
     <PersistQueryClientProvider client={client} persistOptions={persistOptions}>
       <WardrobeSyncer />
+      <ReconnectWatcher />
       {children}
     </PersistQueryClientProvider>
   );

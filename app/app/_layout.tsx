@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/api-client/query-client';
+import { OfflineChrome } from '@/components/OfflineBanner';
 import { ToastProvider, WebFocusRing } from '@/components/ui';
 import { OfflineProvider } from '@/offline/OfflineProvider';
 import { colors, fontAssets, fontFamilies, fontSizes } from '@/theme';
@@ -36,29 +37,31 @@ function AppShell() {
 
   return (
     <ToastProvider>
-      <WebFocusRing />
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.plinth },
-          headerShadowVisible: false,
-          headerTintColor: colors.olive,
-          headerTitleStyle: {
-            fontFamily: fontFamilies.display,
-            fontSize: fontSizes.title,
-            color: colors.charcoal,
-          },
-          contentStyle: { backgroundColor: colors.stone },
-        }}
-      >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* Revisión draws its own back button, like Detalle. */}
-        <Stack.Screen name="review/[id]" options={{ headerShown: false }} />
-        {/* Detalle draws its own back button over the hero. */}
-        <Stack.Screen name="garments/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
-        {/* Ajustes draws its own back button and title, like Revisión. */}
-        <Stack.Screen name="settings" options={{ headerShown: false }} />
-      </Stack>
+      <OfflineChrome>
+        <WebFocusRing />
+        <Stack
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.plinth },
+            headerShadowVisible: false,
+            headerTintColor: colors.olive,
+            headerTitleStyle: {
+              fontFamily: fontFamilies.display,
+              fontSize: fontSizes.title,
+              color: colors.charcoal,
+            },
+            contentStyle: { backgroundColor: colors.stone },
+          }}
+        >
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          {/* Revisión draws its own back button, like Detalle. */}
+          <Stack.Screen name="review/[id]" options={{ headerShown: false }} />
+          {/* Detalle draws its own back button over the hero. */}
+          <Stack.Screen name="garments/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="favorites" options={{ title: 'Favoritos' }} />
+          {/* Ajustes draws its own back button and title, like Revisión. */}
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+        </Stack>
+      </OfflineChrome>
     </ToastProvider>
   );
 }

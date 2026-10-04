@@ -32,7 +32,7 @@ outfit engine, iOS.
 
 ## Tasks
 
-- [ ] **O1** Persisted query cache, native only. `@tanstack/react-query-persist-client` +
+- [x] **O1** Persisted query cache, native only. `@tanstack/react-query-persist-client` +
   `@tanstack/query-async-storage-persister` (versions matching `@tanstack/react-query` ^5.104) over
   `@react-native-async-storage/async-storage` (already a dependency). `PersistQueryClientProvider` on native,
   plain provider on web. maxAge ~30 days, `gcTime` >= maxAge for persisted queries, `buster` tied to the app
@@ -40,10 +40,10 @@ outfit engine, iOS.
   lists; never jobs or in-flight processing state. When the backend is reachable on native, sync the whole
   wardrobe once per app start (all list pages + details, bounded concurrency) so unopened garments work
   offline. Jest: AsyncStorage mock; tests that web never persists and native restores.
-- [ ] **O2** Offline images, native only: garment thumbnails and cutouts stored on disk (expo-image disk cache
+- [x] **O2** Offline images, native only: garment thumbnails and cutouts stored on disk (expo-image disk cache
   policy + prefetch during the O1 sync, or expo-file-system download if the cache is not reliable); images
   render from disk with the backend down.
-- [ ] **O3** Offline UX, native only (UI task: frontend-design + ux-copy; critique + a11y on screenshots).
+- [x] **O3** Offline UX, native only (UI task: frontend-design + ux-copy; critique + a11y on screenshots).
   Detect "backend unreachable" (network error, not HTTP errors); show a calm banner with the last sync time
   (e.g. "Sin conexión con tu armario · mostrando lo guardado el 4 oct"); disable mutations (upload, edit,
   wear, laundry, archive, delete, settings) with an explanation; cached data is never replaced by full-screen
@@ -76,13 +76,39 @@ slice (O1+O2, then O3, then O4) on branch `feat/offline-app` from `main` `c57d9c
 ## Routes
 
 - O1-O3: delegated writer (2+ non-trivial files each), one writer at a time, one commit per task.
-- O4: decided at O4 (environment setup needs owner authorization for downloads/installs).
+- O4: delegated writer (script + config + Makefile + README; 4+ files). Build run by the parent via `make android-apk`.
 
 ## Progress
 
 - 2026-10-04: scope agreed with the owner (hybrid, read-only, Android APK compiled locally). Feature document
   created.
 
+- 2026-10-04: O1 `66238d4`, O2 `15ce70f`, O3 `16950b4` (delegated writer). O1: native-only
+  `PersistQueryClientProvider` over AsyncStorage (`@tanstack/react-query-persist-client` and
+  `@tanstack/query-async-storage-persister` ^5.104.1), maxAge 30 days, buster = app version + schema, persisted
+  families garment lists/details/settings/sync stamp with `gcTime: Infinity` (30 days overflows the JS timer and
+  collected restored queries at once), splash held while restoring; sync after restore (5 Armario infinite lists,
+  counters, review banner, category counts, Hoy/Historial lists, settings, every detail; 4 concurrent;
+  single-flight; stamp only on full success). O2: one `GARMENT_IMAGE_CACHE_POLICY = 'memory-disk'`; the sync
+  prefetches missing thumbs/cutouts (`getCachePathAsync` + `Image.prefetch(..., 'disk')`, batches of 20). O3:
+  reachability at the HTTP layer (any response = online; rejected fetch or 15 s GET timeout = offline;
+  `GET /health` ping every 15 s and on foreground while offline; recover refetches and resyncs); banner "Sin
+  conexión con tu armario. Mostrando lo guardado <fecha>." announced once; mutations disabled with "Podrás hacer
+  cambios cuando vuelva la conexión." (Detalle actions, Revisión, Ajustes, Añadir); data wins over errors on Hoy,
+  Ajustes, Armario; persist any query with data (a status-based predicate dropped data after an offline
+  refetch). Checks: prettier/lint/typecheck clean; jest 281 -> 291 -> 315/315; many RED probes (several first
+  passed vacuously and the assertions were fixed). Screenshots (web with a temporary uncommitted flag + mock API):
+  scratchpad `pw/offline/`; reviewed against critique/a11y criteria by the writer (formal skill passes not run).
+  Parent spot check: jest 315/315; `/health` exists (backend `main.py:57`); screenshots read back.
+  Authored lines ~1,900 (O1 ~760, O2 ~228, O3 ~925), well over the ~400 heuristic; review in slices.
+  Open (owner): sync frequency / manual "sync now"; ping and timeout 15 s; copy; queued uploads not disabled
+  offline; never-visited filter combinations not synced. Left: disabled secondary Button nearly invisible
+  (shared style); note not linked to disabled buttons (no hint prop). Risks to verify on the phone: Hermes
+  `new Request(request, { signal })`, SafeArea override under the native stack, expo-image cache APIs on Android,
+  AsyncStorage ~2 MB row limit (single key; ~600+ garments would need a chunked persister), image cache eviction,
+  image URLs tied to the LAN IP.
+
 ## Next step
 
-O1-O3 with one delegated writer.
+O4 (delegated writer), first build via `make android-apk`, then native reviews per slice (O1+O2, O3, O4) and
+the owner's phone test with the stack stopped.

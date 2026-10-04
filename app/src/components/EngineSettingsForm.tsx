@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { OfflineNote, useOfflineBlock } from '@/components/OfflineBanner';
 import { Button } from '@/components/ui';
 
 import { usePatchSettings, type SettingsPatch } from '@/hooks/useSettings';
@@ -37,6 +38,7 @@ const WEIGHT_KEYS = FIELDS.slice(0, 4).map((field) => field.key);
  */
 export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
   const patch = usePatchSettings();
+  const offline = useOfflineBlock();
   const [fields, setFields] = useState<EngineFields>(() => fieldsFromSettings(settings));
   const [errors, setErrors] = useState<Partial<Record<keyof EngineFields | 'form', string>>>({});
   const [saved, setSaved] = useState(false);
@@ -96,11 +98,12 @@ export function EngineSettingsForm({ settings }: { settings: EngineSettings }) {
         </Text>
       ) : null}
       {saved ? <Text style={styles.ok}>Ajustes guardados</Text> : null}
+      <OfflineNote />
       <View style={styles.action}>
         <Button
           label={patch.isPending ? 'Guardando…' : 'Guardar'}
           accessibilityLabel="Guardar"
-          disabled={patch.isPending}
+          disabled={patch.isPending || offline}
           onPress={save}
         />
       </View>

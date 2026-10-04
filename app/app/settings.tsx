@@ -42,13 +42,13 @@ export default function SettingsScreen() {
             </Text>
           </View>
           {settings.isPending ? <LoadingState /> : null}
-          {settings.isError ? (
+          {settings.isError && !settings.data ? (
             <ErrorState
               message="No se pudieron cargar los ajustes."
               onRetry={() => void settings.refetch()}
             />
           ) : null}
-          {settings.isSuccess ? <EngineSettingsForm settings={settings.data} /> : null}
+          {settings.data ? <EngineSettingsForm settings={settings.data} /> : null}
         </Card>
 
         <Card style={styles.section} testID="settings-connection">

@@ -25,10 +25,14 @@ export function cacheBuster(): string {
 /** Query families kept across restarts. Jobs and anything else stay in memory. */
 const PERSISTED_ROOTS = ['garments', 'settings', 'sync'];
 
-/** Only successful garment lists/details, settings and the sync stamp are written to disk. */
+/**
+ * Garment lists/details, settings and the sync stamp are written to disk once they hold data.
+ * The check is on the data, not on `status === 'success'`: a refetch that fails offline turns the
+ * status to `error` while the data stays, and dropping it then would wipe the saved copy.
+ */
 export function shouldPersistQuery(query: Pick<Query, 'queryKey' | 'state'>): boolean {
   return (
-    query.state.status === 'success' && PERSISTED_ROOTS.includes(String(query.queryKey[0] ?? ''))
+    query.state.data !== undefined && PERSISTED_ROOTS.includes(String(query.queryKey[0] ?? ''))
   );
 }
 
