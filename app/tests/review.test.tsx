@@ -1,5 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -457,15 +465,22 @@ describe('ReviewScreen (Revisión)', () => {
 
   it('shows loading, then an error with retry, and a 404 state', async () => {
     let fail = true;
-    globalThis.fetch = jest.fn((input: Request) =>
-      fail && new URL(input.url).pathname === '/garments/g1'
-        ? Promise.resolve(
-            json({ error: { code: 'E', message: 'Sin conexión', details: null } }, 500),
-          )
-        : handle(input),
-    ) as unknown as typeof fetch;
+    // The failing response waits for this gate, so the loading state is observable before it
+    // settles (an already-resolved fetch can land inside render's act on a cold run).
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = jest.fn(async (input: Request) => {
+      if (fail && new URL(input.url).pathname === '/garments/g1') {
+        await gate;
+        return json({ error: { code: 'E', message: 'Sin conexión', details: null } }, 500);
+      }
+      return handle(input);
+    }) as unknown as typeof fetch;
     await renderScreen();
     expect(screen.getByTestId('loading-state-spinner')).toBeTruthy();
+    await act(async () => release());
     expect(await screen.findByTestId('error-state')).toBeTruthy();
     fail = false;
     await fireEvent.press(screen.getByLabelText('Reintentar'));
