@@ -90,6 +90,7 @@ live list.
 | `migrate-new` | Create a migration: `make migrate-new name="add garment"` |
 | `gen-client`  | Regenerate `app/src/api-client/schema.ts` from OpenAPI    |
 | `ml-preload`  | Download and validate the vision models                   |
+| `android-apk` | Build the Android release APK on Windows                  |
 
 ## `make gen-client`
 
@@ -141,6 +142,38 @@ running in WSL (D13). This typically means:
   `PACHAPP_CORS_ORIGINS`.
 
 See `docs/specs/01-dev-tooling.md` for the full checklist and fallbacks.
+
+## Android app (offline viewing)
+
+A standalone release APK lets you browse the wardrobe from the phone without
+the stack running: the app is read-only offline and shows the data (and images)
+from its last sync. Mutations need the API.
+
+Prerequisites (Windows side, not WSL): Android Studio (provides the JDK and the
+SDK) and Node.js. Plug the phone in over USB with USB debugging enabled to
+install.
+
+```bash
+make android-apk                          # build only
+make android-apk ANDROID_ARGS="-Install"  # build and `adb install -r` on the phone
+make android-apk ANDROID_ARGS="-ApiUrl http://192.168.1.50:8000"
+make android-apk ANDROID_ARGS="-Clean"    # wipe the work dir, prebuild from scratch
+```
+
+The target calls `scripts/build-android.ps1` through `powershell.exe`; run that
+script directly from PowerShell with the same flags if you prefer. It mirrors
+`app/` into `%LOCALAPPDATA%\pachapp-android`, runs `expo prebuild` and Gradle
+there, and leaves `pachapp-<version>-<timestamp>.apk` plus `pachapp-latest.apk`
+in that folder.
+
+- The API URL is baked into the bundle at build time. By default it is
+  `EXPO_PUBLIC_API_BASE_URL` from the root `.env.lan`. When the PC's LAN IP
+  changes, rebuild with `-ApiUrl`; cached images are downloaded again.
+- Cleartext HTTP is enabled so the app can reach the LAN API.
+- The release APK is signed with the debug keystore (Expo template default),
+  which is fine for personal use.
+- The first build downloads Gradle and missing SDK/NDK pieces and is slow;
+  later builds reuse the work dir and are much faster.
 
 ## App design
 
