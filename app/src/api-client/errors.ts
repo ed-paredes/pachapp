@@ -46,3 +46,12 @@ export function unwrap<T>(result: { data?: T; error?: unknown; response: Respons
   }
   return data as T;
 }
+
+/**
+ * True when a request failed before the server answered (no connection, refused, timed out):
+ * `fetch` rejects with a `TypeError` or an abort error. Any HTTP answer, even a 5xx, is an
+ * `ApiError` and means the backend is reachable.
+ */
+export function isNetworkError(error: unknown): boolean {
+  return !(error instanceof ApiError);
+}

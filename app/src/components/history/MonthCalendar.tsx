@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/ui';
 import { pressFeedback } from '@/components/ui/feedback';
+import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { colors, fontFamilies, radii, tint } from '@/theme';
 
 export type CalendarDay = {
@@ -124,6 +125,7 @@ export function MonthCalendar({
                     source={{ uri: entry.garmentUri }}
                     style={styles.garment}
                     contentFit="contain"
+                    cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
                   />
                 ) : null}
               </View>

@@ -5,6 +5,7 @@ import { Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from 'rea
 import { IconSymbol } from '@/components/IconSymbol';
 import { pressFeedback } from '@/components/ui/feedback';
 import { useImageTransition } from '@/hooks/useImageTransition';
+import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { colors, fontFamilies, radii, shadows, tint } from '@/theme';
 
 const BACK_ICON = { ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' } as const;
@@ -84,7 +85,7 @@ export function GarmentHero({ uri, color, onBack, analyzed, sticky, testID }: Ga
             source={{ uri }}
             style={[styles.image, Platform.OS === 'web' ? (webShadow as object) : null]}
             contentFit="contain"
-            cachePolicy="memory-disk"
+            cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
             transition={{ duration, effect: 'cross-dissolve' }}
             testID={testID}
             accessibilityLabel="Foto de la prenda"
