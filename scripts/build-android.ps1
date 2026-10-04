@@ -107,7 +107,8 @@ New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 robocopy (Join-Path $Source 'app') $appDir /MIR /NFL /NDL /NJH /NJS /NP `
     /XD node_modules .expo android ios dist web-build coverage
 if ($LASTEXITCODE -gt 7) { throw "robocopy failed (exit code $LASTEXITCODE)." }
-$LASTEXITCODE = 0
+# Reset the global: a plain assignment would create a script-scoped copy that hides it.
+$global:LASTEXITCODE = 0
 
 Push-Location $appDir
 try {

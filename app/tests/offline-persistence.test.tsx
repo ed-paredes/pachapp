@@ -249,7 +249,8 @@ describe('saving the cache', () => {
 
     await expect(save(fullClient())).resolves.toBeUndefined();
 
-    expect(logged).toHaveBeenCalledTimes(2);
+    // The persister starts the write without awaiting it: wait for both attempts to be logged.
+    await waitFor(() => expect(logged).toHaveBeenCalledTimes(2));
     const entries = (await stored())?.clientState.queries ?? [];
     expect(entries).toHaveLength(1);
     expect(entries[0].queryKey[2]).toEqual({ status: ['laundry'] });
@@ -287,6 +288,23 @@ describe('saving the cache', () => {
       fetchFailureCount: 0,
       fetchFailureReason: null,
     });
+  });
+
+  it('settleQueries drops entries without data instead of restoring them as empty successes', () => {
+    const query = (key: string, state: object) => ({ queryKey: [key], queryHash: key, state });
+    const settled = settleQueries({
+      timestamp: 1,
+      buster: 'b',
+      clientState: {
+        mutations: [],
+        queries: [
+          query('kept', { data: LIST, status: 'success' }),
+          query('errored', { data: undefined, status: 'error', error: new Error('x') }),
+          query('pending', { data: undefined, status: 'pending' }),
+        ],
+      },
+    } as never);
+    expect(settled.clientState.queries.map((entry) => entry.queryHash)).toEqual(['kept']);
   });
 });
 

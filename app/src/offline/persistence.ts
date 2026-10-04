@@ -43,25 +43,28 @@ export function shouldPersistQuery(query: Pick<Query, 'queryKey' | 'state'>): bo
  * saved as it is, it would restore as `isError` and any screen that checks the error before the
  * data would show an error view instead of the wardrobe. The real state is rebuilt by the next
  * fetch. Applied on save and on restore, so caches written before this existed are fixed too.
+ * Entries without data are dropped: as a success they would render as an empty wardrobe.
  */
 export function settleQueries(persisted: PersistedClient): PersistedClient {
   return {
     ...persisted,
     clientState: {
       ...persisted.clientState,
-      queries: persisted.clientState.queries.map((entry) => ({
-        ...entry,
-        state: {
-          ...entry.state,
-          status: 'success',
-          fetchStatus: 'idle',
-          error: null,
-          errorUpdatedAt: 0,
-          errorUpdateCount: 0,
-          fetchFailureCount: 0,
-          fetchFailureReason: null,
-        },
-      })),
+      queries: persisted.clientState.queries
+        .filter((entry) => entry.state.data !== undefined)
+        .map((entry) => ({
+          ...entry,
+          state: {
+            ...entry.state,
+            status: 'success',
+            fetchStatus: 'idle',
+            error: null,
+            errorUpdatedAt: 0,
+            errorUpdateCount: 0,
+            fetchFailureCount: 0,
+            fetchFailureReason: null,
+          },
+        })),
     },
   };
 }
