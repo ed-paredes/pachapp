@@ -20,4 +20,17 @@ describe('FormalityMeter', () => {
     await render(<FormalityMeter level={9} />);
     expect(screen.getByText('Formal')).toBeTruthy();
   });
+
+  it('clamps levels below the range to the first step', async () => {
+    await render(<FormalityMeter level={-4} />);
+    expect(screen.getByText('Muy informal')).toBeTruthy();
+  });
+
+  it.each([[NaN], [Infinity], [null], [undefined]])(
+    'renders nothing for level %s',
+    async (level) => {
+      await render(<FormalityMeter level={level} />);
+      expect(screen.queryByRole('progressbar')).toBeNull();
+    },
+  );
 });

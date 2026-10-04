@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import { ProgressBar } from '../src/components/add/ProgressBar';
 import { ScanLine } from '../src/components/add/ScanLine';
@@ -94,9 +94,9 @@ describe('UploadItem done state', () => {
     globalThis.fetch = originalFetch;
   });
 
-  const json = (body: unknown) =>
+  const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
-      status: 200,
+      status,
       headers: { 'Content-Type': 'application/json' },
     });
 
@@ -142,5 +142,84 @@ describe('UploadItem done state', () => {
     // The bar is gone once the photo is done.
     await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull());
     client.clear();
+  });
+
+  describe('while the garment details are missing', () => {
+    const doneJob = {
+      status: 'done',
+      step: 'consolidate',
+      progress: 100,
+      error: null,
+      result: null,
+    };
+
+    async function renderDone(garmentResponse: () => Response | Promise<Response>) {
+      globalThis.fetch = jest.fn(async (request: Request) =>
+        new URL(request.url).pathname === '/jobs/j1' ? json(doneJob) : garmentResponse(),
+      ) as jest.Mock;
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+      await render(
+        <QueryClientProvider client={client}>
+          <UploadItem
+            item={{ key: 'k', name: 'a.jpg', phase: 'queued', jobId: 'j1', garmentId: 'g1' }}
+            onRetryUpload={jest.fn()}
+            onDismiss={jest.fn()}
+          />
+        </QueryClientProvider>,
+      );
+      return client;
+    }
+
+    it('shows the file name once while the garment loads, with Revisar usable', async () => {
+      const client = await renderDone(() => new Promise<Response>(() => {}));
+
+      expect(await screen.findByText('Lista')).toBeTruthy();
+      expect(screen.getAllByText('a.jpg')).toHaveLength(1);
+      expect(screen.queryByText(/No se pudieron cargar/)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Revisar a.jpg' })).toBeTruthy();
+      client.clear();
+    });
+
+    it('keeps the loaded details, with no error, when a background refetch fails', async () => {
+      let ok = true;
+      const client = await renderDone(() =>
+        ok
+          ? json({ id: 'g1', category: 'top', subcategory: 'camiseta', colors: [] })
+          : json({ error: { code: 'X', message: 'boom' } }, 500),
+      );
+      expect(await screen.findByText('Camiseta')).toBeTruthy();
+
+      ok = false;
+      await act(async () => {
+        await client.refetchQueries({ queryKey: ['garments'] });
+      });
+
+      await waitFor(() => expect(client.isFetching()).toBe(0));
+      expect(screen.getByText('Camiseta')).toBeTruthy();
+      expect(screen.queryByText(/No se pudieron cargar/)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Reintentar detalles de a.jpg' })).toBeNull();
+      client.clear();
+    });
+
+    it('shows an inline error with retry when the garment fails, keeping Revisar', async () => {
+      let ok = false;
+      const client = await renderDone(() =>
+        ok
+          ? json({ id: 'g1', category: 'top', subcategory: 'camiseta', colors: [] })
+          : json({ error: { code: 'X', message: 'boom' } }, 500),
+      );
+
+      expect(
+        await screen.findByText('No se pudieron cargar los detalles de la prenda.'),
+      ).toBeTruthy();
+      expect(screen.getAllByText('a.jpg')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Revisar a.jpg' })).toBeTruthy();
+
+      ok = true;
+      await fireEvent.press(screen.getByRole('button', { name: 'Reintentar detalles de a.jpg' }));
+      expect(await screen.findByText('Camiseta')).toBeTruthy();
+      expect(screen.queryByText(/No se pudieron cargar/)).toBeNull();
+      client.clear();
+    });
   });
 });

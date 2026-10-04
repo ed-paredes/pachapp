@@ -1,12 +1,15 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 
+import { ErrorState } from '@/components/ErrorState';
 import { HistoryView, type HistoryKpi, type RankItem } from '@/components/history';
+import { Eyebrow, Screen, Title } from '@/components/ui';
 import { useGarments } from '@/hooks/useGarments';
+import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { imageUrl } from '@/lib/image-url';
 import { USAGE_PAGE_SIZE, wardrobeUsage } from '@/lib/wardrobe-usage';
-import { colors } from '@/theme';
+import { colors, spacing } from '@/theme';
 
 const LIST_SIZE = 4;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -47,7 +50,7 @@ function toRow(item: Listed, detail: string, usage?: number): RankItem {
  */
 export default function HistoryScreen() {
   const router = useRouter();
-  const now = useMemo(() => new Date(), []);
+  const now = useNow();
 
   // Same request as Hoy, so the cache is shared: the active wardrobe, most worn first.
   const active = useGarments({
@@ -69,6 +72,27 @@ export default function HistoryScreen() {
     order: 'asc',
     page_size: LIST_SIZE,
   });
+
+  // A failed request must not look like an empty wardrobe. The main query drives the screen, so
+  // without it there is nothing honest to show: block with the error (and the title, so the
+  // screen stays identifiable). A failed secondary list only drops its own section below.
+  // `errorUpdatedAt` keeps the error view up while a retry is in flight (the query turns pending),
+  // instead of flashing the empty state.
+  if (!active.data && (active.isError || active.errorUpdatedAt > 0)) {
+    return (
+      <Screen scroll={false} testID="history-screen">
+        <View style={styles.errorHeader}>
+          <Eyebrow>Tu uso</Eyebrow>
+          <Title>Historial</Title>
+        </View>
+        <ErrorState
+          message={active.error?.message}
+          onRetry={() => void active.refetch()}
+          retrying={active.isFetching}
+        />
+      </Screen>
+    );
+  }
 
   const usage = active.data ? wardrobeUsage(active.data.items, active.data.total) : null;
   const kpis: HistoryKpi[] = [];
@@ -118,3 +142,7 @@ export default function HistoryScreen() {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  errorHeader: { gap: 10, paddingTop: spacing.md },
+});

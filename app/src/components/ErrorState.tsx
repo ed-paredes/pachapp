@@ -6,6 +6,8 @@ import { colors, fontFamilies } from '@/theme';
 type ErrorStateProps = {
   message?: string;
   onRetry: () => void;
+  /** A retry is already in flight: the button is disabled so it cannot cancel it. */
+  retrying?: boolean;
 };
 
 const DEFAULT_MESSAGE = 'Algo salió mal. Inténtalo de nuevo.';
@@ -15,11 +17,15 @@ const DEFAULT_MESSAGE = 'Algo salió mal. Inténtalo de nuevo.';
  * depends on a network request must show this instead of an infinite
  * spinner or a blank screen when the request fails.
  */
-export function ErrorState({ message = DEFAULT_MESSAGE, onRetry }: ErrorStateProps) {
+export function ErrorState({
+  message = DEFAULT_MESSAGE,
+  onRetry,
+  retrying = false,
+}: ErrorStateProps) {
   return (
     <View style={styles.container} testID="error-state">
       <Text style={styles.message}>{message}</Text>
-      <Button label="Reintentar" onPress={onRetry} />
+      <Button label="Reintentar" onPress={onRetry} disabled={retrying} />
     </View>
   );
 }

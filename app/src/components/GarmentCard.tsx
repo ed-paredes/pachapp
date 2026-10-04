@@ -33,13 +33,19 @@ const STEP_LABELS: Record<string, string> = {
 /** A garment counts as new while it is unworn and younger than this. */
 export const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** "Nueva": never worn and added within the last week (derived, the API has no such flag). */
+/**
+ * "Nueva": never worn and added within the last week (derived, the API has no such flag).
+ * A timestamp ahead of `now` (clock skew) still counts, but only within the same window, so a
+ * wildly future date never stays new.
+ */
 export function isNewGarment(
   item: Pick<GarmentListItem, 'wear_count' | 'created_at'>,
   now = Date.now(),
 ) {
   const created = new Date(item.created_at).getTime();
-  return item.wear_count === 0 && !Number.isNaN(created) && now - created <= NEW_WINDOW_MS;
+  return (
+    item.wear_count === 0 && !Number.isNaN(created) && Math.abs(now - created) <= NEW_WINDOW_MS
+  );
 }
 
 type GarmentCardProps = {
