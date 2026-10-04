@@ -75,10 +75,10 @@ formality, style_tags and a 768-d embedding, which the engine needs.
 
 ## Proposed tasks (refine after the decisions)
 
-- [ ] **E1** Engine core (pure `backend/src/engine/`): candidate filtering, base enumeration with numpy masks,
+- [x] **E1** Engine core (pure `backend/src/engine/`): candidate filtering, base enumeration with numpy masks,
   colour/style/novelty/preference scores, layers and accessories greedy, MMR to 5, explanations; unit tests +
   benchmark (5 of 300 under 1 s).
-- [ ] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe 5 min), `POST /wear-log` (409 when the day is
+- [x] **E2** API: `POST /outfits/generate`, `POST /outfits` (dedupe 5 min), `POST /wear-log` (409 when the day is
   logged) + `PUT`/`DELETE /wear-log/{date}` with the transactional `wear_count`/`last_worn_at` recompute for
   every affected garment; contract tests; regenerate `app/src/api-client/schema.ts` (`make gen-client`).
 - [ ] **E3** App Hoy: `useGenerateOutfits` (persisted on native, daily + wardrobe-change refresh), response ->
@@ -108,6 +108,25 @@ reviewed slice (E1, E2, E3). Branch `feat/outfit-engine` from `main` `b8d4b7f`.
 - 2026-10-04: groundwork exploration (delegated, read-only) summarised above; feature document created for the
   next session.
 
+- 2026-10-04: E1 `42fb1fa` (delegated writer): pure `backend/src/engine/` (`types`, `constants`, `context`,
+  `scoring`, `generate`, `explain`), `generate_outfits(GenerationRequest)` -> <= 5 proposals, `InvalidRequest`
+  (Spanish) for impossible fixed sets; numpy-batched stage 1/2, stage 2 only adds hard-filter-valid pieces
+  (ENG-REQ-023 fallback by construction); spec defaults in `constants.py` with open-item comments; judgment
+  calls: fixed garments exempt from the MMR cap (SCN-002 vs REQ-015), colour cap counts distinct dominant
+  colour names, ENG-REQ-024 checked against the real limits, recent-set filter on the final set, K widening
+  whenever < 5 proposals, style = mean of available terms, fixed one_piece excludes template A and fixed
+  top/bottom excludes B. Benchmark 300 garments: 0.30-0.34 s (asserted < 1 s). ~996 source + ~1220 test lines.
+- 2026-10-04: E2 `83f914d`: `POST /outfits/generate`, `POST /outfits` (5-min dedupe for generated sets,
+  canonical layers), `POST /wear-log` (409 `WEAR_LOG_CONFLICT` with the existing entry in details),
+  `PUT`/`DELETE /wear-log/{date}`, recompute of `wear_count`/`last_worn_at` for both outfits in one transaction;
+  `api/engine_inputs.py` builds inputs (active garments, float32 embeddings, wear window, liked/disliked pairs);
+  `api/clock.py`; schema regenerated (`make gen-client`). Not implemented (not in scope): `/outfits/{id}/favorite`,
+  `/dislike`, `GET /outfits/favorites`, `/history/*`. Checks: ruff, format, ty clean; pytest 579 -> 605; app
+  typecheck/lint/format/jest 347 clean. RED probes (one redundant: the same-day 409 is also enforced by the
+  unique date). Parent spot check: ruff, ty clean; pytest 605 passed.
+- Writer note for E3: the seed only breaks exact ties (ENG-REQ-019), so "request 5 new ones with a new seed"
+  would usually return the same proposals -> needs another mechanism (owner decision).
+
 ## Next step
 
-E1 then E2 with one delegated writer (backend), one commit per task; then reviews and E3.
+Native reviews of E1 (`b8d4b7f..42fb1fa`) and E2 (`42fb1fa..HEAD`), decide the "new proposals" mechanism, then E3.
