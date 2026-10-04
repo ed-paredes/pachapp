@@ -41,7 +41,7 @@ APP := cd app &&
 NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
-	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval
+	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval backfill-ai
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -117,3 +117,7 @@ ml-cutouts: ## Write BiRefNet cutouts of the eval photos for inspection
 
 ml-eval: ## Evaluate zero-shot accuracy on labeled eval photos (EVAL_DIR=... to override)
 	$(BACKEND) uv run python -m ml.eval $(EVAL_DIR)
+
+# Stop the worker first: backfill and worker would share the GPU (VIS-REQ-025).
+backfill-ai: ## Fill AI attributes and embeddings of existing garments (stop the worker first)
+	$(BACKEND) uv run python -m worker.backfill
