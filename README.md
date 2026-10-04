@@ -2,11 +2,11 @@
 
 ## Layout
 
-| Path | What |
-| --- | --- |
+| Path       | What                                                                                                                                   |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/` | `uv` project, Python 3.12. Packages: `api` (FastAPI), `worker` (polling loop), `engine` (pure functions, no I/O), `shared` (settings). |
-| `app/` | Expo + TypeScript client (Expo Router), targeting iOS/Android (Expo Go) and web. |
-| `docs/` | Specs (`docs/specs/`) and C4 architecture (`docs/architecture/c4.md`). |
+| `app/`     | Expo + TypeScript client (Expo Router), targeting iOS/Android (Expo Go) and web.                                                       |
+| `docs/`    | Specs (`docs/specs/`) and C4 architecture (`docs/architecture/c4.md`).                                                                 |
 
 Full toolchain spec: `docs/specs/01-dev-tooling.md`.
 
@@ -75,21 +75,21 @@ defaults (matches pydantic-settings: process env beats its dotenv).
 Generated from the Makefile's `## ` help comments; run `make help` for the
 live list.
 
-| Target | Description |
-| --- | --- |
-| `install` | Install backend and app dependencies |
-| `run` | Start the API (uvicorn, auto-reload) |
-| `run-worker` | Start the processing worker |
-| `run-ui` | Start the Expo dev server (web on :8081) |
-| `test` | Run backend and app tests |
-| `lint` | Lint backend and app |
-| `fmt` | Format backend and app in place |
-| `fmt-check` | Check formatting without writing |
-| `typecheck` | Type-check backend (ty) and app (tsc) |
-| `migrate` | Apply database migrations |
+| Target        | Description                                               |
+| ------------- | --------------------------------------------------------- |
+| `install`     | Install backend and app dependencies                      |
+| `run`         | Start the API (uvicorn, auto-reload)                      |
+| `run-worker`  | Start the processing worker                               |
+| `run-ui`      | Start the Expo dev server (web on :8081)                  |
+| `test`        | Run backend and app tests                                 |
+| `lint`        | Lint backend and app                                      |
+| `fmt`         | Format backend and app in place                           |
+| `fmt-check`   | Check formatting without writing                          |
+| `typecheck`   | Type-check backend (ty) and app (tsc)                     |
+| `migrate`     | Apply database migrations                                 |
 | `migrate-new` | Create a migration: `make migrate-new name="add garment"` |
-| `gen-client` | Regenerate `app/src/api-client/schema.ts` from OpenAPI |
-| `ml-preload` | Download and validate the vision models |
+| `gen-client`  | Regenerate `app/src/api-client/schema.ts` from OpenAPI    |
+| `ml-preload`  | Download and validate the vision models                   |
 
 ## `make gen-client`
 

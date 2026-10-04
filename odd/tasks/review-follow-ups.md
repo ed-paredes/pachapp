@@ -42,7 +42,7 @@ Out: U5 garment-only cutout, ux-probador R1, outfit engine.
   the same way, or record the evidence if it cannot be reproduced.
 - [ ] **F3** Shared window-size test helper `app/tests/helpers/window.ts`, adopted by
   `garment-detail.test.tsx`, `segmented.test.tsx` and `add-capture-tips.test.tsx`; same assertions.
-- [ ] **F4** Docs: FloatingTabBar JSDoc + `_layout.tsx` note (hide tabs with `href: null` only); `NEW_WINDOW_MS`
+- [x] **F4** Docs: FloatingTabBar JSDoc + `_layout.tsx` note (hide tabs with `href: null` only); `NEW_WINDOW_MS`
   comment stating the 7-day rolling rule; `README.md` formatted with prettier.
 - [ ] **R1 (research, pending)** Persisted query cache to reduce requests on refresh/tab switches: options
   (`@tanstack/query-persist-client` with localStorage on web / AsyncStorage on native, staleTime tuning,
@@ -77,6 +77,10 @@ Forecast ~150-200 authored lines (under the ~400 budget): one branch `chore/revi
 
 - 2026-10-04: mapping by a delegated explorer; owner decisions recorded in Scope.
 
+- 2026-10-04: F4 done inline `7eefefc` (comments in `GarmentCard.tsx`, `FloatingTabBar.tsx`, `(tabs)/_layout.tsx`;
+  `README.md` formatted, table alignment only). Checks: app prettier/lint/typecheck clean; README prettier
+  clean. Jest not run (comments only).
+
 ## Next step
 
-F4 inline, then F1-F3 with one delegated writer, one commit per task.
+F1-F3 with one delegated writer, one commit per task.

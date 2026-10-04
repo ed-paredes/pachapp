@@ -30,7 +30,11 @@ const STEP_LABELS: Record<string, string> = {
   consolidate: 'Terminando',
 };
 
-/** A garment counts as new while it is unworn and younger than this. */
+/**
+ * A garment counts as new while it is unworn and younger than this: a rolling 7 days (168 h) from
+ * `created_at`, not calendar days. Product rule kept as is (owner, 2026-10-04); the pill is
+ * re-evaluated on render, not on a timer.
+ */
 export const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
