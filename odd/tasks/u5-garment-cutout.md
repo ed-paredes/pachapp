@@ -39,7 +39,7 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
   photos under `~/pachapp-data-test/images`), select person-worn photos, write contact sheets, a colour proxy
   (dominant colours before/after), per-image latency, peak VRAM and peak RAM; unit tests with fakes, no models
   or network in `make test` (VIS-REQ-029).
-- [ ] **U5b** Run the evaluation with the stack stopped (API, worker, Expo) -> report -> owner picks the parser.
+- [ ] **U5b** (first run 2026-10-04 inconclusive: no worn photos; waiting for the owner's worn photos) Run the evaluation with the stack stopped (API, worker, Expo) -> report -> owner picks the parser.
 - [ ] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
   colour mask, small-mask fallback + `needs_review`), keeping GPU use serial (VIS-REQ-025) and VRAM within the
   6 GB budget alongside SigLIP; tests with fakes.
@@ -74,8 +74,19 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   rejected). No new dependencies. Checks: ruff, format, ty clean; pytest 652. RED probes. Never run on real
   models. Expected downloads: segformer b3 ~190 MB, b2 ~110 MB, u2net_cloth_seg ~170 MB.
 
+- 2026-10-04: U5b first run (parent, stack stopped): all four methods over `public-garments`, `public-sample`,
+  `public-test-full` and `~/pachapp-data-test/images` with `--worn-only`: 356 photos, only 2 "with a person" and
+  both false positives (sandals, skin-toned insoles); 354 skipped. The eval sets are flat-lay product photos, so
+  the run cannot measure the target case (garment worn by a person). Findings: (1) on non-person photos the
+  parser is harmful (SegFormer b3 shredded both sandal cutouts; b2 fell back; u2net fell back on one, shredded
+  the other) -> the no-person skip is essential and `person_present` must be stricter (e.g. require face/arms,
+  not any skin-like class; raise `MIN_PERSON_RATIO`); (2) cost: BiRefNet 706 ms; +SegFormer b3 785 ms (torch peak
+  ~322 MB, fits next to SigLIP); +b2 1044 ms (~284 MB); +u2net-cloth 906 ms (~3.5 GB total VRAM sampled). Peak RSS
+  ~2.4-2.5 GB. Report + contact sheet saved to `~/pachapp-data/eval-results/u5-2026-10-04/`. Stack left stopped.
+
 ## Next step
 
-U5b: stop API/worker/Expo, run `make ml-cutout-eval ENV_FILE=/home/educcio/code/pachapp/.env.lan
-CUTOUT_EVAL_ARGS="<eval dirs> --out /tmp/claude-1000/u5-eval --worn-only"` (eval dirs:
-`~/pachapp-data/eval/public-garments`, `public-sample`, `public-test-full`, plus `~/pachapp-data-test/images`).
+Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.
+`D:\Educcio\pachapp-eval-worn\` or `~/pachapp-data/eval/worn/`); rerun `make ml-cutout-eval` on it with the stack
+stopped (drop `--worn-only` or keep it to test the person check), then the owner picks the parser; tighten
+`person_present` in U5c.
