@@ -251,6 +251,61 @@ describe('HistoryScreen (Historial)', () => {
     expect(repeated).toEqual(['last_worn_at']);
   });
 
+  /** The `sort:order` of each request made since `from`. */
+  const sortsSince = (from: number) =>
+    (globalThis.fetch as jest.Mock).mock.calls.slice(from).map(([request]: [Request]) => {
+      const params = new URL(request.url).searchParams;
+      return `${params.get('sort')}:${params.get('order')}`;
+    });
+
+  it('refetches only the unworn list when that is the one that failed', async () => {
+    const state = { mode: 'fail' as 'fail' | 'hang' | 'ok' };
+    mockSecondaryList('unworn', state, [item('u', { subcategory: 'jersey' })]);
+    await renderScreen();
+    await screen.findByTestId('second-chance-error');
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    state.mode = 'ok';
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+
+    expect(await screen.findByTestId('rank-second-chance')).toBeTruthy();
+    expect(screen.getByText('Sin estrenar')).toBeTruthy();
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+    expect(sortsSince(callsBefore)).toEqual(['wear_count:asc']);
+  });
+
+  it('shows one notice when both lists fail, and retries both', async () => {
+    let failing = true;
+    (globalThis.fetch as jest.Mock).mockImplementation(async (request: Request) => {
+      const params = new URL(request.url).searchParams;
+      const secondary =
+        params.get('sort') === 'last_worn_at' ||
+        (params.get('sort') === 'wear_count' && params.get('order') === 'asc');
+      if (secondary && failing) {
+        return new Response(JSON.stringify({ error: { code: 'X', message: 'Servidor caído.' } }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const list = secondary
+        ? [item('s', { wear_count: 2, last_worn_at: old() })]
+        : [item('a', { wear_count: 4 }), item('b')];
+      return json({ items: list, total: list.length, page: 1, page_size: 50 });
+    });
+    await renderScreen();
+
+    expect(await screen.findAllByTestId('second-chance-error')).toHaveLength(1);
+    expect(screen.queryByTestId('error-state')).toBeNull();
+    const callsBefore = (globalThis.fetch as jest.Mock).mock.calls.length;
+
+    failing = false;
+    await fireEvent.press(screen.getByRole('button', { name: /^Reintentar/ }));
+
+    expect(await screen.findByTestId('rank-second-chance')).toBeTruthy();
+    expect(screen.queryByTestId('second-chance-error')).toBeNull();
+    expect(sortsSince(callsBefore).sort()).toEqual(['last_worn_at:asc', 'wear_count:asc']);
+  });
+
   it('disables Reintentar while the retry is in flight, and keeps the notice up', async () => {
     const state = { mode: 'fail' as 'fail' | 'hang' | 'ok' };
     mockSecondaryList('stale', state, []);
