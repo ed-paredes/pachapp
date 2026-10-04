@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 
 import { Image } from 'expo-image';
 
@@ -173,6 +173,16 @@ describe('syncWardrobe', () => {
     expect(stats.detailCalls).toBe(TOTAL);
   });
 
+  it('runs one sync per client: another client does not join it', async () => {
+    const stats = installApi({ delayMs: 1 });
+    const [a, b] = [makeClient(), makeClient()];
+    const [first, second] = await Promise.all([syncWardrobe(a), syncWardrobe(b)]);
+    expect(first).not.toBe(second);
+    expect(first.ok && second.ok).toBe(true);
+    expect(stats.detailCalls).toBe(TOTAL * 2);
+    expect(b.getQueryData(queryKeys.garments.detail('g0'))).toBeDefined();
+  });
+
   it('skips a garment deleted since the list was read', async () => {
     installApi({
       failDetail: (id) =>
@@ -196,5 +206,79 @@ describe('syncWardrobe', () => {
 
     expect(result.ok).toBe(false);
     expect(client.getQueryData(queryKeys.sync.last)).toBe(123);
+  });
+});
+
+describe('pruning the saved cache after a sync', () => {
+  const oneOff = queryKeys.garments.list({
+    status: ['archived'],
+    category: 'bottom',
+    page_size: 1,
+  });
+  const oneOffInfinite = queryKeys.garments.infinite({
+    status: ['laundry'],
+    sort: 'created_at',
+    order: 'desc',
+    page_size: 50,
+    category: 'top',
+  });
+
+  it('drops details of deleted garments and lists under filters nobody syncs', async () => {
+    installApi();
+    const client = makeClient();
+    client.setQueryData(queryKeys.garments.detail('deleted'), { id: 'deleted' });
+    client.setQueryData(oneOff, { items: [], total: 0, page: 1, page_size: 1 });
+    client.setQueryData(oneOffInfinite, { pages: [], pageParams: [] });
+    client.setQueryData(queryKeys.settings, { stale: true });
+
+    expect((await syncWardrobe(client)).ok).toBe(true);
+
+    expect(client.getQueryData(queryKeys.garments.detail('deleted'))).toBeUndefined();
+    expect(client.getQueryData(oneOff)).toBeUndefined();
+    expect(client.getQueryData(oneOffInfinite)).toBeUndefined();
+    // What the sync owns stays.
+    expect(client.getQueryData(queryKeys.garments.detail('g0'))).toBeDefined();
+    expect(
+      client.getQueryData(queryKeys.garments.list({ status: ['laundry'], page_size: 2 })),
+    ).toBeDefined();
+    expect(client.getQueryData(queryKeys.settings)).toEqual({ weights: {} });
+  });
+
+  it('keeps a query a screen is watching right now', async () => {
+    installApi();
+    const client = makeClient();
+    client.setQueryData(oneOff, { items: [], total: 0, page: 1, page_size: 1 });
+    client.setQueryData(queryKeys.garments.detail('deleted'), { id: 'deleted' });
+    const observer = new QueryObserver(client, { queryKey: oneOff, enabled: false });
+    const stop = observer.subscribe(() => undefined);
+
+    await syncWardrobe(client);
+    expect(client.getQueryData(oneOff)).toBeDefined();
+    // Not watched: still dropped.
+    expect(client.getQueryData(queryKeys.garments.detail('deleted'))).toBeUndefined();
+
+    stop();
+  });
+
+  it('prunes nothing when the sync fails: the saved copy is the only one left', async () => {
+    installApi({
+      failDetail: (id) => (id === 'g10' ? new TypeError('Network request failed') : undefined),
+    });
+    const client = makeClient();
+    client.setQueryData(queryKeys.garments.detail('deleted'), { id: 'deleted' });
+    client.setQueryData(oneOff, { items: [], total: 0, page: 1, page_size: 1 });
+
+    expect((await syncWardrobe(client)).ok).toBe(false);
+
+    expect(client.getQueryData(queryKeys.garments.detail('deleted'))).toBeDefined();
+    expect(client.getQueryData(oneOff)).toBeDefined();
+  });
+
+  it('never touches jobs or settings', async () => {
+    installApi();
+    const client = makeClient();
+    client.setQueryData(queryKeys.jobs.detail('j1'), { id: 'j1' });
+    await syncWardrobe(client);
+    expect(client.getQueryData(queryKeys.jobs.detail('j1'))).toBeDefined();
   });
 });

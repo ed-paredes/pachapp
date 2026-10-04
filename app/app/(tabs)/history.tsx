@@ -8,10 +8,15 @@ import { useGarments } from '@/hooks/useGarments';
 import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { imageUrl } from '@/lib/image-url';
-import { USAGE_PAGE_SIZE, wardrobeUsage } from '@/lib/wardrobe-usage';
+import {
+  HISTORY_LIST_SIZE,
+  STALE_FILTERS,
+  UNWORN_FILTERS,
+  USAGE_FILTERS,
+} from '@/lib/wardrobe-filters';
+import { wardrobeUsage } from '@/lib/wardrobe-usage';
 import { colors, spacing } from '@/theme';
 
-const LIST_SIZE = 4;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A garment worn this long ago (or more) counts as forgotten. */
 const FORGOTTEN_DAYS = 30;
@@ -53,25 +58,10 @@ export default function HistoryScreen() {
   const now = useNow();
 
   // Same request as Hoy, so the cache is shared: the active wardrobe, most worn first.
-  const active = useGarments({
-    status: ['active'],
-    sort: 'wear_count',
-    order: 'desc',
-    page_size: USAGE_PAGE_SIZE,
-  });
+  const active = useGarments(USAGE_FILTERS);
   // Never-worn first (the API sorts nulls last on `last_worn_at`, so they need `wear_count`).
-  const unworn = useGarments({
-    status: ['active'],
-    sort: 'wear_count',
-    order: 'asc',
-    page_size: LIST_SIZE,
-  });
-  const stale = useGarments({
-    status: ['active'],
-    sort: 'last_worn_at',
-    order: 'asc',
-    page_size: LIST_SIZE,
-  });
+  const unworn = useGarments(UNWORN_FILTERS);
+  const stale = useGarments(STALE_FILTERS);
 
   // A failed request must not look like an empty wardrobe. The main query drives the screen, so
   // without it there is nothing honest to show: block with the error (and the title, so the
@@ -109,7 +99,9 @@ export default function HistoryScreen() {
     });
   }
 
-  const worn = (active.data?.items ?? []).filter((item) => item.wear_count > 0).slice(0, LIST_SIZE);
+  const worn = (active.data?.items ?? [])
+    .filter((item) => item.wear_count > 0)
+    .slice(0, HISTORY_LIST_SIZE);
   const top = worn[0]?.wear_count ?? 0;
   const mostWorn = worn.map((item) =>
     toRow(
@@ -135,7 +127,7 @@ export default function HistoryScreen() {
           now.getTime() - new Date(item.last_worn_at).getTime() >= FORGOTTEN_DAYS * DAY_MS,
       )
       .map((item) => toRow(item, daysAgo(item.last_worn_at as string, now))),
-  ].slice(0, LIST_SIZE);
+  ].slice(0, HISTORY_LIST_SIZE);
 
   return (
     <HistoryView

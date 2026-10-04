@@ -3,7 +3,7 @@ import { QueryClient, useIsRestoring } from '@tanstack/react-query';
 import { persistQueryClientSave } from '@tanstack/react-query-persist-client';
 import { renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import { queryKeys } from '../src/api-client/query-keys';
 import { useGarments } from '../src/hooks/useGarments';
@@ -13,6 +13,7 @@ import {
   cacheBuster,
   createPersister,
   PERSIST_STORAGE_KEY,
+  settleQueries,
   shouldPersistQuery,
 } from '../src/offline/persistence';
 
@@ -192,5 +193,155 @@ describe('OfflineProvider', () => {
     expect(AsyncStorage.setItem).not.toHaveBeenCalled();
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
     expect(mockSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('saving the cache', () => {
+  const warn = () => jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+  async function save(client: QueryClient) {
+    await persistQueryClientSave({
+      queryClient: client,
+      persister: createPersister(),
+      buster: cacheBuster(),
+      dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+    });
+  }
+
+  function fullClient() {
+    const client = makeClient();
+    client.setQueryData(queryKeys.garments.list({ status: ['active'] }), LIST);
+    client.setQueryData(queryKeys.garments.detail('g1'), { id: 'g1' });
+    client.setQueryData(queryKeys.sync.last, 1);
+    return client;
+  }
+
+  it('logs a failed write and retries once without the garment details', async () => {
+    const logged = warn();
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValueOnce(new Error('Row too big'));
+
+    await save(fullClient());
+
+    await waitFor(async () => expect(await savedRoots()).toContain('garments'));
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining('Row too big'));
+    const kinds = (await stored())?.clientState.queries.map((entry) => entry.queryKey[1]);
+    expect(kinds).toContain('list');
+    expect(kinds).not.toContain('detail');
+  });
+
+  it('gives up quietly when the lean copy fails too, keeping the previous copy', async () => {
+    const earlier = makeClient();
+    earlier.setQueryData(queryKeys.garments.list({ status: ['laundry'] }), LIST);
+    await saveEarlierRun(earlier);
+    const logged = warn();
+    jest.spyOn(AsyncStorage, 'setItem').mockRejectedValue(new Error('disk full'));
+
+    await expect(save(fullClient())).resolves.toBeUndefined();
+
+    expect(logged).toHaveBeenCalledTimes(2);
+    const entries = (await stored())?.clientState.queries ?? [];
+    expect(entries).toHaveLength(1);
+    expect(entries[0].queryKey[2]).toEqual({ status: ['laundry'] });
+  });
+
+  it('settleQueries turns errored and fetching queries into finished successes', () => {
+    const query = (state: object) => ({ queryKey: ['garments'], queryHash: 'h', state });
+    const settled = settleQueries({
+      timestamp: 1,
+      buster: 'b',
+      clientState: {
+        mutations: [],
+        queries: [
+          query({
+            data: LIST,
+            status: 'error',
+            fetchStatus: 'fetching',
+            error: new Error('x'),
+            errorUpdatedAt: 5,
+            errorUpdateCount: 2,
+            fetchFailureCount: 3,
+            fetchFailureReason: new Error('x'),
+            dataUpdatedAt: 7,
+          }),
+        ],
+      },
+    } as never);
+    expect(settled.clientState.queries[0].state).toMatchObject({
+      data: LIST,
+      dataUpdatedAt: 7,
+      status: 'success',
+      fetchStatus: 'idle',
+      error: null,
+      errorUpdatedAt: 0,
+      fetchFailureCount: 0,
+      fetchFailureReason: null,
+    });
+  });
+});
+
+describe('WardrobeSyncer foreground re-sync', () => {
+  const remove = jest.fn();
+  let fire: (state: string) => void;
+
+  beforeEach(() => {
+    setPlatform('android');
+    remove.mockClear();
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
+      _type: string,
+      handler: (state: string) => void,
+    ) => {
+      fire = handler;
+      return { remove };
+    }) as never);
+  });
+
+  const wrapper = (client: QueryClient) =>
+    function Wrapper({ children }: { children: ReactNode }) {
+      return <OfflineProvider client={client}>{children}</OfflineProvider>;
+    };
+
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('does not sync again on foreground after a successful run', async () => {
+    mockSync.mockResolvedValue({ ok: true, syncedAt: 1 });
+    await renderHook(() => null, { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(mockSync).toHaveBeenCalledTimes(1));
+    await flush();
+
+    fire('active');
+    await flush();
+    expect(mockSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('syncs again on foreground after a failed run, and stops once one succeeds', async () => {
+    mockSync.mockResolvedValueOnce({ ok: false, error: new Error('offline') });
+    mockSync.mockResolvedValue({ ok: true, syncedAt: 1 });
+    await renderHook(() => null, { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(mockSync).toHaveBeenCalledTimes(1));
+    await flush();
+
+    fire('background');
+    await flush();
+    expect(mockSync).toHaveBeenCalledTimes(1);
+
+    fire('active');
+    await waitFor(() => expect(mockSync).toHaveBeenCalledTimes(2));
+    await flush();
+
+    fire('active');
+    await flush();
+    expect(mockSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('removes its AppState subscription when it unmounts', async () => {
+    const { unmount } = await renderHook(() => null, { wrapper: wrapper(makeClient()) });
+    await waitFor(() => expect(mockSync).toHaveBeenCalled());
+    const added = (AppState.addEventListener as jest.Mock).mock.calls.length;
+    expect(added).toBeGreaterThan(0);
+    expect(remove).not.toHaveBeenCalled();
+
+    await unmount();
+    // The syncer and the reconnect watcher each subscribe; every subscription is removed.
+    expect(remove).toHaveBeenCalledTimes(added);
   });
 });
