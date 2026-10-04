@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { Image } from 'expo-image';
+
 import { queryKeys } from '../src/api-client/query-keys';
 import { runPool } from '../src/offline/pool';
 import { syncWardrobe } from '../src/offline/sync';
@@ -61,8 +63,14 @@ function makeClient() {
 }
 
 const realFetch = globalThis.fetch;
+let prefetch: jest.SpyInstance;
+beforeEach(() => {
+  jest.spyOn(Image, 'getCachePathAsync').mockResolvedValue(null);
+  prefetch = jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
+});
 afterEach(() => {
   globalThis.fetch = realFetch;
+  jest.restoreAllMocks();
 });
 
 describe('runPool', () => {
@@ -122,6 +130,22 @@ describe('syncWardrobe', () => {
       client.getQueryData(queryKeys.garments.list({ status: ['laundry'], page_size: 2 })),
     ).toMatchObject({ total: TOTAL });
     expect(client.getQueryData(queryKeys.settings)).toEqual({ weights: {} });
+  });
+
+  it('downloads every thumbnail and cutout to disk', async () => {
+    installApi();
+    await syncWardrobe(makeClient());
+
+    const urls = prefetch.mock.calls.flatMap(([batch]) => batch as string[]);
+    expect(urls).toHaveLength(TOTAL * 2);
+    expect(urls).toContain('http://localhost:8000/images/thumb/g0.webp');
+    expect(urls).toContain('http://localhost:8000/images/cutout/g119.png');
+  });
+
+  it('still counts as synced when some images could not be fetched', async () => {
+    installApi();
+    prefetch.mockResolvedValue(false);
+    expect((await syncWardrobe(makeClient())).ok).toBe(true);
   });
 
   it('keeps at most four requests in flight', async () => {

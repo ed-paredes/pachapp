@@ -7,6 +7,7 @@ import { fetchSettings } from '@/hooks/useSettings';
 import { CATEGORY_ORDER } from '@/lib/labels';
 import { USAGE_PAGE_SIZE } from '@/lib/wardrobe-usage';
 
+import { garmentImageUrls, prefetchGarmentImages } from './images';
 import { runPool } from './pool';
 
 /** Simultaneous requests while syncing: enough to be quick, few enough for a home PC. */
@@ -100,6 +101,9 @@ async function runSync(queryClient: QueryClient): Promise<SyncResult> {
     queryClient.setQueryData(queryKeys.settings, await fetchSettings());
     await runPool(ids, SYNC_CONCURRENCY, (id) => syncDetail(queryClient, id));
 
+    // Last: the images are the heaviest part and a few missing ones do not spoil the data.
+    await prefetchGarmentImages(garmentImageUrls(everything.flatMap((page) => page.items)));
+
     const syncedAt = Date.now();
     queryClient.setQueryData(queryKeys.sync.last, syncedAt);
     return { ok: true, syncedAt };
@@ -111,7 +115,8 @@ async function runSync(queryClient: QueryClient): Promise<SyncResult> {
 
 /**
  * Copies the whole wardrobe (every list page and every garment detail, plus settings) into the
- * query cache under the keys the screens use, so it can be browsed offline. One run at a time;
+ * query cache under the keys the screens use, and their thumbnails and cutouts onto disk, so
+ * it can be browsed offline. One run at a time;
  * a second call joins the running one. A failed run keeps the previous sync stamp.
  */
 export function syncWardrobe(queryClient: QueryClient): Promise<SyncResult> {
