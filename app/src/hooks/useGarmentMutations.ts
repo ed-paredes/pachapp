@@ -3,12 +3,15 @@ import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-q
 import { unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
 import { queryKeys } from '@/api-client/query-keys';
+
+import { bumpWardrobeVersion } from './useGenerateOutfits';
 import type { components } from '@/api-client/schema';
 
 export type GarmentPatch = components['schemas']['GarmentPatch'];
 
 /** UI-REQ-016: refresh the Armario lists and this garment's detail. */
 function invalidateGarment(queryClient: QueryClient, id: string) {
+  bumpWardrobeVersion(queryClient); // Hoy proposes from the wardrobe: it must look again
   return Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.garments.lists() }),
     queryClient.invalidateQueries({ queryKey: queryKeys.garments.detail(id) }),
@@ -104,6 +107,7 @@ export function useDeleteGarment(id: string) {
         }),
       ),
     onSuccess: () => {
+      bumpWardrobeVersion(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.garments.detail(id) });
       return queryClient.invalidateQueries({ queryKey: queryKeys.garments.lists() });
     },

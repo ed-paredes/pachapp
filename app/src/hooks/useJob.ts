@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
 import { queryKeys } from '@/api-client/query-keys';
+
+import { bumpWardrobeVersion } from './useGenerateOutfits';
 
 /** Default polling interval for `GET /jobs/{id}` (UI-REQ-017). */
 export const JOB_POLL_INTERVAL_MS = 1000;
@@ -21,11 +23,19 @@ type UseJobOptions = {
  */
 export function useJob(id: string | undefined, options: UseJobOptions = {}) {
   const { enabled = true, refetchInterval = JOB_POLL_INTERVAL_MS } = options;
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: queryKeys.jobs.detail(id ?? ''),
     enabled: enabled && !!id,
-    queryFn: async () =>
-      unwrap(await apiClient.GET('/jobs/{job_id}', { params: { path: { job_id: id as string } } })),
+    queryFn: async () => {
+      const job = unwrap(
+        await apiClient.GET('/jobs/{job_id}', { params: { path: { job_id: id as string } } }),
+      );
+      // The garment now has its attributes: Hoy can propose it (once per job).
+      const before = queryClient.getQueryData<{ status?: string }>(queryKeys.jobs.detail(id ?? ''));
+      if (job.status === 'done' && before?.status !== 'done') bumpWardrobeVersion(queryClient);
+      return job;
+    },
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === 'done' || status === 'failed' ? false : refetchInterval;

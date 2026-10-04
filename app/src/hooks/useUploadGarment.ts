@@ -6,6 +6,8 @@ import { unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
 import { queryKeys } from '@/api-client/query-keys';
 
+import { bumpWardrobeVersion } from './useGenerateOutfits';
+
 export type UploadPhoto = {
   /** Local `file://` URI (native) or `blob:`/`data:` URI (web). */
   uri: string;
@@ -46,6 +48,9 @@ export function useUploadGarment() {
         }),
       );
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.garments.lists() }),
+    onSuccess: () => {
+      bumpWardrobeVersion(queryClient);
+      return queryClient.invalidateQueries({ queryKey: queryKeys.garments.lists() });
+    },
   });
 }

@@ -6,7 +6,7 @@ import { colors, fontFamilies, radii, shadows, spacing, TWO_COLUMNS } from '@/th
 
 import { AltLooksList, type AltLook } from './AltLookCard';
 import { LookCanvas } from './LookCanvas';
-import { LookWhyCard } from './LookWhyCard';
+import { LookWhyCard, type ReplaceQuestion } from './LookWhyCard';
 import { TipCard } from './TipCard';
 import type { LookProposal } from './types';
 import { WeatherPill, type Weather } from './WeatherPill';
@@ -19,6 +19,11 @@ const CHART_ICON = {
   web: 'trending_up',
 } as const;
 
+/** Why there is no look to show although the wardrobe has garments (offline, a failed request). */
+export type TodayProblem = { title: string; text: string; onRetry?: () => void };
+
+export type { ReplaceQuestion };
+
 export type TodayTip = { title: string; text?: string; onPress?: () => void };
 
 type TodayViewProps = {
@@ -26,8 +31,14 @@ type TodayViewProps = {
   dateLabel: string;
   /** "Buenos días". */
   greeting: string;
-  /** Today's look. Undefined until the outfit engine exists: the empty state shows instead. */
+  /** Today's look. Undefined while it loads or when nothing can be proposed. */
   proposal?: LookProposal;
+  /** The look is being prepared: a neutral placeholder shows instead of the empty copy. */
+  generating?: boolean;
+  /** No look could be produced for another reason than the wardrobe (shown instead of the copy). */
+  problem?: TodayProblem;
+  /** The look on screen was saved on an earlier visit (today's could not be generated). */
+  savedNote?: string;
   alternatives?: AltLook[];
   weather?: Weather;
   /** Laundry notice; omitted when there is nothing in the basket. */
@@ -38,6 +49,11 @@ type TodayViewProps = {
   onOpenAlternative?: (id: string) => void;
   onWear?: () => void;
   onShuffle?: () => void;
+  wearDisabled?: boolean;
+  shuffleDisabled?: boolean;
+  /** Why an action is off. */
+  actionNote?: string;
+  replaceQuestion?: ReplaceQuestion;
   /**
    * Garments in the wardrobe (active + laundry). Decides what the no-proposal state says:
    * `loading` shows a neutral placeholder, `unknown` (the count failed) avoids claiming a number.
@@ -56,6 +72,9 @@ export function TodayView({
   dateLabel,
   greeting,
   proposal,
+  generating,
+  problem,
+  savedNote,
   alternatives = [],
   weather,
   laundryTip,
@@ -64,6 +83,10 @@ export function TodayView({
   onOpenAlternative,
   onWear,
   onShuffle,
+  wearDisabled,
+  shuffleDisabled,
+  actionNote,
+  replaceQuestion,
   wardrobeSize = 0,
   onAddGarment,
   onOpenWardrobe,
@@ -112,6 +135,11 @@ export function TodayView({
           </View>
           <WeatherPill weather={weather} />
         </View>
+        {savedNote && proposal ? (
+          <Text style={styles.savedNote} testID="saved-note">
+            {savedNote}
+          </Text>
+        ) : null}
 
         {proposal ? (
           <View style={[styles.look, wide && styles.lookWide]}>
@@ -131,30 +159,45 @@ export function TodayView({
                 onOpenPiece={onOpenPiece}
                 onWear={onWear}
                 onShuffle={onShuffle}
+                wearDisabled={wearDisabled}
+                shuffleDisabled={shuffleDisabled}
+                note={actionNote}
+                replaceQuestion={replaceQuestion}
                 style={wide ? styles.fill : undefined}
               />
             </View>
           </View>
         ) : (
           <View style={[styles.look, wide && styles.lookWide]}>
-            {wardrobeSize === 'loading' ? (
+            {wardrobeSize === 'loading' || (generating && soon) ? (
               <View
                 style={[styles.empty, styles.emptyLoading, wide && styles.canvasCol]}
                 testID="empty-state-loading"
               />
-            ) : soon ? (
-              <View style={[styles.empty, wide && styles.canvasCol]} testID="soon-state">
+            ) : problem ? (
+              <View style={[styles.empty, wide && styles.canvasCol]} testID="problem-state">
                 <View style={styles.emptyIcon}>
                   <IconSymbol name={HANGER_ICON} size={28} color={colors.accentText} />
                 </View>
                 <Text accessibilityRole="header" style={styles.emptyTitle}>
-                  Tus propuestas diarias llegan pronto
+                  {problem.title}
                 </Text>
-                {hasGarments ? (
-                  <Text style={styles.emptyText}>
-                    {`Ya tienes ${wardrobeSize} ${wardrobeSize === 1 ? 'prenda' : 'prendas'} en tu armario. Cuando activemos las sugerencias, aquí verás tu look de cada día.`}
-                  </Text>
+                <Text style={styles.emptyText}>{problem.text}</Text>
+                {problem.onRetry ? (
+                  <Button variant="secondary" label="Reintentar" onPress={problem.onRetry} />
                 ) : null}
+              </View>
+            ) : soon ? (
+              <View style={[styles.empty, wide && styles.canvasCol]} testID="no-looks-state">
+                <View style={styles.emptyIcon}>
+                  <IconSymbol name={HANGER_ICON} size={28} color={colors.accentText} />
+                </View>
+                <Text accessibilityRole="header" style={styles.emptyTitle}>
+                  Todavía no podemos armar un look
+                </Text>
+                <Text style={styles.emptyText}>
+                  {`${hasGarments ? `Tienes ${wardrobeSize} ${wardrobeSize === 1 ? 'prenda' : 'prendas'} en tu armario, pero faltan ` : 'Faltan '}prendas activas para un look completo: una parte de arriba, un pantalón y calzado, o un vestido y calzado.`}
+                </Text>
                 <Button variant="secondary" label="Ver tu armario" onPress={onOpenWardrobe} />
               </View>
             ) : (
@@ -227,6 +270,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.ink2,
   },
+  savedNote: { fontFamily: fontFamilies.body, fontSize: 14, lineHeight: 20, color: colors.ink2 },
   tips: { gap: spacing.md },
   tipsWide: { flexDirection: 'row' },
   tip: { flexGrow: 1, flexShrink: 1 },

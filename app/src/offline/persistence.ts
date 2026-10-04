@@ -23,11 +23,15 @@ export function cacheBuster(): string {
   return `${Constants.expoConfig?.version ?? '0'}:${CACHE_SCHEMA_VERSION}`;
 }
 
-/** Query families kept across restarts. Jobs and anything else stay in memory. */
-const PERSISTED_ROOTS = ['garments', 'settings', 'sync'];
+/**
+ * Query families kept across restarts. Jobs and anything else stay in memory. `outfits` holds
+ * Hoy's generated batches (a POST used as a query, never a mutation) so Hoy opens offline with
+ * the last saved look.
+ */
+const PERSISTED_ROOTS = ['garments', 'settings', 'sync', 'outfits'];
 
 /**
- * Garment lists/details, settings and the sync stamp are written to disk once they hold data.
+ * Garment lists/details, settings, Hoy's looks and the sync stamp are written to disk once they hold data.
  * The check is on the data, not on `status === 'success'`: a refetch that fails offline turns the
  * status to `error` while the data stays, and dropping it then would wipe the saved copy.
  */

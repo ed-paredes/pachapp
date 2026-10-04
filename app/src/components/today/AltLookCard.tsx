@@ -27,7 +27,7 @@ export function AltLookCard({ look, onPress }: AltLookCardProps) {
       <View style={styles.mini}>
         <LookItems pieces={look.pieces} flat />
       </View>
-      <Text style={styles.name} numberOfLines={1}>
+      <Text style={styles.name} numberOfLines={2}>
         {look.name}
       </Text>
       <Text style={styles.summary}>{summary.join(' · ')}</Text>
@@ -84,6 +84,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.45)',
     overflow: 'hidden',
   },
-  name: { fontFamily: fontFamilies.bodySemiBold, fontSize: 14, color: colors.ink },
+  name: {
+    fontFamily: fontFamilies.bodySemiBold,
+    fontSize: 14,
+    lineHeight: 19,
+    minHeight: 38, // two lines: cards in a row keep the same height
+    color: colors.ink,
+  },
   summary: { fontFamily: fontFamilies.body, fontSize: 12.5, color: colors.ink2 },
 });

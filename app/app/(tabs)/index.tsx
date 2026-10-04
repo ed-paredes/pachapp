@@ -1,9 +1,11 @@
 import { useRouter } from 'expo-router';
 
-import type { LookProposal } from '@/components/today/types';
-import { TodayView, type TodayTip } from '@/components/today/TodayView';
+import { OFFLINE_NOTE } from '@/components/OfflineBanner';
+import { useToast } from '@/components/ui';
+import { TodayView, type TodayProblem, type TodayTip } from '@/components/today/TodayView';
 import { useGarments } from '@/hooks/useGarments';
 import { useNow } from '@/hooks/useNow';
+import { useTodayLooks } from '@/hooks/useTodayLooks';
 import { garmentName } from '@/lib/garment-name';
 import { formatToday, greeting } from '@/lib/format-date';
 import { LAUNDRY_FILTERS, LAUNDRY_NAMES, USAGE_FILTERS } from '@/lib/wardrobe-filters';
@@ -27,15 +29,14 @@ function laundryText(items: NamedGarment[], total: number): string | undefined {
 }
 
 /**
- * Hoy: the look of the day and two notices derived from the wardrobe. The outfit engine has no
- * endpoint yet, so `proposal` is always undefined and the empty state shows. To connect it, call
- * the future proposal hook here and pass `proposal`, `alternatives`, `onWear`, `onShuffle` (and
- * `weather` once the API has it) to `TodayView`.
+ * Hoy: the look of the day (the best of the day's generated proposals), the other proposals as
+ * "Otras opciones", "Me lo pongo" / "Otra sugerencia", and two notices derived from the wardrobe.
+ * `weather` stays unset until the API has it.
  */
 export default function TodayScreen() {
   const router = useRouter();
   const now = useNow();
-  const proposal: LookProposal | undefined = undefined;
+  const toast = useToast();
 
   const laundry = useGarments(LAUNDRY_FILTERS);
   const active = useGarments(USAGE_FILTERS);
@@ -48,6 +49,24 @@ export default function TodayScreen() {
       : laundry.isError || active.isError
         ? 'unknown'
         : 'loading';
+
+  const looks = useTodayLooks({ now, wardrobeSize, notify: toast.show });
+  const problem: TodayProblem | undefined =
+    looks.status === 'error'
+      ? looks.offline
+        ? {
+            title: 'Aún no hay un look guardado',
+            text: 'Sin conexión no podemos prepararlo. Lo tendrás cuando vuelva la conexión.',
+          }
+        : {
+            title: 'No pudimos preparar tu look',
+            text: 'No hemos podido hablar con tu armario. Inténtalo de nuevo en un momento.',
+            onRetry: looks.retry,
+          }
+      : undefined;
+  const actionNote = looks.offline
+    ? [OFFLINE_NOTE, looks.shuffleNote].filter(Boolean).join(' ')
+    : looks.shuffleNote;
 
   const laundryTotal = laundry.data?.total ?? 0;
   const laundryTip: TodayTip | undefined =
@@ -74,7 +93,23 @@ export default function TodayScreen() {
     <TodayView
       dateLabel={formatToday(now)}
       greeting={greeting(now)}
-      proposal={proposal}
+      proposal={looks.proposal}
+      alternatives={looks.alternatives}
+      generating={looks.status === 'loading'}
+      problem={problem}
+      savedNote={looks.savedFromBefore ? 'Mostrando el último look que guardamos.' : undefined}
+      onOpenPiece={(id) => router.push(`/garments/${id}`)}
+      onOpenAlternative={looks.openAlternative}
+      onWear={looks.wear}
+      onShuffle={() => void looks.shuffle()}
+      wearDisabled={looks.offline || looks.wearing || looks.conflict}
+      shuffleDisabled={looks.shuffleDisabled}
+      actionNote={actionNote}
+      replaceQuestion={
+        looks.conflict
+          ? { busy: looks.wearing, onConfirm: looks.confirmReplace, onCancel: looks.cancelReplace }
+          : undefined
+      }
       laundryTip={laundryTip}
       usageTip={usageTip}
       wardrobeSize={wardrobeSize}
