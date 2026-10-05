@@ -120,6 +120,24 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   new dependency (scipy already comes with scikit-learn; torch/huggingface_hub/transformers already present).
   Checks: ruff, ruff format, ty, pytest 672 passed.
 
+- 2026-10-05: U5b2 review: four-lens native review granted by the owner, approved without correction and
+  acknowledged (lineage review-ea9b5bd59558891f, base 4e397d6, through d583e42). 11 non-blocking advisories kept
+  for U5c: parser failure aborts the whole run, photo-key collision across dirs, matte-size assumption, eval-dir
+  assert, unpinned b2/b3 revision defaults, duplicated GPU release, small CLI validation/naming nits.
+
+- 2026-10-05: U5b2 run (parent, stack stopped) on the 29 worn photos, all parsers x both modes; results and
+  focused sheets (`focus_1..4.jpg`: orig, birefnet, b2.subtract, fashn.intersect/subtract,
+  schp-atr.intersect/subtract, schp-lip.subtract) in `~/pachapp-data/eval-results/u5-2026-10-05-r3/`.
+  Findings by eye: (1) subtract mode removes the shredding for every parser (no holes), but without a category
+  it keeps the other garments (jeans under a sweatshirt or jacket, the top above shorts, the skirt under a
+  top). (2) FASHN intersect is the best clothing cutout: removes skin and the other garments with almost no
+  holes (jacket, sweatshirt, shorts, crop tops, denim tube, skirt, dress); it fails on footwear (no shoe class:
+  boots shredded, converse keep legs) and, like every parser, on non-worn photos. (3) SCHP-ATR intersect shreds
+  like SegFormer b3; SCHP-LIP subtract leaves necks/faces/arms; SCHP brings no advantage and is the slowest
+  (889-940 ms, ~560 MB torch). (4) Cost: FASHN 838 ms vs BiRefNet 579 ms, torch peak ~320 MB.
+  Recommendation to the owner: FASHN; clothing -> intersect with the garment group + hole fill; footwear and
+  accessories -> subtract body only; no person -> keep the matte. Waiting on the owner's choice.
+
 ## Next step
 
 Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.
