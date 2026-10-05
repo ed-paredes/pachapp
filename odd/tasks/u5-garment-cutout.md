@@ -40,6 +40,11 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
   (dominant colours before/after), per-image latency, peak VRAM and peak RAM; unit tests with fakes, no models
   or network in `make test` (VIS-REQ-029).
 - [ ] **U5b** (first run 2026-10-04 inconclusive: no worn photos; waiting for the owner's worn photos) Run the evaluation with the stack stopped (API, worker, Expo) -> report -> owner picks the parser.
+- [ ] **U5b2** (owner 2026-10-05: "vamos con las 2 y luego decidimos") Eval round 3: add a subtractive mask mode
+  (BiRefNet matte minus body classes face/hair/arms/legs/neck, holes filled) next to today's intersect mode, and
+  two new parsers, FASHN Human Parser (SegFormer-B4) and SCHP (ATR/LIP), to the eval tooling; rerun on
+  `~/pachapp-data/eval/worn/` with the stack stopped -> owner picks parser + mask mode. Route: delegated writer
+  (eval tooling, 2+ non-trivial files + tests + model research); parent runs the eval.
 - [ ] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
   colour mask, small-mask fallback + `needs_review`), keeping GPU use serial (VIS-REQ-025) and VRAM within the
   6 GB budget alongside SigLIP; tests with fakes.
@@ -83,6 +88,17 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   not any skin-like class; raise `MIN_PERSON_RATIO`); (2) cost: BiRefNet 706 ms; +SegFormer b3 785 ms (torch peak
   ~322 MB, fits next to SigLIP); +b2 1044 ms (~284 MB); +u2net-cloth 906 ms (~3.5 GB total VRAM sampled). Peak RSS
   ~2.4-2.5 GB. Report + contact sheet saved to `~/pachapp-data/eval-results/u5-2026-10-04/`. Stack left stopped.
+
+- 2026-10-05: U5b second run (parent, stack stopped) on 29 owner photos in `~/pachapp-data/eval/worn/` (no
+  `labels.json`, so the parser keeps the largest clothing region; no `--worn-only`). Results in
+  `~/pachapp-data/eval-results/u5-2026-10-05/`. Cost: BiRefNet 545 ms; +b3 678 ms (torch ~321 MB); +b2 661 ms
+  (~284 MB); +u2net 732 ms (3/29 fallbacks). Colours improve clearly on worn photos (e.g. negro 83% -> 99%,
+  blanco 74% -> 96%, marino 40% -> 77%; skin/legs no longer counted). Quality: every parser removes face, arms
+  and legs well on clean tops/bottoms, but each one shreds or punches holes in ~1/3 of the photos (b3 ~12, b2
+  ~10, u2net ~10 by eye): dark shorts, stripes, denim, boots, pleated skirt; u2net dissolved a printed dress.
+  The holes come from intersecting with one garment class (part of the garment is labelled as another class).
+  Non-worn photos (flat sneakers, shoe, jacket on a hanger) are harmed by every parser -> the no-person skip
+  stays essential. Waiting on the owner's choice.
 
 ## Next step
 
