@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     # evaluation report records which revision was loaded. A moving ref is rejected.
     ml_parse_b3_revision: str | None = None
     ml_parse_b2_revision: str | None = None
+    # FASHN Human Parser (fashn-ai/fashn-human-parser) and the SCHP checkpoints, hosted in
+    # zhengchong/CatVTON (SCHP/*.pth, also sha256-checked): commits verified on the Hub
+    # on 2026-10-05.
+    ml_parse_fashn_revision: str | None = "1f80c34dbab321c5730dda5c3fea279fd3e97498"
+    ml_parse_schp_revision: str | None = "2969fcf85fe62f2036605716f0b56f0b81d01d79"
 
     @field_validator("data_dir", mode="before")
     @classmethod
@@ -166,6 +171,8 @@ class Settings(BaseSettings):
         for value, env_var in (
             (self.ml_parse_b3_revision, "PACHAPP_ML_PARSE_B3_REVISION"),
             (self.ml_parse_b2_revision, "PACHAPP_ML_PARSE_B2_REVISION"),
+            (self.ml_parse_fashn_revision, "PACHAPP_ML_PARSE_FASHN_REVISION"),
+            (self.ml_parse_schp_revision, "PACHAPP_ML_PARSE_SCHP_REVISION"),
         ):
             if value is not None:
                 _reject_moving_revision(value, env_var=env_var)

@@ -100,6 +100,26 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   Non-worn photos (flat sneakers, shoe, jacket on a hanger) are harmed by every parser -> the no-person skip
   stays essential. Waiting on the owner's choice.
 
+- 2026-10-05: U5b2 implementation (delegated writer; U5b2 stays open until the real run). `ml.garment_parse`:
+  `cut_garment(..., mode="intersect"|"subtract")`; subtract = BiRefNet matte minus body classes (hair, face,
+  arms/legs/hands/torso/neck, sunglasses, jewelry) and, with a `labels.json` category, other-garment groups
+  (top/mid_layer/outerwear: pants/skirt/footwear/hat/bag/scarf/belt; bottom: upper/coat/footwear/hat/bag/scarf;
+  one_piece: footwear/hat/bag; shoes: keep only shoe/feet pixels), then `scipy.ndimage.binary_fill_holes` (body
+  pixels are never refilled); same small-mask fallback. Shared label vocabulary extended (FASHN `top`->
+  `upper_clothes`, `glasses`->`sunglasses`, `arms/legs/hands/feet/torso/jewelry`; LIP `coat/jumpsuits/socks/glove`).
+  New parsers: `fashn` = `fashn-ai/fashn-human-parser` (SegFormer-B4, 18 classes, 384x576, ~64M params, licence
+  NVIDIA SegFormer source licence = non-commercial; reuses the transformers path; revision pinned in
+  `PACHAPP_ML_PARSE_FASHN_REVISION`, default `1f80c34d...` read from the Hub API; FASHN has no shoe class, `feet`
+  stands in); `schp-atr` / `schp-lip` in new `ml/schp.py` = pure-PyTorch re-implementation of the SCHP
+  AugmentCE2P ResNet-101 inference path (no `inplace_abn` compiled op, no OpenCV; MIT code by Peike Li, attribution
+  in the header), checkpoints from HF `zhengchong/CatVTON` `SCHP/*.pth` (~267 MB each, CC BY-NC-SA 4.0 repo; same
+  files CatVTON uses), pinned by `PACHAPP_ML_PARSE_SCHP_REVISION` (default `2969fcf8...`) and sha256-verified
+  before unpickling. Unverified until the real run: that the ABN `abs(weight)+eps` port reproduces the compiled op
+  (checkpoint load is `strict=True`; check the contact sheet for sane SCHP masks). Eval: `--mask-modes` (default both),
+  each parser parsed once per photo and combined per mode; columns/folders/sheets `birefnet+<parser>.<mode>`. No
+  new dependency (scipy already comes with scikit-learn; torch/huggingface_hub/transformers already present).
+  Checks: ruff, ruff format, ty, pytest 672 passed.
+
 ## Next step
 
 Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.

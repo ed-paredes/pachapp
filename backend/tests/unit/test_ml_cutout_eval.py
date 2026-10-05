@@ -67,6 +67,14 @@ def test_parse_methods_defaults_and_validation() -> None:
         ce.parse_methods("birefnet+magic")
 
 
+def test_parse_mask_modes() -> None:
+    assert ce.parse_mask_modes(None) == ["intersect", "subtract"]
+    assert ce.parse_mask_modes("subtract,subtract") == ["subtract"]
+    with pytest.raises(ce.EvalSetupError, match="unknown mask mode"):
+        ce.parse_mask_modes("intersect,magic")
+    assert {"fashn", "schp-atr", "schp-lip"} <= set(ce.PARSER_KEYS)
+
+
 def test_collect_photos_reads_categories_and_prefixes_keys(tmp_path: Path) -> None:
     d = _photo_dir(tmp_path)
     (d / "labels.json").write_text(json.dumps({"a.jpg": {"category": "top"}, "b.png": None}))
@@ -108,7 +116,15 @@ def test_evaluate_runs_methods_serially_and_writes_outputs(tmp_path: Path) -> No
         photos, methods, out, matter_factory=lambda: matter, parser_factory=factory
     )
     assert matter.closed and all(p.closed for p in parsers.values())
-    assert [r.method for r in results] == methods
+    assert sorted(parsers) == ["segformer-b3", "u2net-cloth"]  # one parser load per method
+    assert [r.method for r in results] == [
+        "birefnet",
+        "birefnet+segformer-b3.intersect",
+        "birefnet+segformer-b3.subtract",
+        "birefnet+u2net-cloth.intersect",
+        "birefnet+u2net-cloth.subtract",
+    ]
+    assert [r.mode for r in results] == [None, "intersect", "subtract", "intersect", "subtract"]
     assert skipped == [] and len(selected) == 2
     assert not (out / "_mattes").exists()
     for r in results:
@@ -116,10 +132,27 @@ def test_evaluate_runs_methods_serially_and_writes_outputs(tmp_path: Path) -> No
             assert (out / r.rows[photo.key].out_file).is_file()  # type: ignore[arg-type]
     base, parsed = results[0].rows["photos__a.jpg"], results[1].rows["photos__a.jpg"]
     assert base.top_color != "-" and parsed.ms >= base.ms
-    assert results[1].revision == "rev1"
+    assert results[1].revision == "rev1" and results[2].revision == "rev1"
     # garment-only cutout is the top half of the 16 px image
-    with Image.open(out / "birefnet+segformer-b3" / "photos__a.jpg.png") as cut:
+    with Image.open(out / "birefnet+segformer-b3.intersect" / "photos__a.jpg.png") as cut:
         assert cut.size == (16, 8)
+    # subtract keeps the matte minus the 4x4 face (and, unknown category, no other group)
+    with Image.open(out / "birefnet+segformer-b3.subtract" / "photos__a.jpg.png") as cut:
+        assert cut.size == (16, 16)
+        assert np.asarray(cut.getchannel("A"))[:4, :4].sum() == 0
+
+
+def test_mask_modes_selection_limits_columns(tmp_path: Path) -> None:
+    photos = ce.collect_photos([_photo_dir(tmp_path)])
+    _, _, results = ce.evaluate(
+        photos,
+        ["birefnet", "birefnet+fashn"],
+        tmp_path / "out",
+        matter_factory=FakeMatter,
+        parser_factory=lambda k: FakeParser(k, person=True),
+        mask_modes=["subtract"],
+    )
+    assert [r.method for r in results] == ["birefnet", "birefnet+fashn.subtract"]
 
 
 def test_worn_only_filters_with_first_parser(tmp_path: Path) -> None:
@@ -182,9 +215,10 @@ def test_report_and_contact_sheets(tmp_path: Path) -> None:
     sheets = ce.write_contact_sheets(selected, results, out, per_sheet=1)
     assert [s.name for s in sheets] == ["contact_01.jpg", "contact_02.jpg"]
     with Image.open(sheets[0]) as sheet:
-        assert sheet.width == 3 * ce.THUMB_PX
+        assert sheet.width == 4 * ce.THUMB_PX  # original + baseline + two modes
     report = ce.format_report(selected, skipped, results, sheets, device="cpu")
-    assert "| birefnet+segformer-b3 |" in report
+    assert "| birefnet+segformer-b3.intersect |" in report
+    assert "| birefnet+segformer-b3.subtract |" in report
     assert "| median ms |" in report and "contact_01.jpg" in report
     assert "photos__a.jpg" in report
 

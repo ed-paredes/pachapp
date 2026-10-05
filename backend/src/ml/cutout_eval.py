@@ -1,13 +1,25 @@
 """CLI: compare garment-only cutout methods on real photos (U5a, 08-local-vision.md).
 
 Usage: `python -m ml.cutout_eval [PHOTO_DIR ...] --out OUT_DIR [--methods M,...]
-[--worn-only] [--sheet-size N]` (wired up as `make ml-cutout-eval`). Without
-directories it uses `PACHAPP_ML_EVAL_DIR`. Methods (default: all):
+[--mask-modes intersect,subtract] [--worn-only] [--sheet-size N]` (wired up as
+`make ml-cutout-eval`). Without directories it uses `PACHAPP_ML_EVAL_DIR`.
+Methods (default: all):
 
     birefnet                 today's BiRefNet matte (the baseline, always run first)
-    birefnet+segformer-b3    matte intersected with SegFormer b3 clothes classes
+    birefnet+segformer-b3    matte combined with SegFormer b3 clothes classes
     birefnet+segformer-b2    ... SegFormer b2 clothes
     birefnet+u2net-cloth     ... rembg u2net_cloth_seg
+    birefnet+fashn           ... FASHN Human Parser (SegFormer-B4, 18 classes)
+    birefnet+schp-atr        ... SCHP, ATR checkpoint (18 classes, pure-PyTorch network)
+    birefnet+schp-lip        ... SCHP, LIP checkpoint (20 classes)
+
+Every parser method runs once per photo and is combined with the matte in each of the
+`--mask-modes` (default both): "intersect" keeps only the garment's own parser classes,
+"subtract" removes body (and, with a `labels.json` category, other-garment) classes from
+the matte and fills enclosed holes (see `ml.garment_parse`). Each method x mode gets its
+own column, folder (`birefnet+fashn.subtract/`) and contact-sheet cell; the parser's
+latency parts are measured once and shared by its modes (the per-mode latency adds that
+mode's combine step), and so are its VRAM / torch peak / RSS.
 
 Per image and method it writes the cutout PNG, the warm per-image latency (model load
 and the first image excluded) and the dominant colours of the eroded cutout; per method
@@ -46,6 +58,7 @@ from ml.background import (
     crop_to_foreground,
 )
 from ml.garment_parse import (
+    MASK_MODES,
     GarmentParser,
     ParseResult,
     cut_garment,
@@ -58,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 _EXTENSIONS = {".jpg", ".jpeg", ".png"}
 BASELINE = "birefnet"
-PARSER_KEYS = ("segformer-b3", "segformer-b2", "u2net-cloth")
+PARSER_KEYS = ("segformer-b3", "segformer-b2", "u2net-cloth", "fashn", "schp-atr", "schp-lip")
 ALL_METHODS = (BASELINE, *(f"{BASELINE}+{k}" for k in PARSER_KEYS))
 THUMB_PX = 256
 
@@ -96,7 +109,8 @@ class Row:
 
 @dataclass
 class MethodResult:
-    method: str
+    method: str  # report label: "birefnet" or "birefnet+<parser>.<mode>"
+    mode: str | None = None
     rows: dict[str, Row] = field(default_factory=dict)
     peak_vram_mib: float | None = None
     peak_rss_mib: float = 0.0
@@ -118,8 +132,23 @@ def parse_methods(raw: str | None) -> list[str]:
     return [BASELINE, *[m for m in dict.fromkeys(chosen) if m != BASELINE]]
 
 
+def parse_mask_modes(raw: str | None) -> list[str]:
+    """Validate a comma-separated mask-mode list (default: all), order preserved."""
+    if not raw:
+        return list(MASK_MODES)
+    chosen = list(dict.fromkeys(m.strip() for m in raw.split(",") if m.strip()))
+    unknown = [m for m in chosen if m not in MASK_MODES]
+    if unknown or not chosen:
+        raise EvalSetupError(f"unknown mask mode(s) {', '.join(unknown)}; choose from {MASK_MODES}")
+    return chosen
+
+
 def parser_key(method: str) -> str:
     return method.split("+", 1)[1]
+
+
+def result_label(method: str, mode: str) -> str:
+    return f"{method}.{mode}"
 
 
 def collect_photos(dirs: Sequence[Path]) -> list[Photo]:
@@ -350,32 +379,40 @@ def run_parser_method(
     parser: GarmentParser,
     mattes_dir: Path,
     baseline: MethodResult,
-) -> MethodResult:
-    """Parser + cached matte per photo. Latency = baseline matte time + parse + combine."""
-    result = MethodResult(method)
+    modes: Sequence[str] = MASK_MODES,
+) -> list[MethodResult]:
+    """Parser + cached matte per photo, one result per mask mode (parsed once per photo).
+
+    Latency per mode = baseline matte time + parse + that mode's combine step.
+    """
+    results = {mode: MethodResult(result_label(method, mode), mode) for mode in modes}
     meter = Meter()
     for photo in photos:
         rgb = _load_rgb(photo.path)
         matte = _rgba_from_matte(rgb, mattes_dir / f"{photo.key}.png")
         start = time.perf_counter()
         parsed = parser.parse(rgb)
-        cut = cut_garment(matte, parsed, photo.category)
-        ms = (time.perf_counter() - start) * 1000 + baseline.rows[photo.key].ms
-        colors, top = format_colors(cut.rgba)
-        result.rows[photo.key] = Row(
-            photo.key,
-            ms,
-            colors,
-            top,
-            fallback=cut.fallback,
-            ratio=cut.garment_ratio,
-            out_file=_save_cutout(cut.rgba, out_dir, method, photo.key),
-        )
+        parse_ms = (time.perf_counter() - start) * 1000
+        for mode, result in results.items():
+            start = time.perf_counter()
+            cut = cut_garment(matte, parsed, photo.category, mode=mode)
+            ms = parse_ms + (time.perf_counter() - start) * 1000 + baseline.rows[photo.key].ms
+            colors, top = format_colors(cut.rgba)
+            result.rows[photo.key] = Row(
+                photo.key,
+                ms,
+                colors,
+                top,
+                fallback=cut.fallback,
+                ratio=cut.garment_ratio,
+                out_file=_save_cutout(cut.rgba, out_dir, result.method, photo.key),
+            )
         meter.sample()
-    result.peak_rss_mib, result.peak_vram_mib = meter.peak_rss, meter.vram_mib
-    result.torch_peak_mib = meter.torch_peak_mib
-    result.revision = getattr(parser, "revision", None)
-    return result
+    for result in results.values():
+        result.peak_rss_mib, result.peak_vram_mib = meter.peak_rss, meter.vram_mib
+        result.torch_peak_mib = meter.torch_peak_mib
+        result.revision = getattr(parser, "revision", None)
+    return list(results.values())
 
 
 def evaluate(
@@ -386,8 +423,11 @@ def evaluate(
     matter_factory: Callable[[], Matter],
     parser_factory: Callable[[str], GarmentParser],
     worn_only: bool = False,
+    mask_modes: Sequence[str] = MASK_MODES,
 ) -> tuple[list[Photo], list[Photo], list[MethodResult]]:
     """Run `methods` over `photos`; returns (evaluated, skipped as not worn, results).
+
+    Each parser method yields one result per entry of `mask_modes`.
 
     `--worn-only` filters once with the first parser method's parser, before anything
     else, so every method sees the same photos. The baseline runs next (and its
@@ -417,8 +457,8 @@ def evaluate(
     for method in parser_methods:
         parser = parser_factory(parser_key(method))
         try:
-            results.append(
-                run_parser_method(method, selected, out_dir, parser, mattes_dir, baseline)
+            results += run_parser_method(
+                method, selected, out_dir, parser, mattes_dir, baseline, mask_modes
             )
         finally:
             parser.close()
@@ -535,6 +575,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("photo_dirs", nargs="*", type=Path)
     parser.add_argument("--out", type=Path, required=True, help="output directory")
     parser.add_argument("--methods", default=None, help=f"comma list of {ALL_METHODS}")
+    parser.add_argument(
+        "--mask-modes",
+        default=None,
+        help=f"comma list of {MASK_MODES} (default: both; one column per method x mode)",
+    )
     parser.add_argument("--worn-only", action="store_true", help="keep only photos with a person")
     parser.add_argument("--sheet-size", type=int, default=6, help="rows per contact sheet")
     parser.add_argument("--limit", type=int, default=None, help="evaluate only the first N photos")
@@ -548,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
     assert settings.ml_cache_dir is not None and settings.ml_eval_dir is not None
     try:
         methods = parse_methods(args.methods)
+        mask_modes = parse_mask_modes(args.mask_modes)
         dirs = [d.expanduser() for d in args.photo_dirs] or [settings.ml_eval_dir]
         photos = collect_photos(dirs)
         if args.limit:
@@ -568,6 +614,7 @@ def main(argv: list[str] | None = None) -> int:
             matter_factory=lambda: BiRefNetMatter(settings),
             parser_factory=lambda key: build_parser(key, settings, device),
             worn_only=args.worn_only,
+            mask_modes=mask_modes,
         )
     except EvalSetupError as exc:
         print(f"error: {exc}", file=sys.stderr)

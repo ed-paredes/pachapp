@@ -120,8 +120,10 @@ ml-eval: ## Evaluate zero-shot accuracy on labeled eval photos (EVAL_DIR=... to 
 	$(BACKEND) uv run python -m ml.eval $(EVAL_DIR)
 
 # Stop the API, worker and Expo first: loads several models one after another (U5).
-# CUTOUT_EVAL_ARGS e.g. "DIR1 DIR2 --out /tmp/x --methods birefnet,birefnet+segformer-b3 --worn-only"
-ml-cutout-eval: ## Compare garment-only cutout methods (CUTOUT_EVAL_ARGS="DIR... --out OUT [--worn-only]")
+# CUTOUT_EVAL_ARGS e.g. "DIR1 DIR2 --out /tmp/x --methods birefnet,birefnet+fashn --mask-modes subtract"
+# Methods: birefnet, birefnet+{segformer-b3,segformer-b2,u2net-cloth,fashn,schp-atr,schp-lip};
+# mask modes: intersect, subtract (default both, one report column per method x mode).
+ml-cutout-eval: ## Compare garment-only cutout methods (CUTOUT_EVAL_ARGS="DIR... --out OUT [--methods M,..] [--mask-modes intersect,subtract] [--worn-only]")
 	$(BACKEND) uv run python -m ml.cutout_eval $(CUTOUT_EVAL_ARGS)
 
 # Stop the worker first: backfill and worker would share the GPU (VIS-REQ-025).

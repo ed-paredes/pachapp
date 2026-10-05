@@ -7,6 +7,7 @@ import pytest
 from PIL import Image
 
 from ml.garment_parse import (
+    FASHN_ALIASES,
     ParseResult,
     cut_garment,
     erode_alpha,
@@ -136,3 +137,121 @@ def test_erode_alpha_shrinks_opaque_region() -> None:
     eroded = np.asarray(erode_alpha(rgba, 2).getchannel("A")) > 0
     assert eroded.sum() == 6 * 6
     assert np.asarray(erode_alpha(rgba, 0).getchannel("A")).sum() == 10 * 10 * 255
+
+
+# --- shared vocabulary of the FASHN / SCHP parsers ------------------------------------
+
+FASHN_RAW = [
+    "background", "face", "hair", "top", "dress", "skirt", "pants", "belt", "bag", "hat",
+    "scarf", "glasses", "arms", "hands", "legs", "feet", "torso", "jewelry",
+]  # fmt: skip
+
+
+def _fashn_names() -> dict[int, str]:
+    return {i: normalize_label(n, FASHN_ALIASES) for i, n in enumerate(FASHN_RAW)}
+
+
+def test_fashn_labels_map_to_shared_vocabulary() -> None:
+    names = _fashn_names()
+    assert names[3] == "upper_clothes" and names[11] == "sunglasses"
+    assert names[12] == "arms" and names[16] == "torso" and names[15] == "feet"
+    grid = np.zeros((4, 4), dtype=np.uint8)
+    grid[:2] = 3
+    grid[2:] = 12
+    result = ParseResult(grid, names)
+    assert garment_classes(result, "top") == {"upper_clothes"}
+    assert person_present(result)  # arms count as a person
+    assert garment_classes(result, "shoes") == {"feet"}
+
+
+def test_schp_label_sets_normalise_like_atr() -> None:
+    from ml.schp import SCHP_VARIANTS
+
+    atr = [normalize_label(n) for n in SCHP_VARIANTS["atr"]["labels"]]
+    lip = [normalize_label(n) for n in SCHP_VARIANTS["lip"]["labels"]]
+    assert len(atr) == 18 and atr[4] == "upper_clothes" and atr[9] == "left_shoe"
+    assert len(lip) == 20 and lip[5] == "upper_clothes" and lip[7] == "coat"
+    assert garment_classes(_result([[7]], dict(enumerate(lip))), "outerwear") >= {"coat"}
+    assert garment_classes(_result([[10]], dict(enumerate(lip))), "one_piece") >= {"jumpsuits"}
+
+
+# --- subtract mode ---------------------------------------------------------------------
+
+
+def _alpha(cut: object) -> np.ndarray:
+    return np.asarray(cut.rgba.getchannel("A"))  # type: ignore[attr-defined]
+
+
+def test_subtract_removes_body_and_keeps_mislabelled_garment() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0:10, 0:2] = 6  # arm
+    grid[0:3, 2:8] = 5  # face
+    grid[3:6, 2:8] = 2  # upper clothes
+    grid[6:10, 2:8] = 4  # same garment partly labelled as "dress"
+    matte = _rgba(10, 10, (0, 0, 8, 10))
+    cut = cut_garment(matte, ParseResult(grid, ATR), "top", mode="subtract")
+    alpha = _alpha(cut)
+    assert not cut.fallback and cut.mode == "subtract"
+    assert (alpha > 0).sum() == 7 * 6  # rows 3-9 x cols 2-7, dress part kept
+    assert alpha[:, :2].sum() == 0 and alpha[:3].sum() == 0
+    # intersect would have lost the dress-labelled part
+    inter = cut_garment(matte, ParseResult(grid, ATR), "top", mode="intersect")
+    assert (_alpha(inter) > 0).sum() == 3 * 6
+
+
+def test_subtract_fills_holes_enclosed_by_the_garment() -> None:
+    grid = np.zeros((12, 12), dtype=np.uint8)
+    matte_arr = np.zeros((12, 12, 4), dtype=np.uint8)
+    matte_arr[2:10, 2:10, 3] = 255
+    matte_arr[5:7, 5:7, 3] = 0  # matte gap inside the garment
+    matte = Image.fromarray(matte_arr, mode="RGBA")
+    cut = cut_garment(matte, ParseResult(grid, ATR), None, mode="subtract")
+    alpha = _alpha(cut)
+    assert alpha[5:7, 5:7].min() == 255 and (alpha > 0).sum() == 8 * 8
+
+
+def test_subtract_does_not_refill_body_pixels_enclosed_by_the_garment() -> None:
+    grid = np.zeros((12, 12), dtype=np.uint8)
+    grid[5:7, 5:7] = 6  # a hand through the middle of the garment
+    matte = _rgba(12, 12, (2, 2, 10, 10))
+    alpha = _alpha(cut_garment(matte, ParseResult(grid, ATR), None, mode="subtract"))
+    assert alpha[5:7, 5:7].sum() == 0 and (alpha > 0).sum() == 8 * 8 - 4
+
+
+def test_subtract_with_category_removes_other_garment_groups() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0:5] = 2  # upper clothes
+    grid[5:8] = 3  # trousers
+    grid[8:10] = 7  # shoes
+    matte = _rgba(10, 10, (0, 0, 10, 10))
+    result = ParseResult(grid, ATR)
+    top = _alpha(cut_garment(matte, result, "top", mode="subtract"))
+    assert (top > 0).sum() == 5 * 10  # trousers and shoes gone
+    bottom = _alpha(cut_garment(matte, result, "bottom", mode="subtract"))
+    assert (bottom > 0).sum() == 3 * 10  # upper clothes and shoes gone
+    unknown = _alpha(cut_garment(matte, result, None, mode="subtract"))
+    assert (unknown > 0).sum() == 100  # no category: only body is removed
+    shoes = _alpha(cut_garment(matte, result, "shoes", mode="subtract"))
+    assert (shoes > 0).sum() == 2 * 10 and shoes[8:].min() == 255
+
+
+def test_subtract_small_mask_falls_back_to_matte() -> None:
+    grid = np.full((10, 10), 5, dtype=np.uint8)  # everything is face
+    matte = _rgba(10, 10, (0, 0, 10, 10))
+    cut = cut_garment(matte, ParseResult(grid, ATR), None, mode="subtract")
+    assert cut.fallback
+    assert np.array_equal(np.asarray(cut.rgba), np.asarray(matte))
+
+
+def test_u2net_subtract_has_no_body_classes() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[5:] = 2  # lower
+    matte = _rgba(10, 10, (0, 0, 10, 10))
+    alpha = _alpha(cut_garment(matte, ParseResult(grid, U2), "top", mode="subtract"))
+    assert (alpha > 0).sum() == 50  # lower removed for an upper garment
+    assert (_alpha(cut_garment(matte, ParseResult(grid, U2), None, mode="subtract")) > 0).all()
+
+
+def test_unknown_mask_mode_is_rejected() -> None:
+    with pytest.raises(ValueError, match="mask mode"):
+        cut_garment(_rgba(4, 4, (0, 0, 4, 4)), _result([[0]]), None, mode="magic")

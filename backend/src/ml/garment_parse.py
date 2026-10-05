@@ -2,8 +2,14 @@
 
 BiRefNet keeps every foreground object, so a worn garment comes out with the arms,
 face and trousers attached. A human-parsing model labels each pixel (upper-clothes,
-pants, face, ...); intersecting the garment's classes with the BiRefNet alpha leaves
-only the garment.
+pants, face, ...). Two ways to combine that map with the BiRefNet alpha:
+
+- "intersect": keep only the garment's own classes (largest clothing region, or the
+  category's class set) inside the matte. Precise, but a garment partly labelled as
+  another class loses those parts.
+- "subtract": start from the matte and remove only what is clearly not the garment
+  (body/person classes, plus other garment groups when the category is known), then
+  fill holes enclosed by what remains. Forgiving of mislabelled garment parts.
 
 Two layers, like `ml.background`:
 
@@ -14,9 +20,11 @@ Two layers, like `ml.background`:
   device-aware. Callers MUST call `ml.cache.configure_model_cache` first (VIS-REQ-008)
   and run one inference at a time (VIS-REQ-025).
 
-Class names are normalised to lower snake case (`Upper-clothes` -> `upper_clothes`);
-the SegFormer ATR vocabulary comes from the model config, the U2Net-cloth one is
-`upper` / `lower` / `full`.
+Class names are normalised to lower snake case (`Upper-clothes` -> `upper_clothes`)
+into one shared vocabulary: the SegFormer/SCHP ATR names come from the model config,
+FASHN's `top`/`glasses` are aliased to `upper_clothes`/`sunglasses` (its `arms`,
+`legs`, `hands`, `feet`, `torso`, `jewelry` stay as they are), SCHP-LIP adds `coat`,
+`jumpsuits`, `socks`, `glove`, and U2Net-cloth is `upper` / `lower` / `full`.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 from PIL import Image, ImageFilter
+from scipy import ndimage
 
 from ml.background import OPACITY_THRESHOLD
 
@@ -38,7 +47,10 @@ logger = logging.getLogger(__name__)
 
 SEGFORMER_B3_MODEL = "sayeed99/segformer_b3_clothes"
 SEGFORMER_B2_MODEL = "mattmdjaga/segformer_b2_clothes"
+FASHN_MODEL = "fashn-ai/fashn-human-parser"
 U2NET_CLOTH_MODEL = "u2net_cloth_seg"
+
+MASK_MODES = ("intersect", "subtract")
 
 # Share of the image (default, tunable) below which the garment mask is considered
 # unusable and the BiRefNet matte is kept as is (+ `needs_review`).
@@ -51,9 +63,27 @@ MIN_PERSON_RATIO = 0.02
 COLOR_ERODE_PX = 4
 
 BACKGROUND = "background"
-PERSON_CLASSES = frozenset(
-    {"hair", "face", "left_arm", "right_arm", "left_leg", "right_leg", "sunglasses"}
+# Body / person pixels (never part of a garment). Includes the FASHN-only region names.
+BODY_CLASSES = frozenset(
+    {
+        "hair",
+        "face",
+        "left_arm",
+        "right_arm",
+        "left_leg",
+        "right_leg",
+        "arms",
+        "legs",
+        "hands",
+        "torso",
+        "neck",
+        "sunglasses",
+        "jewelry",
+    }
 )
+PERSON_CLASSES = BODY_CLASSES - {"torso", "neck", "jewelry"}
+# FASHN label -> shared vocabulary (everything else keeps its own normalised name).
+FASHN_ALIASES = {"top": "upper_clothes", "glasses": "sunglasses"}
 _SEGFORMER_CLOTHING = frozenset(
     {
         "hat",
@@ -66,6 +96,11 @@ _SEGFORMER_CLOTHING = frozenset(
         "right_shoe",
         "bag",
         "scarf",
+        # SCHP-LIP extras
+        "coat",
+        "jumpsuits",
+        "socks",
+        "glove",
     }
 )
 _U2NET_CLOTHING = frozenset({"upper", "lower", "full"})
@@ -73,17 +108,32 @@ _U2NET_CLOTHING = frozenset({"upper", "lower", "full"})
 # App category (`shared.enums.GarmentCategory`) -> class names per parser vocabulary.
 CATEGORY_CLASSES: dict[str, frozenset[str]] = {
     "top": frozenset({"upper_clothes", "upper"}),
-    "mid_layer": frozenset({"upper_clothes", "upper"}),
-    "outerwear": frozenset({"upper_clothes", "upper"}),
+    "mid_layer": frozenset({"upper_clothes", "coat", "upper"}),
+    "outerwear": frozenset({"upper_clothes", "coat", "upper"}),
     "bottom": frozenset({"pants", "skirt", "lower"}),
-    "one_piece": frozenset({"dress", "full"}),
-    "shoes": frozenset({"left_shoe", "right_shoe"}),
-    "accessory": frozenset({"bag", "scarf", "belt", "hat", "sunglasses"}),
+    "one_piece": frozenset({"dress", "jumpsuits", "full"}),
+    # FASHN has no shoe class; its `feet` region is the closest thing.
+    "shoes": frozenset({"left_shoe", "right_shoe", "feet"}),
+    "accessory": frozenset({"bag", "scarf", "belt", "hat", "sunglasses", "glove"}),
+}
+
+# Subtract mode, category known: clearly-other garment groups removed on top of the body.
+_UPPER_GROUP = frozenset({"upper_clothes", "coat", "upper"})
+_LOWER_GROUP = frozenset({"pants", "skirt", "lower"})
+_FOOTWEAR = frozenset({"left_shoe", "right_shoe", "feet", "socks"})
+_CARRIED = frozenset({"hat", "bag", "scarf"})
+_UPPER_CATEGORIES = frozenset({"top", "mid_layer", "outerwear"})
+OTHER_GARMENT_CLASSES: dict[str, frozenset[str]] = {
+    **{c: _LOWER_GROUP | _FOOTWEAR | _CARRIED | {"belt"} for c in _UPPER_CATEGORIES},
+    "bottom": _UPPER_GROUP | _FOOTWEAR | _CARRIED,
+    "one_piece": _FOOTWEAR | {"hat", "bag"},
 }
 
 
-def normalize_label(name: str) -> str:
-    return name.strip().lower().replace("-", "_").replace(" ", "_")
+def normalize_label(name: str, aliases: dict[str, str] | None = None) -> str:
+    """Lower snake case, then mapped through `aliases` (parser-specific renames)."""
+    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+    return (aliases or {}).get(normalized, normalized)
 
 
 @dataclass
@@ -187,7 +237,38 @@ class GarmentCutout:
     rgba: Image.Image  # full-size, alpha restricted to the garment (or the matte on fallback)
     fallback: bool  # garment mask too small -> matte kept, caller flags `needs_review`
     garment_ratio: float
-    classes: frozenset[str]
+    classes: frozenset[str]  # classes kept ("intersect") or removed ("subtract")
+    mode: str = "intersect"
+
+
+def removed_classes(result: ParseResult, category: str | None) -> frozenset[str]:
+    """Classes subtract mode removes from the matte, in this parser's vocabulary.
+
+    Always the body/person classes; with a known category also the clearly-other garment
+    groups (see `OTHER_GARMENT_CLASSES`). `shoes` is the exception: only shoes are kept,
+    so every other labelled class is removed.
+    """
+    present = set(result.names.values()) - {BACKGROUND}
+    if category == "shoes":
+        return frozenset(present - CATEGORY_CLASSES["shoes"])
+    removed = BODY_CLASSES | OTHER_GARMENT_CLASSES.get(category or "", frozenset())
+    return frozenset(removed & present)
+
+
+def subtract_garment(
+    matte_alpha: np.ndarray, removed: np.ndarray, *, opacity: int = OPACITY_THRESHOLD
+) -> tuple[np.ndarray, np.ndarray]:
+    """Alpha (uint8) of the matte minus `removed`, with enclosed holes filled.
+
+    A hole is a region fully surrounded by the remaining garment (a matte gap, an
+    unlabelled patch, a mislabelled garment part that is not body). Pixels that were
+    removed as body/other-garment stay removed. Returns (new alpha, kept mask).
+    """
+    remaining = (matte_alpha > opacity) & ~removed
+    holes = ndimage.binary_fill_holes(remaining) & ~remaining & ~removed
+    alpha = np.where(removed, 0, matte_alpha).astype(np.uint8)
+    alpha[holes & (alpha <= opacity)] = 255
+    return alpha, remaining | holes
 
 
 def cut_garment(
@@ -195,21 +276,35 @@ def cut_garment(
     result: ParseResult,
     category: str | None,
     *,
+    mode: str = "intersect",
     min_ratio: float = MIN_GARMENT_RATIO,
 ) -> GarmentCutout:
-    """Garment-only cutout: parser classes for `category` intersected with the matte.
+    """Garment-only cutout of the matte, by `mode` (`MASK_MODES`).
 
-    The ratio is measured on the intersection (garment pixels that BiRefNet also kept),
-    so a parser hit outside the matte does not count. Below `min_ratio` the matte is
-    returned unchanged with `fallback=True`.
+    "intersect": parser classes for `category` intersected with the matte. "subtract":
+    the matte minus body (and other-garment) classes, enclosed holes filled; for
+    `shoes` it keeps only shoe pixels. The ratio is measured on the pixels kept (inside
+    the matte for "intersect"), so a parser hit outside the matte does not count. Below
+    `min_ratio` the matte is returned unchanged with `fallback=True`.
     """
-    classes = garment_classes(result, category)
-    mask = result.mask_for(classes)
-    matte_alpha = np.asarray(matte_rgba.getchannel("A")) > OPACITY_THRESHOLD
-    ratio = mask_ratio(mask & matte_alpha)
-    if ratio < min_ratio:
-        return GarmentCutout(matte_rgba.convert("RGBA"), True, ratio, classes)
-    return GarmentCutout(intersect_alpha(matte_rgba, mask), False, ratio, classes)
+    if mode not in MASK_MODES:
+        raise ValueError(f"unknown mask mode {mode!r}; choose from {MASK_MODES}")
+    matte_alpha = np.asarray(matte_rgba.getchannel("A"))
+    if mode == "intersect":
+        classes = garment_classes(result, category)
+        mask = result.mask_for(classes)
+        ratio = mask_ratio(mask & (matte_alpha > OPACITY_THRESHOLD))
+        if ratio >= min_ratio:
+            return GarmentCutout(intersect_alpha(matte_rgba, mask), False, ratio, classes, mode)
+    else:
+        classes = removed_classes(result, category)
+        alpha, kept = subtract_garment(matte_alpha, result.mask_for(classes))
+        ratio = mask_ratio(kept)
+        if ratio >= min_ratio:
+            out = matte_rgba.convert("RGBA")
+            out.putalpha(Image.fromarray(alpha, mode="L"))
+            return GarmentCutout(out, False, ratio, classes, mode)
+    return GarmentCutout(matte_rgba.convert("RGBA"), True, ratio, classes, mode)
 
 
 # --- implementations (lazy, not loaded in tests) -------------------------------------
@@ -227,9 +322,11 @@ def _free_gpu() -> None:
 
 
 class SegformerClothesParser:
-    """SegFormer clothes parser (18 ATR classes) from Hugging Face `transformers`.
+    """SegFormer-family parser from Hugging Face `transformers` (ATR b2/b3, FASHN B4).
 
-    fp16 on CUDA only; logits are upsampled to the input size before the argmax.
+    The image processor comes from the repo, so each model keeps its own input size and
+    normalisation (FASHN: 384x576). fp16 on CUDA only; logits are upsampled to the input
+    size before the argmax.
     """
 
     def __init__(
@@ -240,8 +337,10 @@ class SegformerClothesParser:
         device: str = "cpu",
         fp16: bool = True,
         short_name: str | None = None,
+        aliases: dict[str, str] | None = None,
     ) -> None:
         self.model_id = model_id
+        self.aliases = aliases
         self.revision = revision
         self.device = device
         self.fp16 = fp16 and device == "cuda"
@@ -260,7 +359,7 @@ class SegformerClothesParser:
         self._processor = AutoImageProcessor.from_pretrained(self.model_id, revision=pin)
         model: Any = SegformerForSemanticSegmentation.from_pretrained(self.model_id, revision=pin)
         id2label: dict[Any, str] = model.config.id2label
-        self._names = {int(i): normalize_label(n) for i, n in id2label.items()}
+        self._names = {int(i): normalize_label(n, self.aliases) for i, n in id2label.items()}
         if self.fp16:
             model = model.half()
         self._model = model.to(self.device).eval()
@@ -325,7 +424,8 @@ class U2NetClothParser:
 
 
 def build_parser(key: str, settings: Settings, device: str) -> GarmentParser:
-    """Parser for a method key: `segformer-b3`, `segformer-b2` or `u2net-cloth`."""
+    """Parser for a method key: `segformer-b3`, `segformer-b2`, `u2net-cloth`, `fashn`,
+    `schp-atr` or `schp-lip`."""
     if key == "segformer-b3":
         return SegformerClothesParser(
             SEGFORMER_B3_MODEL,
@@ -342,4 +442,18 @@ def build_parser(key: str, settings: Settings, device: str) -> GarmentParser:
         )
     if key == "u2net-cloth":
         return U2NetClothParser(device=device)
+    if key == "fashn":
+        return SegformerClothesParser(
+            FASHN_MODEL,
+            revision=settings.ml_parse_fashn_revision,
+            device=device,
+            short_name=key,
+            aliases=FASHN_ALIASES,
+        )
+    if key in ("schp-atr", "schp-lip"):
+        from ml.schp import SchpParser  # imports torch: only when this parser is used
+
+        return SchpParser(
+            key.removeprefix("schp-"), revision=settings.ml_parse_schp_revision, device=device
+        )
     raise ValueError(f"unknown parser {key!r}")
