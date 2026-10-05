@@ -176,6 +176,14 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   picks the largest of clothing/footwear/carried groups (items -> subtract body only) and keeps a lost item group
   covering >= `MIN_UNSELECTED_ITEM_RATIO` (0.10) of the matte via subtract, setting `cutout_review` = `garment_item_kept`.
 
+- 2026-10-05: U5c review (owner granted; medium, one reliability lens, lineage review-64c35701e702c6b6, base
+  d583e42 through 3fc2ed8): one CRITICAL finding (fresh uploads with worn shoes/bags lost the item on the
+  unknown-category path) fixed in the single bounded correction 3fc2ed8 (delegated writer, +100/-5),
+  targeted validation approved, acknowledged. pytest 693. Advisories for later: BiRefNet matte/finish_full
+  refactor has no direct test; broad except in the cutout step can mask DB errors; the eroded colour image is
+  not persisted, so a resumed job samples the uneroded cutout. Next: U5d (re-cut command, `make ml-preload`
+  fetches FASHN, owner check on real photos with the stack stopped).
+
 ## Next step
 
 Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.
