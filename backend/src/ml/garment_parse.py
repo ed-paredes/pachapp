@@ -32,6 +32,7 @@ from __future__ import annotations
 import gc
 import logging
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
@@ -259,6 +260,7 @@ class GarmentCutout:
     garment_ratio: float
     classes: frozenset[str]  # classes kept ("intersect") or removed ("subtract")
     mode: str = "intersect"
+    review: bool = False  # a worn/carried item may have been unselected -> `needs_review`
 
 
 def removed_classes(
@@ -310,6 +312,45 @@ def fill_garment_holes(
 SUBTRACT_CATEGORIES = frozenset({"shoes", "accessory"})
 
 
+# Unknown category: a footwear / bag / accessory group the largest-clothing rule did not
+# select but that covers at least this share of the matte is kept (subtract, body only) and
+# flagged for review instead of being cut away silently.
+MIN_UNSELECTED_ITEM_RATIO = 0.10
+_FOOTWEAR_ITEMS = CATEGORY_CLASSES["shoes"]
+_CARRIED_ITEMS = CATEGORY_CLASSES["accessory"] - BODY_CLASSES
+
+
+def _group_pixels(result: ParseResult, classes: frozenset[str], matte: np.ndarray) -> int:
+    return int((result.mask_for(classes) & matte).sum())
+
+
+def _cut_unknown_category(
+    matte_rgba: Image.Image, result: ParseResult, min_ratio: float
+) -> GarmentCutout:
+    """Category not classified yet: pick the largest of the clothing, footwear and
+    carried-item groups; items are cut by subtracting the body, and an item group that
+    lost to clothing but is substantial is kept too, with `review` set."""
+    matte = np.asarray(matte_rgba.getchannel("A")) > OPACITY_THRESHOLD
+    garments = CLOTHING_CLASSES - _FOOTWEAR_ITEMS - _CARRIED_ITEMS
+    counts = {n: int((result.labels == i).sum()) for i, n in result.names.items() if n in garments}
+    clothing_px = max(counts.values(), default=0)
+    top_item = max(
+        _group_pixels(result, group, matte) for group in (_FOOTWEAR_ITEMS, _CARRIED_ITEMS)
+    )
+    subtract = partial(
+        cut_garment, matte_rgba, result, None, mode="subtract", min_ratio=min_ratio, body_only=True
+    )
+    if top_item > clothing_px:
+        return subtract()
+    if top_item >= MIN_UNSELECTED_ITEM_RATIO * max(int(matte.sum()), 1):
+        cut = subtract()
+        cut.review = not cut.fallback
+        return cut
+    return cut_garment(
+        matte_rgba, result, None, mode="intersect", min_ratio=min_ratio, fill_holes=True
+    )
+
+
 def cut_garment_by_rule(
     matte_rgba: Image.Image,
     result: ParseResult,
@@ -321,8 +362,10 @@ def cut_garment_by_rule(
 
     - footwear / accessories: "subtract" body only;
     - clothing: "intersect" with the category's class group, holes filled;
-    - category unknown (not classified yet): "intersect" with the largest clothing
-      region, holes filled.
+    - category unknown (not classified yet): the largest of the clothing, footwear and
+      carried-item groups; items subtract the body, clothing intersects with the largest
+      clothing region (holes filled) unless a substantial item group would be lost
+      (`MIN_UNSELECTED_ITEM_RATIO`), which keeps it and sets `review`.
 
     Falls back to the unchanged matte (`fallback=True`) when the garment mask is too small.
     """
@@ -330,6 +373,8 @@ def cut_garment_by_rule(
         return cut_garment(
             matte_rgba, result, category, mode="subtract", min_ratio=min_ratio, body_only=True
         )
+    if category is None:
+        return _cut_unknown_category(matte_rgba, result, min_ratio)
     return cut_garment(
         matte_rgba, result, category, mode="intersect", min_ratio=min_ratio, fill_holes=True
     )

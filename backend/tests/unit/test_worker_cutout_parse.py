@@ -24,6 +24,7 @@ from shared.settings import Settings
 from worker.runner import StepContext
 from worker.steps.consolidate import consolidate_step
 from worker.steps.cutout import (
+    REVIEW_ITEM_KEPT,
     REVIEW_MASK_TOO_SMALL,
     REVIEW_PARSER_FAILED,
     make_cutout_step,
@@ -159,9 +160,51 @@ def test_clothing_is_intersected_with_its_group_and_cropped(factory, settings) -
     assert "cutout_review" not in ctx.data
 
 
+def _unknown_grid(*, pants_cols: int, feet_cols: int) -> ParseResult:
+    """Top (rows 0-30, 480 px), pants (rows 30-45) and feet (rows 45-60) of given widths."""
+    grid = np.zeros((SIZE, SIZE), dtype=np.uint8)
+    grid[0:30, 14:30] = 2
+    grid[30:45, 10 : 10 + pants_cols] = 3
+    grid[45:60, 10 : 10 + feet_cols] = 5
+    grid[0:6, 24:36] = 1
+    return ParseResult(grid, NAMES)
+
+
 def test_unknown_category_uses_the_largest_clothing_region(factory, settings) -> None:
-    _, cutout, _ = _run(factory, settings, FakeMatteRemover(), FakeParser(_person_result()))
-    assert cutout.size == (32, 30)
+    # Small feet (under the unselected-item threshold): the top wins as before, no review.
+    ctx, cutout, _ = _run(
+        factory, settings, FakeMatteRemover(), FakeParser(_unknown_grid(pants_cols=20, feet_cols=4))
+    )
+    assert cutout.size == (16, 30)
+    assert "cutout_review" not in ctx.data
+
+
+def test_unknown_category_keeps_worn_footwear_when_it_is_the_largest(factory, settings) -> None:
+    # A photo of shoes on feet: feet (40 cols) beat the top and pants -> subtract body only.
+    ctx, cutout, _ = _run(
+        factory, settings, FakeMatteRemover(), FakeParser(_unknown_grid(pants_cols=8, feet_cols=40))
+    )
+    alpha = np.asarray(cutout.getchannel("A"))
+    assert (alpha[-15:, :] == 255).all()  # shoe rows kept
+    assert (alpha[0:6, 14:26] == 0).all()  # face removed
+    assert "cutout_review" not in ctx.data
+
+
+def test_unknown_category_keeps_a_substantial_unselected_item_and_flags_review(
+    factory, settings
+) -> None:
+    # Pants (40 cols x 15) beat feet (30 cols x 15, 18.75% of the matte), but the feet
+    # must not be cut away silently.
+    ctx, cutout, _ = _run(
+        factory,
+        settings,
+        FakeMatteRemover(),
+        FakeParser(_unknown_grid(pants_cols=40, feet_cols=30)),
+    )
+    alpha = np.asarray(cutout.getchannel("A"))
+    assert (alpha[-15:, 0:30] == 255).all()  # feet kept
+    assert (alpha[30:45, :] == 255).all()  # pants kept too (subtract keeps every garment)
+    assert ctx.data["cutout_review"] == REVIEW_ITEM_KEPT
 
 
 def test_category_is_read_from_the_database(factory, settings) -> None:

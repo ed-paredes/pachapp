@@ -64,6 +64,7 @@ ParserFactory = Callable[[], GarmentParser]
 
 REVIEW_MASK_TOO_SMALL = "garment_mask_too_small"
 REVIEW_PARSER_FAILED = "garment_parser_failed"
+REVIEW_ITEM_KEPT = "garment_item_kept"
 
 MSG_CUTOUT = "No se pudo recortar la prenda. Inténtalo de nuevo."
 
@@ -126,6 +127,9 @@ def _parse_cutout(
         )
         ctx.data["cutout_review"] = REVIEW_MASK_TOO_SMALL
         return None
+    if cut.review:
+        logger.warning("job %s: an unselected worn/carried item was kept for review", ctx.job_id)
+        ctx.data["cutout_review"] = REVIEW_ITEM_KEPT
     return crop_to_foreground(cut.rgba)
 
 

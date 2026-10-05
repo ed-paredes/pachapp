@@ -172,6 +172,9 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   (fakes only). Checks: ruff format/check, ty, pytest 691 passed. Open for U5d (real photos): flat-lay sandals
   and insoles under FASHN `person_present`; footwear with an unknown category on a worn photo (largest clothing
   region is wrong for shoes until a re-cut with a known category); `make ml-preload` does not fetch FASHN yet.
+  Correction (review lineage review-64c35701e702c6b6, R3-fresh-upload-footwear-misroute): unknown category now
+  picks the largest of clothing/footwear/carried groups (items -> subtract body only) and keeps a lost item group
+  covering >= `MIN_UNSELECTED_ITEM_RATIO` (0.10) of the matte via subtract, setting `cutout_review` = `garment_item_kept`.
 
 ## Next step
 
