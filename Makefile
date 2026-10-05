@@ -42,7 +42,7 @@ NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
 	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval ml-cutout-eval backfill-ai recut-garments \
-	android-apk
+	tryon-setup tryon-masks tryon-spike android-apk
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -125,6 +125,39 @@ ml-eval: ## Evaluate zero-shot accuracy on labeled eval photos (EVAL_DIR=... to 
 # mask modes: intersect, subtract (default both, one report column per method x mode).
 ml-cutout-eval: ## Compare garment-only cutout methods (CUTOUT_EVAL_ARGS="DIR... --out OUT [--methods M,..] [--mask-modes intersect,subtract] [--worn-only]")
 	$(BACKEND) uv run python -m ml.cutout_eval $(CUTOUT_EVAL_ARGS)
+
+# Virtual try-on spike (V0, docs/specs/09-virtual-tryon.md §4, §12). CatVTON is
+# CC BY-NC-SA 4.0 (personal use only) and not a pip package: it is cloned at a pinned
+# commit outside the repo. Its own venv only builds the mannequin masks (DensePose +
+# SCHP). Its README's Python 3.9 no longer resolves: requirements.txt takes diffusers
+# from git main (needs Python >= 3.10, too new for its torch 2.4) and peft>=0.17 needs
+# a newer accelerate than its pin, so diffusers/accelerate are overridden to versions
+# that import with torch 2.4 (checked 2026-10-05). The spike runs in the backend venv with
+# diffusers/accelerate added by `uv run --with`, so uv.lock is untouched until V1.
+# Stop the API, worker and Expo before tryon-masks/tryon-spike (§12.2: RAM/VRAM).
+TRYON_CATVTON_DIR ?= $(HOME)/pachapp-data/vendor/CatVTON
+TRYON_CATVTON_COMMIT := 7818397f25613beedb3d861a34769f607cfcf3b1
+TRYON_HF_HOME ?= $(or $(PACHAPP_ML_CACHE_DIR),$(if $(PACHAPP_DATA_DIR),$(PACHAPP_DATA_DIR)/models),$(HOME)/pachapp-data/models)
+TRYON_WITH := --with diffusers==0.40.0 --with accelerate==1.15.0
+
+tryon-setup: ## Clone CatVTON (pinned) and create its venv for the mask builder
+	@if [[ ! -d "$(TRYON_CATVTON_DIR)/.git" ]]; then \
+		git clone https://github.com/Zheng-Chong/CatVTON.git "$(TRYON_CATVTON_DIR)"; fi
+	git -C "$(TRYON_CATVTON_DIR)" fetch --quiet origin
+	git -C "$(TRYON_CATVTON_DIR)" checkout --quiet $(TRYON_CATVTON_COMMIT)
+	cd "$(TRYON_CATVTON_DIR)" && uv venv --allow-existing --python 3.10 .venv && \
+		printf 'diffusers==0.30.3\naccelerate==1.2.1\n' > .venv/overrides.txt && \
+		uv pip install --python .venv -r requirements.txt --override .venv/overrides.txt
+
+tryon-masks: ## Precompute a mannequin's CatVTON masks (MANNEQUIN=dir with person.png)
+	@if [[ -z "$(MANNEQUIN)" ]]; then echo 'usage: make tryon-masks MANNEQUIN=<dir>' >&2; exit 1; fi
+	HF_HOME=$(TRYON_HF_HOME) "$(TRYON_CATVTON_DIR)/.venv/bin/python" \
+		backend/scripts/tryon_build_masks.py --catvton-dir "$(TRYON_CATVTON_DIR)" $(MANNEQUIN)
+
+# TRYON_SPIKE_ARGS e.g. "--mannequin M1 --mannequin M2 --garments G1 --out /tmp/x"
+tryon-spike: ## Measure CatVTON on the GPU (TRYON_SPIKE_ARGS="--mannequin D --garments D --out D")
+	$(BACKEND) uv run $(TRYON_WITH) python -m ml.tryon_spike \
+		--catvton-dir "$(TRYON_CATVTON_DIR)" $(TRYON_SPIKE_ARGS)
 
 # Stop the worker first: backfill and worker would share the GPU (VIS-REQ-025).
 backfill-ai: ## Fill AI attributes and embeddings of existing garments (stop the worker first)
