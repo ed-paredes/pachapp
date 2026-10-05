@@ -39,8 +39,8 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
   photos under `~/pachapp-data-test/images`), select person-worn photos, write contact sheets, a colour proxy
   (dominant colours before/after), per-image latency, peak VRAM and peak RAM; unit tests with fakes, no models
   or network in `make test` (VIS-REQ-029).
-- [ ] **U5b** (first run 2026-10-04 inconclusive: no worn photos; waiting for the owner's worn photos) Run the evaluation with the stack stopped (API, worker, Expo) -> report -> owner picks the parser.
-- [ ] **U5b2** (owner 2026-10-05: "vamos con las 2 y luego decidimos") Eval round 3: add a subtractive mask mode
+- [x] **U5b** (first run 2026-10-04 inconclusive: no worn photos; waiting for the owner's worn photos) Run the evaluation with the stack stopped (API, worker, Expo) -> report -> owner picks the parser.
+- [x] **U5b2** (owner 2026-10-05: "vamos con las 2 y luego decidimos") Eval round 3: add a subtractive mask mode
   (BiRefNet matte minus body classes face/hair/arms/legs/neck, holes filled) next to today's intersect mode, and
   two new parsers, FASHN Human Parser (SegFormer-B4) and SCHP (ATR/LIP), to the eval tooling; rerun on
   `~/pachapp-data/eval/worn/` with the stack stopped -> owner picks parser + mask mode. Route: delegated writer
@@ -137,6 +137,13 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   (889-940 ms, ~560 MB torch). (4) Cost: FASHN 838 ms vs BiRefNet 579 ms, torch peak ~320 MB.
   Recommendation to the owner: FASHN; clothing -> intersect with the garment group + hole fill; footwear and
   accessories -> subtract body only; no person -> keep the matte. Waiting on the owner's choice.
+
+- 2026-10-05: owner decision ("si daleeee"): FASHN Human Parser for U5c with the rule: clothing -> intersect
+  with the garment group + hole fill; footwear and accessories -> subtract body only; no person -> keep the
+  BiRefNet matte. U5b and U5b2 closed. U5c+U5d go on branch `u5/02-worker-cutout`, stacked on
+  `feat/u5-garment-cutout` (slice 1: eval tooling U5a+U5b2). Eval-tool review advisories (parser failure
+  aborts the run, key collision, matte size, eval-dir assert, exit code, --limit validation, duplicated GPU
+  release, b2/b3 revision defaults) stay as follow-ups unless U5c touches that code.
 
 ## Next step
 
