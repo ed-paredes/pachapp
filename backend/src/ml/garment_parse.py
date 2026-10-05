@@ -55,9 +55,12 @@ MASK_MODES = ("intersect", "subtract")
 # Share of the image (default, tunable) below which the garment mask is considered
 # unusable and the BiRefNet matte is kept as is (+ `needs_review`).
 MIN_GARMENT_RATIO = 0.01
-# Share of the image (default, tunable) that must be face/hair/limb pixels (or, for
-# parsers without those classes, any clothing) for a person to count as present.
-MIN_PERSON_RATIO = 0.02
+# A person counts as present only with real body evidence (see `person_present`):
+# face pixels >= MIN_FACE_RATIO of the image, or arm/hand/leg pixels >= MIN_PERSON_RATIO.
+# Hair and any skin-like class alone are not enough (round 1 of U5b: flat-lay sandals and
+# skin-toned insoles were "persons"). Both values are defaults, tunable.
+MIN_FACE_RATIO = 0.005
+MIN_PERSON_RATIO = 0.05
 # Erosion radius in pixels (default, tunable) applied before sampling colours, so
 # the blurry matte edge does not leak skin / background tones into the palette.
 COLOR_ERODE_PX = 4
@@ -81,10 +84,15 @@ BODY_CLASSES = frozenset(
         "jewelry",
     }
 )
-PERSON_CLASSES = BODY_CLASSES - {"torso", "neck", "jewelry"}
+FACE_CLASSES = frozenset({"face"})
+LIMB_CLASSES = frozenset(
+    {"left_arm", "right_arm", "left_leg", "right_leg", "arms", "legs", "hands"}
+)
 # FASHN label -> shared vocabulary (everything else keeps its own normalised name).
 FASHN_ALIASES = {"top": "upper_clothes", "glasses": "sunglasses"}
-_SEGFORMER_CLOTHING = frozenset(
+# Clothing / carried-item class names of the ATR-style vocabularies (SegFormer b2/b3, FASHN
+# after aliasing, SCHP). `CLOTHING_CLASSES` adds U2Net-cloth's three coarse classes.
+_ATR_CLOTHING = frozenset(
     {
         "hat",
         "upper_clothes",
@@ -104,6 +112,7 @@ _SEGFORMER_CLOTHING = frozenset(
     }
 )
 _U2NET_CLOTHING = frozenset({"upper", "lower", "full"})
+CLOTHING_CLASSES = _ATR_CLOTHING | _U2NET_CLOTHING
 
 # App category (`shared.enums.GarmentCategory`) -> class names per parser vocabulary.
 CATEGORY_CLASSES: dict[str, frozenset[str]] = {
@@ -149,7 +158,7 @@ class ParseResult:
         return np.isin(self.labels, ids) if ids else np.zeros(self.labels.shape, dtype=bool)
 
     def clothing_names(self) -> set[str]:
-        return {n for n in self.names.values() if n in _SEGFORMER_CLOTHING | _U2NET_CLOTHING}
+        return {n for n in self.names.values() if n in CLOTHING_CLASSES}
 
 
 class GarmentParser(Protocol):
@@ -168,24 +177,35 @@ class GarmentParser(Protocol):
 # --- pure helpers -------------------------------------------------------------------
 
 
-def person_present(result: ParseResult, min_ratio: float = MIN_PERSON_RATIO) -> bool:
-    """True when face/hair/arm/leg pixels cover at least `min_ratio` of the image.
+def person_present(
+    result: ParseResult,
+    min_ratio: float = MIN_PERSON_RATIO,
+    min_face_ratio: float = MIN_FACE_RATIO,
+) -> bool:
+    """True when the parse shows real body evidence: face pixels cover at least
+    `min_face_ratio` of the image, or arm/hand/leg pixels cover at least `min_ratio`.
 
-    Parsers without person classes (U2Net-cloth) fall back to "any clothing".
+    Hair, torso, neck, jewelry and sunglasses never count on their own, so a flat-lay
+    product photo (sandals, insoles, a dark garment labelled as hair) is not a person.
+    Parsers without person classes (U2Net-cloth) fall back to "any clothing" at
+    `min_ratio`.
     """
     total = result.labels.size
     if total == 0:
         return False
-    present = PERSON_CLASSES & set(result.names.values())
-    classes = present or result.clothing_names()
-    return float(result.mask_for(classes).sum()) / total >= min_ratio
+    names = set(result.names.values())
+    if not (FACE_CLASSES | LIMB_CLASSES) & names:
+        return float(result.mask_for(result.clothing_names()).sum()) / total >= min_ratio
+    face = float(result.mask_for(FACE_CLASSES).sum()) / total
+    limbs = float(result.mask_for(LIMB_CLASSES).sum()) / total
+    return face >= min_face_ratio or limbs >= min_ratio
 
 
 def largest_clothing_class(result: ParseResult) -> frozenset[str]:
     """The single clothing class covering the most pixels (empty if none)."""
     best: tuple[int, str] | None = None
     for class_id, name in result.names.items():
-        if name not in _SEGFORMER_CLOTHING | _U2NET_CLOTHING:
+        if name not in CLOTHING_CLASSES:
             continue
         count = int((result.labels == class_id).sum())
         if count > 0 and (best is None or count > best[0]):
@@ -241,14 +261,19 @@ class GarmentCutout:
     mode: str = "intersect"
 
 
-def removed_classes(result: ParseResult, category: str | None) -> frozenset[str]:
+def removed_classes(
+    result: ParseResult, category: str | None, *, body_only: bool = False
+) -> frozenset[str]:
     """Classes subtract mode removes from the matte, in this parser's vocabulary.
 
     Always the body/person classes; with a known category also the clearly-other garment
     groups (see `OTHER_GARMENT_CLASSES`). `shoes` is the exception: only shoes are kept,
-    so every other labelled class is removed.
+    so every other labelled class is removed. `body_only` removes just the body classes
+    whatever the category (the worker's rule for footwear and accessories).
     """
     present = set(result.names.values()) - {BACKGROUND}
+    if body_only:
+        return frozenset(BODY_CLASSES & present)
     if category == "shoes":
         return frozenset(present - CATEGORY_CLASSES["shoes"])
     removed = BODY_CLASSES | OTHER_GARMENT_CLASSES.get(category or "", frozenset())
@@ -271,6 +296,45 @@ def subtract_garment(
     return alpha, remaining | holes
 
 
+def fill_garment_holes(
+    mask: np.ndarray, matte_alpha: np.ndarray, body: np.ndarray, *, opacity: int = OPACITY_THRESHOLD
+) -> np.ndarray:
+    """`mask` plus the matte pixels fully enclosed by it that are not body (a part of the
+    garment labelled as a sibling class, e.g. a pocket or a stripe)."""
+    holes = ndimage.binary_fill_holes(mask) & ~mask & (matte_alpha > opacity) & ~body
+    return mask | holes
+
+
+# Categories cut by removing only the body (FASHN has no shoe class and accessories are
+# too small and varied for a class group); every other category intersects with its group.
+SUBTRACT_CATEGORIES = frozenset({"shoes", "accessory"})
+
+
+def cut_garment_by_rule(
+    matte_rgba: Image.Image,
+    result: ParseResult,
+    category: str | None,
+    *,
+    min_ratio: float = MIN_GARMENT_RATIO,
+) -> GarmentCutout:
+    """The worker's cutout rule (owner decision 2026-10-05), for a photo with a person:
+
+    - footwear / accessories: "subtract" body only;
+    - clothing: "intersect" with the category's class group, holes filled;
+    - category unknown (not classified yet): "intersect" with the largest clothing
+      region, holes filled.
+
+    Falls back to the unchanged matte (`fallback=True`) when the garment mask is too small.
+    """
+    if category in SUBTRACT_CATEGORIES:
+        return cut_garment(
+            matte_rgba, result, category, mode="subtract", min_ratio=min_ratio, body_only=True
+        )
+    return cut_garment(
+        matte_rgba, result, category, mode="intersect", min_ratio=min_ratio, fill_holes=True
+    )
+
+
 def cut_garment(
     matte_rgba: Image.Image,
     result: ParseResult,
@@ -278,6 +342,8 @@ def cut_garment(
     *,
     mode: str = "intersect",
     min_ratio: float = MIN_GARMENT_RATIO,
+    fill_holes: bool = False,
+    body_only: bool = False,
 ) -> GarmentCutout:
     """Garment-only cutout of the matte, by `mode` (`MASK_MODES`).
 
@@ -285,7 +351,10 @@ def cut_garment(
     the matte minus body (and other-garment) classes, enclosed holes filled; for
     `shoes` it keeps only shoe pixels. The ratio is measured on the pixels kept (inside
     the matte for "intersect"), so a parser hit outside the matte does not count. Below
-    `min_ratio` the matte is returned unchanged with `fallback=True`.
+    `min_ratio` the matte is returned unchanged with `fallback=True`. `fill_holes` (intersect
+    only) also keeps matte pixels fully enclosed by the garment mask that are not body, so a
+    garment labelled across sibling classes stays whole; `body_only` (subtract only) removes
+    just the body classes.
     """
     if mode not in MASK_MODES:
         raise ValueError(f"unknown mask mode {mode!r}; choose from {MASK_MODES}")
@@ -293,11 +362,13 @@ def cut_garment(
     if mode == "intersect":
         classes = garment_classes(result, category)
         mask = result.mask_for(classes)
+        if fill_holes:
+            mask = fill_garment_holes(mask, matte_alpha, result.mask_for(BODY_CLASSES))
         ratio = mask_ratio(mask & (matte_alpha > OPACITY_THRESHOLD))
         if ratio >= min_ratio:
             return GarmentCutout(intersect_alpha(matte_rgba, mask), False, ratio, classes, mode)
     else:
-        classes = removed_classes(result, category)
+        classes = removed_classes(result, category, body_only=body_only)
         alpha, kept = subtract_garment(matte_alpha, result.mask_for(classes))
         ratio = mask_ratio(kept)
         if ratio >= min_ratio:

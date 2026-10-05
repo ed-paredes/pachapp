@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     ml_knn_min_verified: int = Field(default=30, gt=0)
     ml_llm_fallback: bool = False
     ml_eval_dir: Path | None = None
+    # Garment-only cutout in the worker (U5c): after the BiRefNet matte, the FASHN parser
+    # removes the person and other garments when a person is in the photo. Turn off
+    # (PACHAPP_ML_GARMENT_PARSE=false) to keep today's BiRefNet-only cutout.
+    ml_garment_parse: bool = True
     # Human-parsing models used by the garment cutout evaluation (U5). Optional commit
     # pins (VIS-REQ-002 spirit): unset means "latest at download time", and the
     # evaluation report records which revision was loaded. A moving ref is rejected.

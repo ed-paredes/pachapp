@@ -1,8 +1,9 @@
 """`consolidate` step (03-garment-ingestion.md "Reglas de needs_review", D19, DAT-REQ-002/018).
 
 `needs_review` becomes true when `color_confidence < setting.color_review_threshold`
-or the cutout soft-failed (ING-SCN-005). It is only ever raised here, never
-cleared: only "Revisión terminada" (API-REQ-019) sets it back to false.
+or the cutout soft-failed (ING-SCN-005) or
+flagged itself for review (garment parser mask too small / parser failure, U5c). It is only
+ever raised here, never cleared: only "Revisión terminada" (API-REQ-019) sets it back to false.
 
 The AI-dependent triggers (low-confidence category/pattern, VIS-REQ-016) are
 raised by `ai_attributes` itself; `consolidate` keeps whatever it set.
@@ -30,6 +31,8 @@ def _review_triggers(
         reasons.append("low_color_confidence")
     if ctx.data.get("cutout_soft_failure"):
         reasons.append("cutout_soft_failure")
+    if ctx.data.get("cutout_review"):  # garment mask too small / parser failed (U5c)
+        reasons.append(str(ctx.data["cutout_review"]))
     return reasons
 
 

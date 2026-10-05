@@ -45,7 +45,7 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
   two new parsers, FASHN Human Parser (SegFormer-B4) and SCHP (ATR/LIP), to the eval tooling; rerun on
   `~/pachapp-data/eval/worn/` with the stack stopped -> owner picks parser + mask mode. Route: delegated writer
   (eval tooling, 2+ non-trivial files + tests + model research); parent runs the eval.
-- [ ] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
+- [x] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
   colour mask, small-mask fallback + `needs_review`), keeping GPU use serial (VIS-REQ-025) and VRAM within the
   6 GB budget alongside SigLIP; tests with fakes.
 - [ ] **U5d** Re-cut existing garments (backfill-style command, idempotent, never touching user edits) and owner
@@ -144,6 +144,34 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   `feat/u5-garment-cutout` (slice 1: eval tooling U5a+U5b2). Eval-tool review advisories (parser failure
   aborts the run, key collision, matte size, eval-dir assert, exit code, --limit validation, duplicated GPU
   release, b2/b3 revision defaults) stay as follow-ups unless U5c touches that code.
+
+- 2026-10-05: U5c (delegated writer; route: delegated direct, trigger: 2+ non-trivial files). Pipeline order
+  finding: `preprocess -> cutout -> color -> ai_attributes -> embedding -> consolidate` (ING-REQ-006) and the
+  upload creates the garment with no category, so on a fresh upload the category is NOT known at cutout time
+  (A15 classifies after the cutout). Chosen option (a), no reordering (moving `ai_attributes` before `cutout`
+  would change which image SigLIP embeds and the A15 behaviour): the cutout step reads `garment.category` from
+  the database (set on a retry/reprocess or by the user) and otherwise uses the unknown-category path
+  (largest clothing region). Rules in `ml.garment_parse.cut_garment_by_rule`: no person -> BiRefNet cutout
+  unchanged; clothing -> intersect with the category's class group (bottom = pants+skirt; FASHN has no
+  separate shorts class, shorts are `pants`) + `fill_garment_holes` (enclosed matte pixels that are not body);
+  `shoes`/`accessory` -> subtract body classes only (`body_only`); unknown -> largest clothing region + hole
+  fill. Small mask (< 1 % of the image) or parser exception -> BiRefNet matte kept and `ctx.data["cutout_review"]`
+  (`garment_mask_too_small` / `garment_parser_failed`), which `consolidate` turns into `needs_review`. Colours:
+  the cutout step leaves `ctx.data["color_image"]` = `erode_alpha(cutout)` (4 px) and `color` samples it; a
+  job resumed from disk without it falls back to the stored cutout. `person_present` is now stricter: face
+  >= 0.5 % (`MIN_FACE_RATIO`) OR arms/hands/legs >= 5 % (`MIN_PERSON_RATIO`, was 0.02 on any person class);
+  hair, torso, neck, jewelry and skin-like classes alone never count; vocabularies without face/limb classes
+  (U2Net) keep the clothing fallback. The parser needs the uncropped matte, so `BiRefNetRemover.matte()` /
+  `finish_full()` were added (`remove` = bbox crop of it; `MatteRemover` runtime protocol); a remover without
+  `matte` (test fakes) skips parsing. GPU strategy: FASHN is built lazily on the first job and kept resident,
+  like BiRefNet and SigLIP (~130 MB fp16 weights, ~320 MB torch peak); the single worker runs matte then
+  parse serially on the job thread (VIS-REQ-025). Setting `PACHAPP_ML_GARMENT_PARSE` (`ml_garment_parse`,
+  default true); off = today's behaviour. Also renamed `_SEGFORMER_CLOTHING` -> `_ATR_CLOTHING` and added
+  `CLOTHING_CLASSES` (review advisory R2). Spec 08 updated (VIS-REQ-031, models row, settings row, VIS-REQ-025),
+  `.env.example`. Tests: `tests/unit/test_worker_cutout_parse.py` + new cases in `test_ml_garment_parse.py`
+  (fakes only). Checks: ruff format/check, ty, pytest 691 passed. Open for U5d (real photos): flat-lay sandals
+  and insoles under FASHN `person_present`; footwear with an unknown category on a worn photo (largest clothing
+  region is wrong for shoes until a re-cut with a known category); `make ml-preload` does not fetch FASHN yet.
 
 ## Next step
 

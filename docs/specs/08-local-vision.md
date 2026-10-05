@@ -35,7 +35,7 @@ Deriva de `SPEC-ML.md` (raíz del repo), adaptado a la arquitectura aprobada: su
 | --- | --- | --- | --- |
 | Quitar fondo | `birefnet-general-lite` vía `rembg` (copia fp16 en `cuda`) | MIT | Por defecto desde 2026-09-29 (ver nota en VIS-REQ-026); `birefnet-general` sigue disponible vía `PACHAPP_ML_BG_MODEL` |
 | Embeddings + zero-shot | `hf-hub:Marqo/marqo-fashionSigLIP` vía `open_clip` | Apache 2.0 | La dimensión del embedding se lee del modelo en tiempo de ejecución; no se fija en el código |
-| Segmentación de ropa en persona (v2) | `mattmdjaga/segformer_b2_clothes` | Ver model card | Fuera de alcance; no se carga en la iteración 1 |
+| Recorte solo de la prenda (U5) | `fashn-ai/fashn-human-parser` (SegFormer-B4, 18 clases), revisión fijada en `PACHAPP_ML_PARSE_FASHN_REVISION` | Licencia fuente de NVIDIA SegFormer (no comercial; aceptada, uso personal) | Se carga bajo demanda en el primer job (fp16 en `cuda`, ~320 MB de pico en torch) y se mantiene residente; ver VIS-REQ-031 |
 | Respaldo | LLM con visión vía API (`PACHAPP_LLM_*`) | — | Solo si `PACHAPP_ML_LLM_FALLBACK=true` |
 
 **VIS-REQ-001.** El sistema NO DEBE usar `RMBG-2.0` como modelo de recorte por defecto, por su licencia no comercial; PUEDE activarse a mano vía `PACHAPP_ML_BG_MODEL=rmbg-2.0` para uso estrictamente personal, con esa condición documentada en `.env.example`.
@@ -60,6 +60,7 @@ Todas las claves nuevas usan el prefijo `PACHAPP_ML_` en el mismo modelo `Settin
 | `PACHAPP_ML_CACHE_DIR` | `${PACHAPP_DATA_DIR}/models` | Caché de todos los modelos (BiRefNet/rembg y SigLIP/open_clip); sujeta a la misma guardia `/mnt/*` que `PACHAPP_DATA_DIR` (D14) |
 | `PACHAPP_ML_BG_MODEL` | `birefnet-general-lite` | Ver VIS-REQ-001 y la nota de VIS-REQ-026 |
 | `PACHAPP_ML_BG_FP16` | `true` | Usa una copia fp16 del modelo de recorte solo cuando el dispositivo resuelto es `cuda` (`cpu`/`mps` conservan fp32); la conversión se hace una vez en `make ml-preload` (`onnx` + `onnxconverter-common`) |
+| `PACHAPP_ML_GARMENT_PARSE` | `true` | Recorte solo de la prenda con el parser FASHN tras el matte de BiRefNet (VIS-REQ-031); `false` conserva el recorte de BiRefNet tal cual |
 | `PACHAPP_ML_EMBED_MODEL` | `hf-hub:Marqo/marqo-fashionSigLIP` | Identificador de `open_clip` |
 | `PACHAPP_ML_EMBED_REVISION` | *(ninguno — obligatorio)* | Ver VIS-REQ-002 |
 | `PACHAPP_ML_MARGIN_THRESHOLD` | `0.15` | Diferencia mínima top1 − top2; ver regla de `needs_review` más abajo |
@@ -219,7 +220,7 @@ Respecto a `02-data-model.md` (detalle de la adaptación; los requisitos normati
 
 ## Concurrencia y rendimiento
 
-**VIS-REQ-025.** La iteración 1 DEBE correr con un único proceso worker y un único job a la vez (límite nuevo que introduce esta spec, motivado por la RAM que ocupan BiRefNet + SigLIP cargados a la vez; c4.md no lo fijaba). Correr más de un proceso worker NO rompe la reclamación atómica del job (DAT-REQ-009 sigue garantizando que cada job lo procesa exactamente un worker), pero queda sin soporte en la iteración 1 por presupuesto de RAM, no por una limitación de la reclamación.
+**VIS-REQ-025.** La iteración 1 DEBE correr con un único proceso worker y un único job a la vez (límite nuevo que introduce esta spec, motivado por la RAM que ocupan BiRefNet + FASHN + SigLIP cargados a la vez; c4.md no lo fijaba). Correr más de un proceso worker NO rompe la reclamación atómica del job (DAT-REQ-009 sigue garantizando que cada job lo procesa exactamente un worker), pero queda sin soporte en la iteración 1 por presupuesto de RAM, no por una limitación de la reclamación.
 
 **Hardware de referencia (comprobado 2026-09-28):** NVIDIA RTX 2060 6 GB visible desde WSL2 (driver 591.86), 8 cores, ~7 GB de RAM disponibles en WSL2. `PACHAPP_ML_DEVICE=auto` debe preferir `cuda` en esta máquina.
 
@@ -240,6 +241,8 @@ Aplazado: empaquetar estos modelos en una imagen Docker o en un VPS (ver c4.md, 
 **VIS-REQ-028.** Las fotos de evaluación (20–40 imágenes reales etiquetadas) DEBEN vivir fuera del repositorio por defecto, bajo `PACHAPP_ML_EVAL_DIR` (por defecto `${PACHAPP_DATA_DIR}/eval/garments`, `*.jpg` + `labels.json` con categoría/subcategoría/estampado/formalidad) — son fotos personales del usuario. `python -m ml.eval` DEBE aceptar además un argumento de línea de comandos que sobreescriba el directorio.
 
 **VIS-REQ-029.** `make test` NO DEBE descargar ningún modelo ni tocar la red: los tests unitarios de `ml` (selección de device, mezcla zero-shot/kNN, umbral de duplicados, mapeo de taxonomía) DEBEN usar embeddings sintéticos generados en el propio test, nunca el modelo real ni `PACHAPP_ML_EVAL_DIR`.
+
+**VIS-REQ-031.** Recorte solo de la prenda (U5c, decisión del dueño 2026-10-05). Con `PACHAPP_ML_GARMENT_PARSE=true` y un remover que devuelva el matte sin recortar, el paso `cutout` ejecuta el parser FASHN justo después del matte de BiRefNet, en serie y en el mismo hilo del job (VIS-REQ-025). Hay persona en la foto solo con evidencia corporal real: píxeles de cara ≥ 0,5 % de la imagen, o de brazos/manos/piernas ≥ 5 % (el pelo, el torso o cualquier clase "de piel" por sí solos no cuentan). Sin persona se conserva el recorte de BiRefNet sin cambios. Con persona: ropa (top, mid_layer, outerwear, bottom, one_piece) = intersección del matte con el grupo de clases de la categoría (p. ej. bottom = pantalón + falda) rellenando los huecos cerrados que no sean cuerpo; calzado y accesorios = matte menos las clases de cuerpo; categoría desconocida (la categoría se lee de la base de datos y una subida nueva aún no la tiene porque `ai_attributes` corre después de `cutout`) = intersección con la mayor región de ropa. Si la máscara de la prenda queda por debajo del 1 % de la imagen, o el parser falla, se conserva el matte y `consolidate` marca `needs_review`. El paso `color` muestrea el recorte erosionado 4 px, sin la piel ni otras prendas del borde. Los tests usan parsers falsos, sin modelos ni red (VIS-REQ-029).
 
 **VIS-REQ-030.** `python -m ml.eval` DEBE reportar precisión por atributo, matriz de confusión de `category`, porcentaje marcado `needs_review` y tiempo medio por prenda.
 

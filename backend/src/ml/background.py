@@ -22,7 +22,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from PIL import Image, ImageOps
 
@@ -63,6 +63,16 @@ _BIREFNET_SIZE = (1024, 1024)
 class BackgroundRemover(Protocol):
     def remove(self, img: Image.Image) -> Image.Image:
         """Return an RGBA image cropped to the foreground bbox."""
+        ...
+
+
+@runtime_checkable
+class MatteRemover(BackgroundRemover, Protocol):
+    """A remover that can also return the uncropped matte (same size as the input), which
+    the garment parser needs to line its labels up with the alpha (U5)."""
+
+    def matte(self, img: Image.Image) -> Image.Image:
+        """RGBA at the input's size (alpha = foreground matte). Raises `EmptyCutoutError`."""
         ...
 
 
@@ -190,6 +200,10 @@ class BiRefNetRemover:
         Raises `EmptyCutoutError` when coverage is below `min_coverage`
         (ING-SCN-005); see the module docstring for the caller contract.
         """
+        return crop_to_foreground(self.finish_full(prepared, raw))
+
+    def finish_full(self, prepared: PreparedCutout, raw: Any) -> Image.Image:
+        """Like `finish` but uncropped: RGBA at the prepared image's size."""
         if prepared.feed is None:
             rgba = raw.convert("RGBA")  # `infer` already ran rembg.remove
         else:
@@ -199,7 +213,12 @@ class BiRefNetRemover:
         coverage = alpha_coverage(rgba)
         if coverage < self._min_coverage:
             raise EmptyCutoutError(coverage, self._min_coverage)
-        return crop_to_foreground(rgba)
+        return rgba
+
+    def matte(self, img: Image.Image) -> Image.Image:
+        """Uncropped matte (RGBA, input size); `remove` is this plus the bbox crop."""
+        prepared = self.prepare(img)
+        return self.finish_full(prepared, self.infer(prepared))
 
     def remove(self, img: Image.Image) -> Image.Image:
         """Cut out the foreground and crop to its bbox (RGBA).

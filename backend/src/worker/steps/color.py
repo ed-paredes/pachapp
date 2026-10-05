@@ -40,7 +40,12 @@ def _load_cutout(ctx: StepContext) -> Image.Image:
 
 
 def color_step(ctx: StepContext) -> None:
-    result = extract_colors(_load_cutout(ctx))
+    # After a garment-only cutout (U5c) the cutout step leaves an eroded copy, so edge
+    # pixels with skin or background tones do not count; otherwise the cutout as is.
+    image = ctx.data.get("color_image")
+    if image is None:
+        image = _load_cutout(ctx)
+    result = extract_colors(image)
     with ctx.session_factory() as session:
         garment = session.get(Garment, ctx.garment_id)
         if garment is None:
