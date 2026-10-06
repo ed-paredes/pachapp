@@ -101,6 +101,7 @@ def test_garment_columns_match_spec(migrated_db: Path) -> None:
         "updated_at",
         "img_original",
         "img_cutout",
+        "cutout_method",
         "img_thumb",
         "category",
         "subcategory",

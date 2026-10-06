@@ -90,6 +90,7 @@ live list.
 | `migrate-new` | Create a migration: `make migrate-new name="add garment"` |
 | `gen-client`  | Regenerate `app/src/api-client/schema.ts` from OpenAPI    |
 | `ml-preload`  | Download and validate the vision models                   |
+| `recut-garments` | Re-cut existing garments with the garment-only cutout  |
 | `android-apk` | Build the Android release APK on Windows                  |
 
 ## `make gen-client`
@@ -111,7 +112,25 @@ BG file, its precision and the warm per-image time. `torch`
 is installed from the PyTorch CUDA 13.0 wheel index (`backend/pyproject.toml`),
 so it needs an NVIDIA GPU and a CUDA 13 driver to actually run on `cuda` -- see
 `docs/specs/08-local-vision.md` for the full settings table and fallback to
-`cpu`/`mps`.
+`cpu`/`mps`. Preload also fetches the FASHN garment parser at the revision pinned in
+`PACHAPP_ML_PARSE_FASHN_REVISION`.
+
+### Re-cutting existing garments
+
+Garments uploaded before the garment-only cutout (U5) keep their old BiRefNet cutout until you
+re-cut them. With the API, worker and Expo **stopped** (the GPU is shared):
+
+```bash
+make recut-garments RECUT_ARGS="--dry-run"                 # count only; loads no model
+make recut-garments RECUT_ARGS="--out ~/pachapp-data/eval-results/recut"   # real run + contact sheets
+```
+
+Other flags: `--limit N`, `--ids ID...`. It re-cuts the cutout and thumbnail (atomically, the
+old file stays until the new one is complete), the colours, the embedding and any still-empty
+AI attribute; it never overwrites user-corrected colours or user-owned attributes, keeps the
+old cutout when there is no person or the garment mask is too small (the latter raises
+`needs_review`), and marks each garment (`garment.cutout_method`) so a second run does nothing.
+Run `make migrate` first. It refuses to run with `PACHAPP_ML_GARMENT_PARSE=false`.
 
 `make ml-cutouts` is the step-2 gate aid: it runs the background remover over
 the photos in `PACHAPP_ML_EVAL_DIR` and writes `<name>.png` cutouts to

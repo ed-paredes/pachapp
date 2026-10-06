@@ -184,6 +184,20 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   not persisted, so a resumed job samples the uneroded cutout. Next: U5d (re-cut command, `make ml-preload`
   fetches FASHN, owner check on real photos with the stack stopped).
 
+- 2026-10-05: U5d implementation (delegated writer; U5d stays open until the owner runs it on real photos and checks
+  the contact sheets). `python -m worker.recut` / `make recut-garments RECUT_ARGS=...` (`--dry-run`, `--limit`,
+  `--ids`, `--out`), VIS-REQ-032. The cut logic was extracted from the cutout step into `CutoutEngine` /
+  `write_cutout_files` (same rule for worker and re-cut). Per garment (serial): BiRefNet matte + FASHN rule with the
+  stored category; only a parsed new cutout rewrites cutout + thumb (atomic, old file kept until replaced), colours
+  (skipped when an `ai_correction` colours row exists), SigLIP embedding and still-empty, non-user-owned attributes
+  (backfill rules; existing values never recomputed). No person / empty matte: old cutout kept; small mask: old kept +
+  `needs_review` (not for `user_verified`); parser failure: error, no marker, retried next run. User edits: the
+  cutout itself has no edit path in the API, so it is not tracked. Idempotency: new nullable column
+  `garment.cutout_method` (`<bg>+fashn@<rev>#rule1`) via Alembic migration `a7c3e5d19b42` (run `make migrate`
+  first); garments with an open job are skipped. Contact sheets original | old | new reuse `ml.cutout_eval.fit_cell`.
+  `make ml-preload` now fetches FASHN at the pinned revision. Refuses with `PACHAPP_ML_GARMENT_PARSE=false`.
+  Docs: spec 08 (VIS-REQ-032), 02, 01, README. Tests: `tests/unit/test_worker_recut.py` (fakes only).
+
 ## Next step
 
 Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.

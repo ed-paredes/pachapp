@@ -73,6 +73,9 @@ class Garment(SQLModel, table=True):
     img_original: str = Field(nullable=False)
     img_cutout: str | None = Field(default=None, nullable=True)
     img_thumb: str | None = Field(default=None, nullable=True)
+    # Cutout method/version the stored cutout was last produced with by the re-cut command
+    # (`worker.recut`); null = never re-cut (08-local-vision.md, VIS-REQ-032).
+    cutout_method: str | None = Field(default=None, nullable=True)
 
     category: GarmentCategory | None = Field(
         default=None, sa_column=Column(_sa_enum(GarmentCategory), nullable=True)

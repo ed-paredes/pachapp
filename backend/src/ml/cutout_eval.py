@@ -470,7 +470,7 @@ def evaluate(
 # --- output ---------------------------------------------------------------------------
 
 
-def _thumb(img: Image.Image, label: str) -> Image.Image:
+def fit_cell(img: Image.Image, label: str) -> Image.Image:
     """`img` fitted into a THUMB_PX cell over grey (so cutouts show their edges)."""
     cell = Image.new("RGB", (THUMB_PX, THUMB_PX + 16), (200, 200, 200))
     fitted = img.convert("RGBA")
@@ -494,11 +494,11 @@ def write_contact_sheets(
         columns = 1 + len(results)
         sheet = Image.new("RGB", (columns * THUMB_PX, len(chunk) * cell_h), (255, 255, 255))
         for row, photo in enumerate(chunk):
-            cells = [_thumb(_load_rgb(photo.path), photo.key)]
+            cells = [fit_cell(_load_rgb(photo.path), photo.key)]
             for result in results:
                 out_file = result.rows[photo.key].out_file or ""
                 with Image.open(out_dir / out_file) as cutout:
-                    cells.append(_thumb(cutout.copy(), result.method))
+                    cells.append(fit_cell(cutout.copy(), result.method))
             for column, cell in enumerate(cells):
                 sheet.paste(cell, (column * THUMB_PX, row * cell_h))
         path = out_dir / f"contact_{number:02d}.jpg"

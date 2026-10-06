@@ -35,7 +35,9 @@ from __future__ import annotations
 import io
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from PIL import Image
 
@@ -105,7 +107,11 @@ def _garment_category(ctx: StepContext) -> str | None:
 
 
 def _parse_cutout(
-    ctx: StepContext, parser: GarmentParser, image: Image.Image, matte: Image.Image
+    ctx: StepContext,
+    parser: GarmentParser,
+    image: Image.Image,
+    matte: Image.Image,
+    data: dict[str, Any],
 ) -> Image.Image | None:
     """Garment-only cutout from the full-size `matte`, or None to keep the plain matte
     cutout (no person, or the parse could not be used; `cutout_review` says why)."""
@@ -125,53 +131,64 @@ def _parse_cutout(
             ctx.job_id,
             100 * cut.garment_ratio,
         )
-        ctx.data["cutout_review"] = REVIEW_MASK_TOO_SMALL
+        data["cutout_review"] = REVIEW_MASK_TOO_SMALL
         return None
     if cut.review:
         logger.warning("job %s: an unselected worn/carried item was kept for review", ctx.job_id)
-        ctx.data["cutout_review"] = REVIEW_ITEM_KEPT
+        data["cutout_review"] = REVIEW_ITEM_KEPT
     return crop_to_foreground(cut.rgba)
 
 
-def make_cutout_step(
-    remover_factory: RemoverFactory, parser_factory: ParserFactory | None = None
-) -> Step:
-    """Build the step; the remover (and the parser, when given and enabled by
-    `ml_garment_parse`) is created on first use and reused."""
-    remover: BackgroundRemover | None = None
-    parser: GarmentParser | None = None
+@dataclass
+class CutoutResult:
+    """Outcome of one garment-only cut (no files or database touched)."""
 
-    def cutout_step(ctx: StepContext) -> None:
-        nonlocal remover, parser
-        assert ctx.settings.images_root is not None
-        image = ctx.data.get("image")
-        if image is None:
-            raise PermanentStepError(
-                "cutout ran without a preprocessed image", user_message=MSG_CUTOUT
-            )
+    cutout: Image.Image  # RGBA, cropped to the foreground
+    soft_failure: bool = False  # empty matte: the full image stands in (ING-SCN-005)
+    review: str | None = None  # `REVIEW_*` reason, turned into `needs_review` by the caller
+    color_image: Image.Image | None = None  # eroded cutout for the colour step (parsed cuts)
+    parsed: bool = False  # the FASHN rule produced `cutout` (False: plain BiRefNet cutout)
 
+
+class CutoutEngine:
+    """Remover (+ optional parser) built on first use and reused; shared by the worker
+    `cutout` step and the re-cut command so both apply the same rule."""
+
+    def __init__(
+        self, remover_factory: RemoverFactory, parser_factory: ParserFactory | None = None
+    ) -> None:
+        self._remover_factory = remover_factory
+        self._parser_factory = parser_factory
+        self._remover: BackgroundRemover | None = None
+        self._parser: GarmentParser | None = None
+
+    def cut(self, ctx: StepContext, image: Image.Image) -> CutoutResult:
+        """Cut `image`. Model errors raise `RetryableStepError` (ING-REQ-022); an empty
+        matte is a soft failure carrying the full image."""
+        data: dict[str, Any] = {}
         soft_failure = False
         try:
-            if remover is None:
-                remover = remover_factory()
+            if self._remover is None:
+                self._remover = self._remover_factory()
+            remover = self._remover
             if (
-                parser_factory is not None
+                self._parser_factory is not None
                 and ctx.settings.ml_garment_parse
                 and isinstance(remover, MatteRemover)
             ):
                 matte = remover.matte(image)
                 cutout = crop_to_foreground(matte)
                 try:
-                    if parser is None:
-                        parser = parser_factory()
-                    parsed = _parse_cutout(ctx, parser, image, matte)
+                    if self._parser is None:
+                        self._parser = self._parser_factory()
+                    parsed = _parse_cutout(ctx, self._parser, image, matte, data)
                 except Exception as exc:  # noqa: BLE001 - degrade to the plain matte, flagged
                     logger.warning("job %s: garment parsing failed: %s", ctx.job_id, exc)
-                    ctx.data["cutout_review"] = REVIEW_PARSER_FAILED
+                    data["cutout_review"] = REVIEW_PARSER_FAILED
                     parsed = None
                 if parsed is not None:
                     cutout = parsed
-                    ctx.data["color_image"] = erode_alpha(parsed)
+                    data["color_image"] = erode_alpha(parsed)
             else:
                 cutout = remover.remove(image)
             cutout = cutout.convert("RGBA")
@@ -183,14 +200,50 @@ def make_cutout_step(
             raise RetryableStepError(
                 f"background removal failed: {exc}", user_message=MSG_CUTOUT
             ) from exc
+        return CutoutResult(
+            cutout=cutout,
+            soft_failure=soft_failure,
+            review=data.get("cutout_review"),
+            color_image=data.get("color_image"),
+            parsed="color_image" in data,
+        )
 
-        cutout_rel = storage.cutout_path(ctx.garment_id)
-        thumb_rel = storage.thumb_path(ctx.garment_id)
-        try:
-            storage.write_atomic(ctx.settings.images_root, cutout_rel, _png_bytes(cutout))
-            storage.write_atomic(
-                ctx.settings.images_root, thumb_rel, make_thumbnail(cutout, ctx.settings.thumb_px)
+
+def write_cutout_files(settings: Settings, garment_id: str, cutout: Image.Image) -> tuple[str, str]:
+    """Write `cutout/{id}.png` then `thumb/{id}.webp` atomically (an existing file is
+    replaced only by a complete new one); returns the relative paths."""
+    assert settings.images_root is not None
+    cutout_rel = storage.cutout_path(garment_id)
+    thumb_rel = storage.thumb_path(garment_id)
+    storage.write_atomic(settings.images_root, cutout_rel, _png_bytes(cutout))
+    storage.write_atomic(settings.images_root, thumb_rel, make_thumbnail(cutout, settings.thumb_px))
+    return cutout_rel, thumb_rel
+
+
+def make_cutout_step(
+    remover_factory: RemoverFactory, parser_factory: ParserFactory | None = None
+) -> Step:
+    """Build the step; the remover (and the parser, when given and enabled by
+    `ml_garment_parse`) is created on first use and reused."""
+    engine = CutoutEngine(remover_factory, parser_factory)
+
+    def cutout_step(ctx: StepContext) -> None:
+        assert ctx.settings.images_root is not None
+        image = ctx.data.get("image")
+        if image is None:
+            raise PermanentStepError(
+                "cutout ran without a preprocessed image", user_message=MSG_CUTOUT
             )
+
+        result = engine.cut(ctx, image)
+        if result.review:
+            ctx.data["cutout_review"] = result.review
+        if result.color_image is not None:
+            ctx.data["color_image"] = result.color_image
+        cutout = result.cutout
+
+        try:
+            cutout_rel, thumb_rel = write_cutout_files(ctx.settings, ctx.garment_id, cutout)
         except OSError as exc:
             raise RetryableStepError(
                 f"could not write cutout files: {exc}", user_message=MSG_CUTOUT
@@ -209,6 +262,6 @@ def make_cutout_step(
             session.commit()
 
         ctx.data["cutout"] = cutout
-        ctx.data["cutout_soft_failure"] = soft_failure
+        ctx.data["cutout_soft_failure"] = result.soft_failure
 
     return cutout_step

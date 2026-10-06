@@ -101,6 +101,7 @@ class JobStep(str, Enum):
 | `updated_at` | DATETIME | No | Se actualiza en cada escritura |
 | `img_original` | TEXT | No | Ruta relativa bajo `PACHAPP_IMAGES_ROOT` |
 | `img_cutout` | TEXT | Sí | Null hasta que el paso `cutout` del worker termine |
+| `cutout_method` | TEXT | Sí | Método/versión del recorte con que `python -m worker.recut` regeneró el recorte por última vez (`<bg>+fashn@<rev>#rule<N>`); null = nunca re-recortada; ver VIS-REQ-032 |
 | `img_thumb` | TEXT | Sí | Null hasta que `cutout` termine |
 | `category` | TEXT (enum) | Sí | Null hasta el paso de atributos IA o entrada manual |
 | `subcategory` | TEXT | Sí | Texto libre; para la categoría `accessory` también actúa como el *subtipo* que usa la regla del motor de "no dos del mismo subtipo" (05-outfit-engine.md) |

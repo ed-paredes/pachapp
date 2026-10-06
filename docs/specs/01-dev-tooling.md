@@ -95,6 +95,7 @@ El `Makefile` raíz es el único punto de entrada (D16). Semántica exacta:
 | `make migrate` | `cd backend && uv run alembic upgrade head`. Un target separado `make migrate-new name=<msg>` ejecuta `alembic revision --autogenerate -m <msg>` para crear nuevas migraciones. |
 | `make gen-client` | Exporta el esquema OpenAPI en proceso (`cd backend && uv run python -m api.export_openapi`, sin servidor en ejecución) y ejecuta `openapi-typescript` contra el resultado, escribiendo los tipos en `app/src/api-client/schema.ts`. |
 | `make ml-preload` | `cd backend && uv run python -m ml.preload`. Descarga/valida los modelos de visión en `PACHAPP_ML_CACHE_DIR` (08-local-vision.md). |
+| `make recut-garments` | `cd backend && uv run python -m worker.recut $(RECUT_ARGS)`. Re-recorta las prendas existentes con el recorte solo de la prenda; parar el worker antes (VIS-REQ-032). |
 | `make ml-eval` | `cd backend && uv run python -m ml.eval`. Métricas de clasificación sobre `PACHAPP_ML_EVAL_DIR` (08-local-vision.md); no requiere la base de datos. |
 | `make reembed` | `cd backend && uv run python -m worker.reembed`. Recalcula embeddings/clasificaciones tras un cambio de modelo, sin tocar campos con `source="user"` (08-local-vision.md). |
 
