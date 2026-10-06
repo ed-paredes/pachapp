@@ -209,6 +209,11 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   shirt and shoes; known cosmetic limit: a notch where a hand sits in a pocket. pytest 707. Remaining misses
   (follow-up): rugby shirts photographed without face/limbs, converse worn with bare legs.
 
+- 2026-10-06: U5d review (four lenses, owner instructed "push, pr, revisión y merge" before leaving; lineage
+  review-c2edb68ceea4cc58, base 3fc2ed8 through 14f2033): approved without correction, acknowledged. Spec drift
+  on the person rule fixed in a7f4ada. Advisories for later: re-cut writes files before the DB commit; parser
+  load failure does not fail fast; some re-cut branches untested; duplicated sheet cell height.
+
 ## Next step
 
 Owner provides 20-30 photos of garments worn (several categories; optional `labels.json`) in a folder (e.g.
