@@ -31,6 +31,20 @@ def _time_warm_inference(session: Any) -> float:
     return (time.monotonic() - start) * 1000
 
 
+def _preload_fashn(settings: Any) -> str:
+    """Fetch the FASHN garment parser at the pinned revision (VIS-REQ-031) and report it.
+    Skipped when `PACHAPP_ML_GARMENT_PARSE` is off."""
+    if not settings.ml_garment_parse:
+        return "skipped (PACHAPP_ML_GARMENT_PARSE=false)"
+    from huggingface_hub import snapshot_download
+
+    from ml.garment_parse import FASHN_MODEL
+
+    revision = settings.ml_parse_fashn_revision or "main"
+    snapshot_download(repo_id=FASHN_MODEL, revision=revision)
+    return f"{FASHN_MODEL}@{revision}"
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     start = time.monotonic()
@@ -56,6 +70,8 @@ def main() -> None:
     # Embeds every taxonomy prompt once (VIS-REQ-011): fails fast on a bad taxonomy.
     classifier = ZeroShotClassifier(embedder, margin_threshold=settings.ml_margin_threshold)
 
+    fashn_line = _preload_fashn(settings)
+
     elapsed = time.monotonic() - start
     print("Vision models ready:")
     print(f"  device:        {device}")
@@ -64,6 +80,7 @@ def main() -> None:
     print(f"  bg warm:       {warm_ms:.0f} ms/image (synthetic 1024x1024)")
     print(f"  embed model:   {embedder.model_id}")
     print(f"  embedding dim: {embedder.dim}")
+    print(f"  parse model:   {fashn_line}")
     print(f"  taxonomy:      {classifier.prompt_count} prompts embedded")
     print(f"  cache dir:     {settings.ml_cache_dir}")
     print(f"  elapsed:       {elapsed:.1f}s")

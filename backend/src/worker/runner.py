@@ -85,24 +85,31 @@ def default_steps(
     settings: Settings,
     remover_factory: Callable[[], Any] | None = None,
     models_factory: Callable[[], Any] | None = None,
+    parser_factory: Callable[[], Any] | None = None,
 ) -> Mapping[JobStep, Step]:
     """Production step registry. `remover_factory` builds the `BackgroundRemover`
     and `models_factory` the embedder + zero-shot classifier (`worker.ai.AiModels`),
-    both lazily on the first job; tests inject fakes, production uses BiRefNet
-    and SigLIP."""
+    both lazily on the first job; `parser_factory` builds the garment parser (FASHN)
+    used by the cutout step when `ml_garment_parse` is on. Tests inject fakes, production
+    uses BiRefNet, FASHN and SigLIP."""
     # Imported here: the step modules import this module for errors/StepContext.
     from worker.ai import LazyModels, production_models_factory
     from worker.steps.ai_attributes import make_ai_attributes_step
     from worker.steps.color import color_step
     from worker.steps.consolidate import consolidate_step
-    from worker.steps.cutout import make_cutout_step, production_remover_factory
+    from worker.steps.cutout import (
+        make_cutout_step,
+        production_parser_factory,
+        production_remover_factory,
+    )
     from worker.steps.embedding import make_embedding_step
     from worker.steps.preprocess import preprocess_step
 
     steps: dict[JobStep, Step] = {step: deferred_step for step in STEP_ORDER}
     steps[JobStep.preprocess] = preprocess_step
     steps[JobStep.cutout] = make_cutout_step(
-        remover_factory or production_remover_factory(settings)
+        remover_factory or production_remover_factory(settings),
+        parser_factory or production_parser_factory(settings),
     )
     steps[JobStep.color] = color_step
     models = LazyModels(models_factory or production_models_factory(settings))

@@ -45,10 +45,10 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
   two new parsers, FASHN Human Parser (SegFormer-B4) and SCHP (ATR/LIP), to the eval tooling; rerun on
   `~/pachapp-data/eval/worn/` with the stack stopped -> owner picks parser + mask mode. Route: delegated writer
   (eval tooling, 2+ non-trivial files + tests + model research); parent runs the eval.
-- [ ] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
+- [x] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
   colour mask, small-mask fallback + `needs_review`), keeping GPU use serial (VIS-REQ-025) and VRAM within the
   6 GB budget alongside SigLIP; tests with fakes.
-- [ ] **U5d** Re-cut existing garments (backfill-style command, idempotent, never touching user edits) and owner
+- [x] **U5d** Re-cut existing garments (backfill-style command, idempotent, never touching user edits) and owner
   check on real photos.
 
 ## TDD / checks
@@ -144,6 +144,75 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   `feat/u5-garment-cutout` (slice 1: eval tooling U5a+U5b2). Eval-tool review advisories (parser failure
   aborts the run, key collision, matte size, eval-dir assert, exit code, --limit validation, duplicated GPU
   release, b2/b3 revision defaults) stay as follow-ups unless U5c touches that code.
+
+- 2026-10-05: U5c (delegated writer; route: delegated direct, trigger: 2+ non-trivial files). Pipeline order
+  finding: `preprocess -> cutout -> color -> ai_attributes -> embedding -> consolidate` (ING-REQ-006) and the
+  upload creates the garment with no category, so on a fresh upload the category is NOT known at cutout time
+  (A15 classifies after the cutout). Chosen option (a), no reordering (moving `ai_attributes` before `cutout`
+  would change which image SigLIP embeds and the A15 behaviour): the cutout step reads `garment.category` from
+  the database (set on a retry/reprocess or by the user) and otherwise uses the unknown-category path
+  (largest clothing region). Rules in `ml.garment_parse.cut_garment_by_rule`: no person -> BiRefNet cutout
+  unchanged; clothing -> intersect with the category's class group (bottom = pants+skirt; FASHN has no
+  separate shorts class, shorts are `pants`) + `fill_garment_holes` (enclosed matte pixels that are not body);
+  `shoes`/`accessory` -> subtract body classes only (`body_only`); unknown -> largest clothing region + hole
+  fill. Small mask (< 1 % of the image) or parser exception -> BiRefNet matte kept and `ctx.data["cutout_review"]`
+  (`garment_mask_too_small` / `garment_parser_failed`), which `consolidate` turns into `needs_review`. Colours:
+  the cutout step leaves `ctx.data["color_image"]` = `erode_alpha(cutout)` (4 px) and `color` samples it; a
+  job resumed from disk without it falls back to the stored cutout. `person_present` is now stricter: face
+  >= 0.5 % (`MIN_FACE_RATIO`) OR arms/hands/legs >= 5 % (`MIN_PERSON_RATIO`, was 0.02 on any person class);
+  hair, torso, neck, jewelry and skin-like classes alone never count; vocabularies without face/limb classes
+  (U2Net) keep the clothing fallback. The parser needs the uncropped matte, so `BiRefNetRemover.matte()` /
+  `finish_full()` were added (`remove` = bbox crop of it; `MatteRemover` runtime protocol); a remover without
+  `matte` (test fakes) skips parsing. GPU strategy: FASHN is built lazily on the first job and kept resident,
+  like BiRefNet and SigLIP (~130 MB fp16 weights, ~320 MB torch peak); the single worker runs matte then
+  parse serially on the job thread (VIS-REQ-025). Setting `PACHAPP_ML_GARMENT_PARSE` (`ml_garment_parse`,
+  default true); off = today's behaviour. Also renamed `_SEGFORMER_CLOTHING` -> `_ATR_CLOTHING` and added
+  `CLOTHING_CLASSES` (review advisory R2). Spec 08 updated (VIS-REQ-031, models row, settings row, VIS-REQ-025),
+  `.env.example`. Tests: `tests/unit/test_worker_cutout_parse.py` + new cases in `test_ml_garment_parse.py`
+  (fakes only). Checks: ruff format/check, ty, pytest 691 passed. Open for U5d (real photos): flat-lay sandals
+  and insoles under FASHN `person_present`; footwear with an unknown category on a worn photo (largest clothing
+  region is wrong for shoes until a re-cut with a known category); `make ml-preload` does not fetch FASHN yet.
+  Correction (review lineage review-64c35701e702c6b6, R3-fresh-upload-footwear-misroute): unknown category now
+  picks the largest of clothing/footwear/carried groups (items -> subtract body only) and keeps a lost item group
+  covering >= `MIN_UNSELECTED_ITEM_RATIO` (0.10) of the matte via subtract, setting `cutout_review` = `garment_item_kept`.
+
+- 2026-10-05: U5c review (owner granted; medium, one reliability lens, lineage review-64c35701e702c6b6, base
+  d583e42 through 3fc2ed8): one CRITICAL finding (fresh uploads with worn shoes/bags lost the item on the
+  unknown-category path) fixed in the single bounded correction 3fc2ed8 (delegated writer, +100/-5),
+  targeted validation approved, acknowledged. pytest 693. Advisories for later: BiRefNet matte/finish_full
+  refactor has no direct test; broad except in the cutout step can mask DB errors; the eroded colour image is
+  not persisted, so a resumed job samples the uneroded cutout. Next: U5d (re-cut command, `make ml-preload`
+  fetches FASHN, owner check on real photos with the stack stopped).
+
+- 2026-10-05: U5d implementation (delegated writer; U5d stays open until the owner runs it on real photos and checks
+  the contact sheets). `python -m worker.recut` / `make recut-garments RECUT_ARGS=...` (`--dry-run`, `--limit`,
+  `--ids`, `--out`), VIS-REQ-032. The cut logic was extracted from the cutout step into `CutoutEngine` /
+  `write_cutout_files` (same rule for worker and re-cut). Per garment (serial): BiRefNet matte + FASHN rule with the
+  stored category; only a parsed new cutout rewrites cutout + thumb (atomic, old file kept until replaced), colours
+  (skipped when an `ai_correction` colours row exists), SigLIP embedding and still-empty, non-user-owned attributes
+  (backfill rules; existing values never recomputed). No person / empty matte: old cutout kept; small mask: old kept +
+  `needs_review` (not for `user_verified`); parser failure: error, no marker, retried next run. User edits: the
+  cutout itself has no edit path in the API, so it is not tracked. Idempotency: new nullable column
+  `garment.cutout_method` (`<bg>+fashn@<rev>#rule1`) via Alembic migration `a7c3e5d19b42` (run `make migrate`
+  first); garments with an open job are skipped. Contact sheets original | old | new reuse `ml.cutout_eval.fit_cell`.
+  `make ml-preload` now fetches FASHN at the pinned revision. Refuses with `PACHAPP_ML_GARMENT_PARSE=false`.
+  Docs: spec 08 (VIS-REQ-032), 02, 01, README. Tests: `tests/unit/test_worker_recut.py` (fakes only).
+
+- 2026-10-06: U5d real run (parent, stack stopped, owner away and asked to proceed): backup of the DB and images
+  in `~/pachapp-backups/pre-u5d-2026-10-06/`; `make migrate` (a7c3e5d19b42), `make ml-preload` (FASHN fetched),
+  dry run 8, first run recut=4 / no person=4 / errors 0, second run already_done=8 (idempotent). The "no person"
+  set held both shoes (correct) but also two worn trousers cropped at the waist. Measured FASHN ratios on 393
+  photos: the U5c rule missed 12/29 worn eval photos. Fix (same commit as this entry): `person_present` also accepts limbs >= 1 % next
+  to non-footwear clothing >= 5 % (recovers 8 of 37 worn photos, no new positive on 356 flat-lay photos);
+  `RULE_VERSION` 2; re-run recut=6 / no person=2 (the shoes). Sheets in
+  `~/pachapp-data/eval-results/u5d-recut-2026-10-06{,-r2}/`: tops lose face/neck/jeans, trousers lose hands,
+  shirt and shoes; known cosmetic limit: a notch where a hand sits in a pocket. pytest 707. Remaining misses
+  (follow-up): rugby shirts photographed without face/limbs, converse worn with bare legs.
+
+- 2026-10-06: U5d review (four lenses, owner instructed "push, pr, revisión y merge" before leaving; lineage
+  review-c2edb68ceea4cc58, base 3fc2ed8 through 14f2033): approved without correction, acknowledged. Spec drift
+  on the person rule fixed in a7f4ada. Advisories for later: re-cut writes files before the DB commit; parser
+  load failure does not fail fast; some re-cut branches untested; duplicated sheet cell height.
 
 ## Next step
 

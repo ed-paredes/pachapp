@@ -10,6 +10,7 @@ from ml.garment_parse import (
     FASHN_ALIASES,
     ParseResult,
     cut_garment,
+    cut_garment_by_rule,
     erode_alpha,
     garment_classes,
     garment_mask,
@@ -75,11 +76,52 @@ def test_category_without_class_in_vocabulary_falls_back_to_largest() -> None:
     assert garment_classes(_result([[1, 1, 2]], U2), "shoes") == {"upper"}
 
 
-def test_person_present_needs_enough_person_pixels() -> None:
+def test_person_present_needs_real_body_evidence() -> None:
     worn = _result([[5, 6, 2, 0]])  # face + arm = 50 %
     flat_lay = _result([[2, 2, 2, 0]])
     assert person_present(worn)
     assert not person_present(flat_lay)
+
+
+def test_person_present_rejects_skin_like_flat_lay_false_positives() -> None:
+    # Sandals / insoles: a few limb pixels (4 %) or hair-labelled shadows, no face.
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0, 0:4] = 6  # 4 % arm-labelled
+    grid[5:8, 0:10] = 1  # 30 % hair-labelled
+    assert not person_present(ParseResult(grid, ATR))
+
+
+def test_person_present_accepts_headless_photo_with_enough_limbs() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0:2, 0:10] = 6  # 20 % arm, no face (cropped at the neck)
+    assert person_present(ParseResult(grid, ATR))
+
+
+def test_person_present_accepts_a_small_face() -> None:
+    grid = np.zeros((20, 20), dtype=np.uint8)
+    grid[0:2, 0:4] = 5  # 2 % face
+    assert person_present(ParseResult(grid, ATR))
+
+
+def test_person_present_accepts_a_photo_cropped_below_the_neck() -> None:
+    # Trousers worn, only hands visible: 2 % limbs next to 40 % pants.
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0, 0:2] = 6
+    grid[2:6, 0:10] = 3
+    assert person_present(ParseResult(grid, ATR))
+
+
+def test_person_present_needs_non_footwear_clothing_next_to_few_limbs() -> None:
+    # Flat-lay shoes with a few skin-like pixels: footwear does not count as worn clothing.
+    shoes = np.zeros((10, 10), dtype=np.uint8)
+    shoes[0, 0:2] = 6
+    shoes[2:6, 0:10] = 7
+    assert not person_present(ParseResult(shoes, ATR))
+    # A flat-lay garment with a stray limb pixel below the limb threshold.
+    flat = np.zeros((20, 20), dtype=np.uint8)
+    flat[0, 0:3] = 6  # 0.75 % limbs
+    flat[5:15, 0:20] = 3
+    assert not person_present(ParseResult(flat, ATR))
 
 
 def test_person_present_u2net_falls_back_to_clothing() -> None:
@@ -255,3 +297,79 @@ def test_u2net_subtract_has_no_body_classes() -> None:
 def test_unknown_mask_mode_is_rejected() -> None:
     with pytest.raises(ValueError, match="mask mode"):
         cut_garment(_rgba(4, 4, (0, 0, 4, 4)), _result([[0]]), None, mode="magic")
+
+
+# --- worker rule (U5c) ------------------------------------------------------------------
+
+FASHN = {
+    0: "background",
+    1: "face",
+    2: "upper_clothes",
+    3: "pants",
+    4: "skirt",
+    5: "arms",
+    6: "legs",
+    7: "feet",
+}
+
+
+def _fashn(grid: np.ndarray) -> ParseResult:
+    return ParseResult(grid, FASHN)
+
+
+def test_rule_clothing_intersects_with_the_whole_class_group() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0:5, 0:10] = 2  # top (not a bottom: must go)
+    grid[5:8, 0:5] = 3  # pants
+    grid[5:8, 5:10] = 4  # skirt labelled next to pants: same group
+    grid[8:10, 0:10] = 6  # legs
+    cut = cut_garment_by_rule(_rgba(10, 10, (0, 0, 10, 10)), _fashn(grid), "bottom")
+    alpha = np.asarray(cut.rgba.getchannel("A"))
+    assert not cut.fallback and cut.mode == "intersect"
+    assert cut.classes == {"pants", "skirt"}
+    assert (alpha > 0).sum() == 3 * 10
+
+
+def test_rule_clothing_fills_holes_with_sibling_labels_but_not_body() -> None:
+    grid = np.zeros((12, 12), dtype=np.uint8)
+    grid[1:11, 1:11] = 2
+    grid[4:6, 4:6] = 3  # pocket labelled as pants: enclosed hole, refilled
+    grid[7:9, 7:9] = 5  # a hand through the garment: body, stays removed
+    cut = cut_garment_by_rule(_rgba(12, 12, (0, 0, 12, 12)), _fashn(grid), "top")
+    alpha = np.asarray(cut.rgba.getchannel("A"))
+    assert (alpha[4:6, 4:6] == 255).all()
+    assert (alpha[7:9, 7:9] == 0).all()
+
+
+def test_rule_unknown_category_uses_largest_clothing_region_with_hole_fill() -> None:
+    grid = np.zeros((12, 12), dtype=np.uint8)
+    grid[0:9, 0:12] = 2  # largest clothing region
+    grid[3:5, 3:5] = 3
+    grid[9:12, 0:12] = 3  # smaller pants region
+    cut = cut_garment_by_rule(_rgba(12, 12, (0, 0, 12, 12)), _fashn(grid), None)
+    alpha = np.asarray(cut.rgba.getchannel("A"))
+    assert cut.classes == {"upper_clothes"}
+    assert (alpha[3:5, 3:5] == 255).all()  # hole refilled
+    assert (alpha[9:12] == 0).all()
+
+
+@pytest.mark.parametrize("category", ["shoes", "accessory"])
+def test_rule_footwear_and_accessories_subtract_body_only(category: str) -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0:3, :] = 6  # legs: removed
+    grid[3:6, :] = 1  # face: removed
+    grid[6:8, :] = 3  # pants: NOT removed in body-only mode
+    cut = cut_garment_by_rule(_rgba(10, 10, (0, 0, 10, 10)), _fashn(grid), category)
+    alpha = np.asarray(cut.rgba.getchannel("A"))
+    assert not cut.fallback and cut.mode == "subtract"
+    assert (alpha[0:6] == 0).all()
+    assert (alpha[6:] == 255).all()  # pants and the unlabelled rest stay
+
+
+def test_rule_small_mask_keeps_the_matte_and_flags_fallback() -> None:
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0, 0] = 2
+    matte = _rgba(10, 10, (0, 0, 10, 10))
+    cut = cut_garment_by_rule(matte, _fashn(grid), "top", min_ratio=0.05)
+    assert cut.fallback
+    assert np.array_equal(np.asarray(cut.rgba), np.asarray(matte))
