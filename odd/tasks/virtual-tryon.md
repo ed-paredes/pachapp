@@ -63,6 +63,18 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
   diffusers/accelerate come in with `uv run --with` (uv.lock untouched; V1 adds them for real). Checks:
   ruff, format, ty clean; pytest 644 (17 new).
 
+- 2026-10-06: V0b first real run (parent, owner away; stack stopped). Branch rebased on main after U5
+  (#46/#47, Makefile conflicts resolved, pytest 724). `make tryon-setup` OK (pinned CatVTON, py3.10 venv);
+  `make tryon-masks` OK on a **provisional** mannequin built from an owner screenshot (cropped at the thighs,
+  personal use, only to measure; not a V1 mannequin, §5.1 choice still open); garments = two U5 cutouts
+  (brown tee, beige trousers). `make tryon-spike` without code changes: model load 273 s (first download
+  included), peak RSS 4995 MiB, nvidia-smi peak 4907 MiB, torch peak 2859 MiB (A/C) / 2457 MiB (B); no OOM, no
+  blank output. Outfit (2 chained passes): A 576x768/30 = 35.8 s (~570 ms/step), B 384x512/30 = 15.2 s,
+  C 576x768/20 = 24.6 s; all meet the §4 criterion (<= 90 s). Quality by eye: A and C dress both garments
+  convincingly (C close to A); B loses the colour (tee turns white) and garbles the trousers. Results in
+  `~/pachapp-data/eval-results/tryon-v0b-2026-10-06/`. VAE `sd-vae-ft-mse` still unpinned (upstream
+  hard-codes it). Pending owner: validate quality, choose the mannequin (§5.1), choose A vs C.
+
 ## Next step
 
 V0b on the owner's machine, with the API, worker and Expo stopped:
