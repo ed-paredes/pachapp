@@ -48,7 +48,7 @@ eroded garment mask; fall back to today's matte + `needs_review` when the garmen
 - [x] **U5c** Integrate the chosen parser in the worker cutout step (class selection, no-person skip, eroded
   colour mask, small-mask fallback + `needs_review`), keeping GPU use serial (VIS-REQ-025) and VRAM within the
   6 GB budget alongside SigLIP; tests with fakes.
-- [ ] **U5d** Re-cut existing garments (backfill-style command, idempotent, never touching user edits) and owner
+- [x] **U5d** Re-cut existing garments (backfill-style command, idempotent, never touching user edits) and owner
   check on real photos.
 
 ## TDD / checks
@@ -197,6 +197,17 @@ Branch `feat/u5-garment-cutout` from `main` `4e397d6`. Forecast ~600-1,000 lines
   first); garments with an open job are skipped. Contact sheets original | old | new reuse `ml.cutout_eval.fit_cell`.
   `make ml-preload` now fetches FASHN at the pinned revision. Refuses with `PACHAPP_ML_GARMENT_PARSE=false`.
   Docs: spec 08 (VIS-REQ-032), 02, 01, README. Tests: `tests/unit/test_worker_recut.py` (fakes only).
+
+- 2026-10-06: U5d real run (parent, stack stopped, owner away and asked to proceed): backup of the DB and images
+  in `~/pachapp-backups/pre-u5d-2026-10-06/`; `make migrate` (a7c3e5d19b42), `make ml-preload` (FASHN fetched),
+  dry run 8, first run recut=4 / no person=4 / errors 0, second run already_done=8 (idempotent). The "no person"
+  set held both shoes (correct) but also two worn trousers cropped at the waist. Measured FASHN ratios on 393
+  photos: the U5c rule missed 12/29 worn eval photos. Fix (same commit as this entry): `person_present` also accepts limbs >= 1 % next
+  to non-footwear clothing >= 5 % (recovers 8 of 37 worn photos, no new positive on 356 flat-lay photos);
+  `RULE_VERSION` 2; re-run recut=6 / no person=2 (the shoes). Sheets in
+  `~/pachapp-data/eval-results/u5d-recut-2026-10-06{,-r2}/`: tops lose face/neck/jeans, trousers lose hands,
+  shirt and shoes; known cosmetic limit: a notch where a hand sits in a pocket. pytest 707. Remaining misses
+  (follow-up): rugby shirts photographed without face/limbs, converse worn with bare legs.
 
 ## Next step
 

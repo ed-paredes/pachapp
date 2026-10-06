@@ -62,6 +62,12 @@ MIN_GARMENT_RATIO = 0.01
 # skin-toned insoles were "persons"). Both values are defaults, tunable.
 MIN_FACE_RATIO = 0.005
 MIN_PERSON_RATIO = 0.05
+# Photos cropped below the neck (trousers, shorts, skirts) show only hands or a little
+# skin: limbs >= MIN_LIMB_WITH_CLOTHING_RATIO next to non-footwear clothing >=
+# MIN_WORN_CLOTHING_RATIO also count. Measured with FASHN on 2026-10-06: recovers 8 of
+# 37 worn photos the rule above missed, with no new positive on 356 flat-lay photos.
+MIN_LIMB_WITH_CLOTHING_RATIO = 0.01
+MIN_WORN_CLOTHING_RATIO = 0.05
 # Erosion radius in pixels (default, tunable) applied before sampling colours, so
 # the blurry matte edge does not leak skin / background tones into the palette.
 COLOR_ERODE_PX = 4
@@ -184,7 +190,9 @@ def person_present(
     min_face_ratio: float = MIN_FACE_RATIO,
 ) -> bool:
     """True when the parse shows real body evidence: face pixels cover at least
-    `min_face_ratio` of the image, or arm/hand/leg pixels cover at least `min_ratio`.
+    `min_face_ratio` of the image, arm/hand/leg pixels cover at least `min_ratio`, or
+    a smaller share of limbs (`MIN_LIMB_WITH_CLOTHING_RATIO`) sits next to non-footwear
+    clothing (`MIN_WORN_CLOTHING_RATIO`), as in a photo cropped below the neck.
 
     Hair, torso, neck, jewelry and sunglasses never count on their own, so a flat-lay
     product photo (sandals, insoles, a dark garment labelled as hair) is not a person.
@@ -199,7 +207,12 @@ def person_present(
         return float(result.mask_for(result.clothing_names()).sum()) / total >= min_ratio
     face = float(result.mask_for(FACE_CLASSES).sum()) / total
     limbs = float(result.mask_for(LIMB_CLASSES).sum()) / total
-    return face >= min_face_ratio or limbs >= min_ratio
+    if face >= min_face_ratio or limbs >= min_ratio:
+        return True
+    if limbs < MIN_LIMB_WITH_CLOTHING_RATIO:
+        return False
+    worn = result.clothing_names() - CATEGORY_CLASSES["shoes"]
+    return float(result.mask_for(worn).sum()) / total >= MIN_WORN_CLOTHING_RATIO
 
 
 def largest_clothing_class(result: ParseResult) -> frozenset[str]:

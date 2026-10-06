@@ -83,7 +83,7 @@ from worker.steps.preprocess import preprocess_step
 logger = logging.getLogger(__name__)
 
 # Bump when the cutout rule changes in a way existing cutouts should be redone for.
-RULE_VERSION = 1
+RULE_VERSION = 2  # 2: person_present also accepts limbs next to worn clothing
 SHEET_ROWS = 10
 _BUSY = (JobStatus.pending, JobStatus.claimed, JobStatus.running)
 

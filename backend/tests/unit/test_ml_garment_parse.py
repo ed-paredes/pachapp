@@ -103,6 +103,27 @@ def test_person_present_accepts_a_small_face() -> None:
     assert person_present(ParseResult(grid, ATR))
 
 
+def test_person_present_accepts_a_photo_cropped_below_the_neck() -> None:
+    # Trousers worn, only hands visible: 2 % limbs next to 40 % pants.
+    grid = np.zeros((10, 10), dtype=np.uint8)
+    grid[0, 0:2] = 6
+    grid[2:6, 0:10] = 3
+    assert person_present(ParseResult(grid, ATR))
+
+
+def test_person_present_needs_non_footwear_clothing_next_to_few_limbs() -> None:
+    # Flat-lay shoes with a few skin-like pixels: footwear does not count as worn clothing.
+    shoes = np.zeros((10, 10), dtype=np.uint8)
+    shoes[0, 0:2] = 6
+    shoes[2:6, 0:10] = 7
+    assert not person_present(ParseResult(shoes, ATR))
+    # A flat-lay garment with a stray limb pixel below the limb threshold.
+    flat = np.zeros((20, 20), dtype=np.uint8)
+    flat[0, 0:3] = 6  # 0.75 % limbs
+    flat[5:15, 0:20] = 3
+    assert not person_present(ParseResult(flat, ATR))
+
+
 def test_person_present_u2net_falls_back_to_clothing() -> None:
     assert person_present(_result([[1, 0, 0, 0]], U2), min_ratio=0.2)
     assert not person_present(_result([[0, 0, 0, 0]], U2))
