@@ -77,12 +77,12 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
 
 ## Next step
 
-V0b on the owner's machine, with the API, worker and Expo stopped:
+Owner decisions to close V0 (setup, masks and the measuring run already work; see the 2026-10-06 entry):
 
-1. `make tryon-setup` (clones CatVTON at the pinned commit into `~/pachapp-data/vendor/CatVTON`).
-2. Two mannequin candidates (§5.1: neutral human model vs mannequin), each a folder with `person.png`
-   (front, full body, 3:4) and `meta.json` (licence, source); `make tryon-masks MANNEQUIN=<dir>` for
-   each, then check `mask_preview.jpg`.
-3. Garment folders with `upper.*` / `lower.*`: today's cutouts and, if U5 is ready, clean cutouts.
-4. `make tryon-spike TRYON_SPIKE_ARGS="--mannequin M1 --mannequin M2 --garments G1 --garments G2
-   --out ~/pachapp-data/eval-results/tryon-v0"` -> the owner validates quality and the criterion.
+1. Look at `~/pachapp-data/eval-results/tryon-v0b-2026-10-06/contact_provisional-m1_u5-cutouts.jpg` and decide
+   whether the quality is good enough (A or C; B is not).
+2. Choose the mannequin (§5.1: neutral human model vs mannequin): a folder with `person.png` (front, full body,
+   3:4, licence-compatible) and `meta.json`; then `make tryon-masks MANNEQUIN=<dir>` and re-run
+   `make tryon-spike TRYON_SPIKE_ARGS="--mannequin <dir> --garments ~/pachapp-data/tryon/garments/u5-cutouts
+   --out ..."` with the stack stopped.
+3. With V0 validated: V1 (`CatVTONEngine`, GPU memory management next to BiRefNet + FASHN + SigLIP).
