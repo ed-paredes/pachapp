@@ -41,7 +41,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   mannequin M12 (`m12-woman-crop-shorts`, Pexels 30554616) alone.
 - [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management. Delivery: one PR per
   task to main (owner 2026-10-08, stacked-to-main), each reviewed and merged before the next.
-  - [ ] **V1a** Mannequin asset + settings + dependencies: `assets/tryon/mannequins/m12-woman-crop-shorts/`
+  - [x] **V1a** Mannequin asset + settings + dependencies: `assets/tryon/mannequins/m12-woman-crop-shorts/`
     (`person.png` 768x1024, `mask_{upper,lower,overall}.png`, `meta.json` with source and licence); flat
     `tryon_*` settings (`PACHAPP_TRYON_*`, V0 defaults, pinned base/attention revisions, `tryon_enabled=false`)
     in `.env.example`; `diffusers`/`accelerate` as backend dependencies (the Makefile stops passing `--with`).
@@ -151,6 +151,16 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
   per garment length is only a fallback; the mannequin choice matters more. Results in
   `~/pachapp-data/eval-results/tryon-v0f-2026-10-07/`.
 
+- 2026-10-08: V1a (delegated writer, branch `tryon/v1a-mannequin-settings`, commit 2b9a80e): M12 asset in
+  `assets/tryon/mannequins/m12-woman-crop-shorts/` (person + upper/lower/overall masks, `meta.json`, folder
+  README); flat `tryon_*` settings (V0 defaults, multiple-of-8 sizes incl. the OOM retry size, pinned base/attn
+  revisions, `tryon_catvton_dir` derived from the data dir, no CPU-offload setting) in `.env.example` and §5.5;
+  `diffusers==0.40.0` + `accelerate==1.15.0` in the backend (uv.lock adds 5 packages, no existing version
+  changed); Makefile drops `--with`. Checks: ruff format/check, ty clean; pytest 749. Native review (medium,
+  granted, 1 lens): approved and acknowledged; advisories for later: R3-catvton-dir-default-divergence (the
+  Makefile clones to `$HOME/pachapp-data/vendor/CatVTON` ignoring `PACHAPP_DATA_DIR`; fix in V1b),
+  R3-mannequin-id-unvalidated, R3-oom-retry-size-unchecked.
+
 ## Next step
 
-V1a (mannequin asset, settings, dependencies), then V1b, V1c, V1d, one PR each.
+V1b (`backend/src/tryon/` engine), then V1c, V1d, one PR each.
