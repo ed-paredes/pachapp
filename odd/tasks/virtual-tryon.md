@@ -25,6 +25,14 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
   - [x] **V0a** Tooling: `ml/tryon_spike.py` + `make tryon-setup|tryon-masks|tryon-spike`,
     `backend/scripts/tryon_build_masks.py`; unit tests with a fake dresser.
   - [ ] **V0b** Run on the RTX 2060 with the stack stopped -> report -> owner validates (§4 criterion).
+  - [ ] **V0c** (owner 2026-10-07: V0b not conclusive, more tests with 9 free-licence mannequins) Spike tooling:
+    `--seeds`, config D 768x1024/20 (native CatVTON resolution), an `overall` case for one-piece garments,
+    a per-garment-set comparison sheet across mannequins. Route: delegated writer. Delivery: PR + review + merge.
+  - [ ] **V0d** Broad round (stack stopped): 9 mannequins (Pexels/Unsplash licence, sources in
+    `~/pachapp-data/tryon/candidates/SOURCES.md`) x ~8 garment sets from the owner's FASHN cutouts, config C,
+    one seed -> which mannequins and garment types work.
+  - [ ] **V0e** Fine round: best 2-3 mannequins x C and D x 3 seeds -> config choice and seed variance ->
+    owner picks mannequin and config (closes V0).
 - [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`.
