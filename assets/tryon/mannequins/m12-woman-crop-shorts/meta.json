@@ -1,0 +1,7 @@
+{
+  "id": "m12-woman-crop-shorts",
+  "source": "https://www.pexels.com/photo/30554616/",
+  "licence": "Pexels License (https://www.pexels.com/license/): free use and modification, no attribution required; personal use in pachapp",
+  "prepared": "side-padded to 3:4 by edge repeat, resized to 768x1024; masks from CatVTON AutoMasker (DensePose + SCHP) at CatVTON 7818397f via `make tryon-masks`",
+  "chosen": "2026-10-08, V0 (odd/tasks/virtual-tryon.md)"
+}

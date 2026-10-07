@@ -132,13 +132,12 @@ ml-cutout-eval: ## Compare garment-only cutout methods (CUTOUT_EVAL_ARGS="DIR...
 # SCHP). Its README's Python 3.9 no longer resolves: requirements.txt takes diffusers
 # from git main (needs Python >= 3.10, too new for its torch 2.4) and peft>=0.17 needs
 # a newer accelerate than its pin, so diffusers/accelerate are overridden to versions
-# that import with torch 2.4 (checked 2026-10-05). The spike runs in the backend venv with
-# diffusers/accelerate added by `uv run --with`, so uv.lock is untouched until V1.
+# that import with torch 2.4 (checked 2026-10-05). The spike runs in the backend venv, where
+# diffusers/accelerate are locked dependencies since V1a.
 # Stop the API, worker and Expo before tryon-masks/tryon-spike (§12.2: RAM/VRAM).
 TRYON_CATVTON_DIR ?= $(HOME)/pachapp-data/vendor/CatVTON
 TRYON_CATVTON_COMMIT := 7818397f25613beedb3d861a34769f607cfcf3b1
 TRYON_HF_HOME ?= $(or $(PACHAPP_ML_CACHE_DIR),$(if $(PACHAPP_DATA_DIR),$(PACHAPP_DATA_DIR)/models),$(HOME)/pachapp-data/models)
-TRYON_WITH := --with diffusers==0.40.0 --with accelerate==1.15.0
 
 tryon-setup: ## Clone CatVTON (pinned) and create its venv for the mask builder
 	@if [[ ! -d "$(TRYON_CATVTON_DIR)/.git" ]]; then \
@@ -157,7 +156,7 @@ tryon-masks: ## Precompute a mannequin's CatVTON masks (MANNEQUIN=dir with perso
 # TRYON_SPIKE_ARGS e.g. "--mannequin M1 --mannequin M2 --garments G1 --configs C,D --seeds 42,7 --out X"
 # (--cases adds `overall` for dresses; D = 768x1024/20 is opt-in; the report is checkpointed per set)
 tryon-spike: ## Measure CatVTON on the GPU (TRYON_SPIKE_ARGS="--mannequin D --garments D --out D [--configs A,B,C,D] [--cases ..,overall] [--seeds 42,7]")
-	$(BACKEND) uv run $(TRYON_WITH) python -m ml.tryon_spike \
+	$(BACKEND) uv run python -m ml.tryon_spike \
 		--catvton-dir "$(TRYON_CATVTON_DIR)" $(TRYON_SPIKE_ARGS)
 
 # Stop the worker first: backfill and worker would share the GPU (VIS-REQ-025).

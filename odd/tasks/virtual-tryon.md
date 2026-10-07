@@ -9,8 +9,8 @@ asynchronous extra view next to the collage on Hoy (`docs/specs/09-virtual-tryon
 
 Spec stored in the repo with integration notes (§12) on 2026-10-04. Owner decision 2026-10-04: do U5
 (`odd/tasks/u5-garment-cutout.md`) first so the try-on gets clean garment images. 2026-10-05: owner started
-V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2026-10-07: V0b-V0f run;
-V0 waits for the owner's mannequin and config choice.
+V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2026-10-07: V0b-V0f run.
+2026-10-08: owner closed V0 ("alpha: the simple, recommended option"): config C, mannequin M12 alone; V1 started.
 
 ## Key constraints (from §12)
 
@@ -22,7 +22,7 @@ V0 waits for the owner's mannequin and config choice.
 
 ## Tasks (spec §10)
 
-- [ ] **V0** Spike + report (§4, plus peak RAM, current vs clean cutouts) -> stop for the owner's validation.
+- [x] **V0** Spike + report (§4, plus peak RAM, current vs clean cutouts) -> stop for the owner's validation.
   - [x] **V0a** Tooling: `ml/tryon_spike.py` + `make tryon-setup|tryon-masks|tryon-spike`,
     `backend/scripts/tryon_build_masks.py`; unit tests with a fake dresser.
   - [x] **V0b** Run on the RTX 2060 with the stack stopped -> report -> owner validates (§4 criterion).
@@ -37,11 +37,33 @@ V0 waits for the owner's mannequin and config choice.
     owner picks mannequin and config (closes V0). Owner 2026-10-07: M1, M2, M8.
   - [x] **V0f** Short garments (shorts, skirts) fail on long-trouser mannequins (V0d): 3 bare-leg mannequins
     M10-M12 (Pexels) with CatVTON's lower mask and with a mask trimmed to the garment length.
-- [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management.
+- [x] **V0 decision** (owner 2026-10-08): config C (576x768, 20 steps, guidance 2.5, seed 42, fp16) and
+  mannequin M12 (`m12-woman-crop-shorts`, Pexels 30554616) alone.
+- [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management. Delivery: one PR per
+  task to main (owner 2026-10-08, stacked-to-main), each reviewed and merged before the next.
+  - [x] **V1a** Mannequin asset + settings + dependencies: `assets/tryon/mannequins/m12-woman-crop-shorts/`
+    (`person.png` 768x1024, `mask_{upper,lower,overall}.png`, `meta.json` with source and licence); flat
+    `tryon_*` settings (`PACHAPP_TRYON_*`, V0 defaults, pinned base/attention revisions, `tryon_enabled=false`)
+    in `.env.example`; `diffusers`/`accelerate` as backend dependencies (the Makefile stops passing `--with`).
+  - [ ] **V1b** `backend/src/tryon/`: `TryOnEngine` Protocol + `TryOnParams`, `CatVTONEngine` (lazy load
+    from the pinned CatVTON clone, `dress`, `unload`, blank check, OOM -> free and retry once at 384x512),
+    mannequin loader, image preparation shared with the spike, `FakeTryOnEngine`; unit tests without GPU.
+  - [ ] **V1c** GPU memory management: unload hooks for BiRefNet (registry), FASHN (`CutoutEngine`) and
+    SigLIP (`LazyModels`) with `gc.collect()` + `torch.cuda.empty_cache()`; release them before CatVTON
+    loads; CatVTON idle unload after `tryon_idle_unload_seconds`. Not wired into the worker loop yet (V2).
+  - [ ] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
+    VRAM and RSS, check the BiRefNet/SigLIP reload afterwards.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`.
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
+
+## Route and checks (V1)
+
+TDD mode: off (no project/session TDD configuration). Runner: `cd backend && uv run pytest`; plus
+`uv run ruff format --check .`, `uv run ruff check .`, `uv run ty check src`. Route: V1a-V1c delegated writer
+(each touches 2+ non-trivial files; mapping done by a read-only explorer on 2026-10-08), V1d parent (GPU run).
+Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> owner chose stacked-to-main.
 
 ## Research notes (2026-10-05, reading CatVTON at `7818397f`)
 
@@ -129,15 +151,16 @@ V0 waits for the owner's mannequin and config choice.
   per garment length is only a fallback; the mannequin choice matters more. Results in
   `~/pachapp-data/eval-results/tryon-v0f-2026-10-07/`.
 
+- 2026-10-08: V1a (delegated writer, branch `tryon/v1a-mannequin-settings`, commit 2b9a80e): M12 asset in
+  `assets/tryon/mannequins/m12-woman-crop-shorts/` (person + upper/lower/overall masks, `meta.json`, folder
+  README); flat `tryon_*` settings (V0 defaults, multiple-of-8 sizes incl. the OOM retry size, pinned base/attn
+  revisions, `tryon_catvton_dir` derived from the data dir, no CPU-offload setting) in `.env.example` and §5.5;
+  `diffusers==0.40.0` + `accelerate==1.15.0` in the backend (uv.lock adds 5 packages, no existing version
+  changed); Makefile drops `--with`. Checks: ruff format/check, ty clean; pytest 749. Native review (medium,
+  granted, 1 lens): approved and acknowledged; advisories for later: R3-catvton-dir-default-divergence (the
+  Makefile clones to `$HOME/pachapp-data/vendor/CatVTON` ignoring `PACHAPP_DATA_DIR`; fix in V1b),
+  R3-mannequin-id-unvalidated, R3-oom-retry-size-unchecked.
+
 ## Next step
 
-Owner decisions to close V0 (all rounds done; see the 2026-10-07 entries):
-
-1. Config: C (14 s per pass, outfit ~29 s) recommended; D only gains on dresses and white bands at 2.5x the
-   time and 71.5 s per outfit.
-2. Mannequin (§5.1): long-trouser mannequins (M1, M2, M8) are good for tops and trousers but fail on shorts
-   and skirts; M12 (bare legs, crop top) is the only one that handled short and long garments. Options: M12
-   alone; one per body type (e.g. M12 + a bare-legged man to be found); or keep M8 and accept that shorts and
-   skirts render poorly.
-3. With V0 validated: V1 (`CatVTONEngine`, GPU memory management next to BiRefNet + FASHN + SigLIP; one
-   config per process).
+V1b (`backend/src/tryon/` engine), then V1c, V1d, one PR each.

@@ -43,6 +43,9 @@ dependencies = [
     "numpy>=2.3,<3",
     "scikit-learn>=1.5,<2",
     "python-multipart>=0.0.32",
+    # CatVTON try-on (09-virtual-tryon.md); the pinned CatVTON clone is imported at runtime.
+    "diffusers==0.40.0",
+    "accelerate==1.15.0",
 ]
 
 [dependency-groups]
