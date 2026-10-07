@@ -9,7 +9,8 @@ asynchronous extra view next to the collage on Hoy (`docs/specs/09-virtual-tryon
 
 Spec stored in the repo with integration notes (§12) on 2026-10-04. Owner decision 2026-10-04: do U5
 (`odd/tasks/u5-garment-cutout.md`) first so the try-on gets clean garment images. 2026-10-05: owner started
-V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
+V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2026-10-07: V0b-V0f run;
+V0 waits for the owner's mannequin and config choice.
 
 ## Key constraints (from §12)
 
@@ -24,15 +25,18 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
 - [ ] **V0** Spike + report (§4, plus peak RAM, current vs clean cutouts) -> stop for the owner's validation.
   - [x] **V0a** Tooling: `ml/tryon_spike.py` + `make tryon-setup|tryon-masks|tryon-spike`,
     `backend/scripts/tryon_build_masks.py`; unit tests with a fake dresser.
-  - [ ] **V0b** Run on the RTX 2060 with the stack stopped -> report -> owner validates (§4 criterion).
-  - [ ] **V0c** (owner 2026-10-07: V0b not conclusive, more tests with 9 free-licence mannequins) Spike tooling:
+  - [x] **V0b** Run on the RTX 2060 with the stack stopped -> report -> owner validates (§4 criterion).
+  - [x] **V0c** (owner 2026-10-07: V0b not conclusive, more tests with 9 free-licence mannequins) Spike tooling:
     `--seeds`, config D 768x1024/20 (native CatVTON resolution), an `overall` case for one-piece garments,
     a per-garment-set comparison sheet across mannequins. Route: delegated writer. Delivery: PR + review + merge.
-  - [ ] **V0d** Broad round (stack stopped): 9 mannequins (Pexels/Unsplash licence, sources in
+    Merged in #49.
+  - [x] **V0d** Broad round (stack stopped): 9 mannequins (Pexels/Unsplash licence, sources in
     `~/pachapp-data/tryon/candidates/SOURCES.md`) x ~8 garment sets from the owner's FASHN cutouts, config C,
     one seed -> which mannequins and garment types work.
-  - [ ] **V0e** Fine round: best 2-3 mannequins x C and D x 3 seeds -> config choice and seed variance ->
-    owner picks mannequin and config (closes V0).
+  - [x] **V0e** Fine round: best 2-3 mannequins x C and D x 3 seeds -> config choice and seed variance ->
+    owner picks mannequin and config (closes V0). Owner 2026-10-07: M1, M2, M8.
+  - [x] **V0f** Short garments (shorts, skirts) fail on long-trouser mannequins (V0d): 3 bare-leg mannequins
+    M10-M12 (Pexels) with CatVTON's lower mask and with a mask trimmed to the garment length.
 - [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`.
@@ -91,14 +95,49 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
   column, and `tryon_spike_report.md` is rewritten (marked PARTIAL) after every mannequin x garment set
   (review advisory R4-spike-abort-loses-report). Checks: ruff format/check, ty clean; pytest 735 (11 new).
 
+- 2026-10-07: V0d broad round (parent; stack stopped; no code change). 9 mannequins M1-M9 x 10 garment sets
+  (g01-g08 FASHN cutouts of the owner's garments as upper+lower, g09 dress as `overall`, g10 the original
+  photos of g01), config C, seed 42: 333 passes, 0 OOM, 0 blank, outfit max 31.3 s, median ~14 s per pass,
+  nvidia-smi peak 5055 MiB, RSS peak 4821 MiB. By eye: tops (tee, polo, sweatshirt, work jacket) and long
+  trousers/leggings good on every human mannequin, skin tone and pose; original photos ~= U5 cutouts; the
+  dress keeps its shape but flattens the print, and fails on M7 (crossed legs). **Shorts and skirts (g04,
+  g05, g07, g08) fail almost everywhere**: the leg area gets invented textures or the short becomes long
+  trousers; crop tops leave a white band. Cause by inspection: the mannequins wear long trousers and the
+  lower mask covers the whole leg, so CatVTON must invent bare legs. Mannequins: M8 (hands in pockets) best;
+  M1, M2, M5 very good; M4 good with a stray artefact; M3, M6 short garments bad; M7 short garments and dress
+  bad; M9 (store dummy) bad (floating, deformed garments) -> discarded. Results and `compare_<set>.jpg` in
+  `~/pachapp-data/eval-results/tryon-v0d-2026-10-07/`.
+- 2026-10-07: V0e fine round (parent; stack stopped; no code change). M1, M2, M8 x g01, g02, g03, g06
+  (upper/lower/outfit) + g09 (overall), seeds 42, 7, 1234. A first attempt with `--configs C,D` in one process
+  was aborted: after the first D outfit nvidia-smi showed 5.9 of 6 GB and every later pass slowed down (D
+  outfit 155 s, C 36 s per pass instead of 14 s); partial results kept in `tryon-v0e-2026-10-07-aborted-mixed/`.
+  Re-run with one process per config: **C** 576x768/20 = 14.2 s per pass, outfit max 29.7 s, nvidia-smi peak
+  4831 MiB; **D** 768x1024/20 = 35.2 s per pass, outfit max 71.5 s (meets the 90 s criterion with little
+  margin), nvidia-smi peak 5757 MiB; 0 OOM, 0 blank in both. Quality by eye (`grid_C_vs_D.jpg`,
+  `grid_seeds.jpg`): C and D are close for tops and trousers; D renders the dress as a dress (C turned it into
+  a jumpsuit on M1) and shows fewer white bands under tops; D once turned the leggings red (M1 g06). Seeds:
+  same garment and fit across 42/7/1234, only small artefacts change (one white band under the sweatshirt in
+  C seed 1234). Implication for V1: never run C and D in the same process, and D leaves ~0.4 GB of VRAM.
+- 2026-10-07: V0f short garments (parent; no code change). M10 man in shorts, M11 woman in denim shorts
+  (small in frame), M12 woman in crop top and shorts (Pexels, sources appended to `SOURCES.md`), each with
+  CatVTON's lower mask and a `-trim` copy whose lower mask stops at 0.45 (M10: 0.55, to cover its own shorts)
+  of the waist-to-ankle span; g04, g05, g07, g08 + g01 as control; config C, seed 42; 0 OOM, 0 blank. By eye
+  (`grid_short_outfit.jpg`): **bare legs fix shorts and skirts**. M12 with the normal mask dresses shorts,
+  mini skirt, pleated skirt and long trousers correctly; M10 dresses shorts well but renders skirts as shorts
+  and long trousers as shorts; M11 fails with the normal mask (long invented trousers) and works for short
+  garments with the trimmed mask; the trimmed mask always breaks long trousers (they become shorts). So a mask
+  per garment length is only a fallback; the mannequin choice matters more. Results in
+  `~/pachapp-data/eval-results/tryon-v0f-2026-10-07/`.
+
 ## Next step
 
-Owner decisions to close V0 (setup, masks and the measuring run already work; see the 2026-10-06 entry):
+Owner decisions to close V0 (all rounds done; see the 2026-10-07 entries):
 
-1. Look at `~/pachapp-data/eval-results/tryon-v0b-2026-10-06/contact_provisional-m1_u5-cutouts.jpg` and decide
-   whether the quality is good enough (A or C; B is not).
-2. Choose the mannequin (§5.1: neutral human model vs mannequin): a folder with `person.png` (front, full body,
-   3:4, licence-compatible) and `meta.json`; then `make tryon-masks MANNEQUIN=<dir>` and re-run
-   `make tryon-spike TRYON_SPIKE_ARGS="--mannequin <dir> --garments ~/pachapp-data/tryon/garments/u5-cutouts
-   --out ..."` with the stack stopped.
-3. With V0 validated: V1 (`CatVTONEngine`, GPU memory management next to BiRefNet + FASHN + SigLIP).
+1. Config: C (14 s per pass, outfit ~29 s) recommended; D only gains on dresses and white bands at 2.5x the
+   time and 71.5 s per outfit.
+2. Mannequin (§5.1): long-trouser mannequins (M1, M2, M8) are good for tops and trousers but fail on shorts
+   and skirts; M12 (bare legs, crop top) is the only one that handled short and long garments. Options: M12
+   alone; one per body type (e.g. M12 + a bare-legged man to be found); or keep M8 and accept that shorts and
+   skirts render poorly.
+3. With V0 validated: V1 (`CatVTONEngine`, GPU memory management next to BiRefNet + FASHN + SigLIP; one
+   config per process).
