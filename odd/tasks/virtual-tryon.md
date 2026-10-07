@@ -25,6 +25,14 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
   - [x] **V0a** Tooling: `ml/tryon_spike.py` + `make tryon-setup|tryon-masks|tryon-spike`,
     `backend/scripts/tryon_build_masks.py`; unit tests with a fake dresser.
   - [ ] **V0b** Run on the RTX 2060 with the stack stopped -> report -> owner validates (§4 criterion).
+  - [ ] **V0c** (owner 2026-10-07: V0b not conclusive, more tests with 9 free-licence mannequins) Spike tooling:
+    `--seeds`, config D 768x1024/20 (native CatVTON resolution), an `overall` case for one-piece garments,
+    a per-garment-set comparison sheet across mannequins. Route: delegated writer. Delivery: PR + review + merge.
+  - [ ] **V0d** Broad round (stack stopped): 9 mannequins (Pexels/Unsplash licence, sources in
+    `~/pachapp-data/tryon/candidates/SOURCES.md`) x ~8 garment sets from the owner's FASHN cutouts, config C,
+    one seed -> which mannequins and garment types work.
+  - [ ] **V0e** Fine round: best 2-3 mannequins x C and D x 3 seeds -> config choice and seed variance ->
+    owner picks mannequin and config (closes V0).
 - [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`.
@@ -74,6 +82,14 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending.
   convincingly (C close to A); B loses the colour (tee turns white) and garbles the trousers. Results in
   `~/pachapp-data/eval-results/tryon-v0b-2026-10-06/`. VAE `sd-vae-ft-mse` still unpinned (upstream
   hard-codes it). Pending owner: validate quality, choose the mannequin (§5.1), choose A vs C.
+- 2026-10-07: V0c (delegated writer, branch `tryon/v0c-more-tests`): spike tooling only, no model run.
+  `--seeds` (default 42, threaded to the dresser; files `<config>_<case>_s<seed>.png`), config D 768x1024/20
+  (opt-in: default `--configs` stays A,B,C), case `overall` (garment `overall.*` + `mask_overall.png`, skipped
+  with a note when missing; opt-in: default `--cases` stays upper,lower,outfit; never part of `outfit`),
+  `compare_<set>.jpg` sheet per garment set (header row of garments, one row per mannequin, one column per
+  config/case/seed), report aggregates OOM/blank counts per config plus a per-mannequin table and a seed
+  column, and `tryon_spike_report.md` is rewritten (marked PARTIAL) after every mannequin x garment set
+  (review advisory R4-spike-abort-loses-report). Checks: ruff format/check, ty clean; pytest 735 (11 new).
 
 ## Next step
 
