@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/src/shared/settings.py -> repo root is three parents up.
@@ -131,10 +131,51 @@ class Settings(BaseSettings):
     ml_parse_fashn_revision: str | None = "1f80c34dbab321c5730dda5c3fea279fd3e97498"
     ml_parse_schp_revision: str | None = "2969fcf85fe62f2036605716f0b56f0b81d01d79"
 
+    # --- Virtual try-on (09-virtual-tryon.md §5.5) ---
+    # CatVTON's pipeline is not a diffusers DiffusionPipeline (§12.9), so there is no
+    # CPU-offload setting, and the weights live in `ml_cache_dir`, not in a dedicated dir.
+    tryon_enabled: bool = False
+    # Generation size; the SD VAE/UNet need multiples of 8. 576x768 is the V0 spike default.
+    tryon_width: int = 576
+    tryon_height: int = 768
+    tryon_steps: int = Field(default=20, gt=0)
+    tryon_guidance: float = Field(default=2.5, gt=0)
+    tryon_seed: int = 42
+    # Turing GPUs (RTX 20xx / GTX 16xx) have no usable bf16: never offer it.
+    tryon_dtype: Literal["fp16", "fp32"] = "fp16"
+    tryon_max_passes: int = Field(default=3, ge=1)
+    # 0 = never unload the model from the GPU.
+    tryon_idle_unload_seconds: int = Field(default=300, ge=0)
+    # Smaller size retried once after a CUDA out-of-memory error.
+    tryon_oom_retry_width: int = 384
+    tryon_oom_retry_height: int = 512
+    tryon_mannequin: str = "m12-woman-crop-shorts"
+    # Tracked mannequin assets (§5.1); defaults to `<repo root>/assets/tryon`.
+    tryon_assets_dir: Path = _REPO_ROOT / "assets" / "tryon"
+    # External pinned CatVTON clone (`make tryon-setup`); defaults to `<data dir>/vendor/CatVTON`.
+    tryon_catvton_dir: Path | None = None
+    # Hub commits verified on 2026-10-08 (V0); moving refs are rejected.
+    # booksforcharlie/stable-diffusion-inpainting
+    tryon_base_revision: str | None = "d260cf3646fe94c6d5d70820b77512f836d7cce2"
+    # zhengchong/CatVTON
+    tryon_attn_revision: str | None = "2969fcf85fe62f2036605716f0b56f0b81d01d79"
+
     @field_validator("data_dir", mode="before")
     @classmethod
     def _expand_data_dir(cls, value: str | Path) -> Path:
         return Path(value).expanduser()
+
+    @field_validator(
+        "tryon_width", "tryon_height", "tryon_oom_retry_width", "tryon_oom_retry_height"
+    )
+    @classmethod
+    def _tryon_size_multiple_of_8(cls, value: int, info: ValidationInfo) -> int:
+        if value <= 0 or value % 8 != 0:
+            raise ValueError(
+                f"PACHAPP_{str(info.field_name).upper()} must be a positive multiple of 8 "
+                f"(the SD VAE downsamples by 8). Got: {value}."
+            )
+        return value
 
     @model_validator(mode="after")
     def _derive_paths_and_validate(self) -> Settings:
@@ -165,6 +206,13 @@ class Settings(BaseSettings):
         else:
             self.ml_eval_dir = data_dir / "eval" / "garments"
 
+        if self.tryon_catvton_dir is not None:
+            self.tryon_catvton_dir = self.tryon_catvton_dir.expanduser()
+            _reject_mnt_path(self.tryon_catvton_dir, env_var="PACHAPP_TRYON_CATVTON_DIR")
+        else:
+            self.tryon_catvton_dir = data_dir / "vendor" / "CatVTON"
+        self.tryon_assets_dir = self.tryon_assets_dir.expanduser()
+
         # No "latest" alias, analogous to D11 (VIS-REQ-002): existing
         # embeddings must stay comparable across worker restarts.
         _reject_blank(
@@ -177,6 +225,8 @@ class Settings(BaseSettings):
             (self.ml_parse_b2_revision, "PACHAPP_ML_PARSE_B2_REVISION"),
             (self.ml_parse_fashn_revision, "PACHAPP_ML_PARSE_FASHN_REVISION"),
             (self.ml_parse_schp_revision, "PACHAPP_ML_PARSE_SCHP_REVISION"),
+            (self.tryon_base_revision, "PACHAPP_TRYON_BASE_REVISION"),
+            (self.tryon_attn_revision, "PACHAPP_TRYON_ATTN_REVISION"),
         ):
             if value is not None:
                 _reject_moving_revision(value, env_var=env_var)

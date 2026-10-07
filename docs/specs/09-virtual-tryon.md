@@ -87,17 +87,20 @@ Orden: `overall` **o** (`lower` → `upper` interior → capa intermedia → abr
 
 | Variable | Por defecto | Notas |
 |---|---|---|
-| `TRYON_ENABLED` | `false` | Feature flag |
-| `TRYON_WEIGHTS_DIR` | `./models/catvton` | Pesos fuera del repo (en `.gitignore`) |
-| `TRYON_WIDTH` × `TRYON_HEIGHT` | 576 × 768 | Según el spike |
-| `TRYON_STEPS` | 30 | |
-| `TRYON_GUIDANCE` | 2.5 | Verificar el valor recomendado en el repo |
-| `TRYON_SEED` | 42 | Resultado reproducible |
-| `TRYON_DTYPE` | `fp16` | GPUs Turing (RTX 20xx / GTX 16xx): **no** usar bf16 |
-| `TRYON_CPU_OFFLOAD` | `true` | |
-| `TRYON_MAX_PASSES` | 3 | |
-| `TRYON_IDLE_UNLOAD_SECONDS` | 300 | Descargar el modelo de la GPU tras estar inactivo |
-| `TRYON_DEFAULT_MANNEQUIN` | `neutral-01` | |
+| `PACHAPP_TRYON_ENABLED` | `false` | Feature flag |
+| `PACHAPP_TRYON_WIDTH` × `PACHAPP_TRYON_HEIGHT` | 576 × 768 | Según el V0; múltiplos de 8 |
+| `PACHAPP_TRYON_STEPS` | 20 | Según el V0 |
+| `PACHAPP_TRYON_GUIDANCE` | 2.5 | |
+| `PACHAPP_TRYON_SEED` | 42 | Resultado reproducible |
+| `PACHAPP_TRYON_DTYPE` | `fp16` | GPUs Turing (RTX 20xx / GTX 16xx): **no** usar bf16 |
+| `PACHAPP_TRYON_MAX_PASSES` | 3 | |
+| `PACHAPP_TRYON_IDLE_UNLOAD_SECONDS` | 300 | Descargar el modelo de la GPU tras estar inactivo; 0 = nunca |
+| `PACHAPP_TRYON_OOM_RETRY_WIDTH` × `PACHAPP_TRYON_OOM_RETRY_HEIGHT` | 384 × 512 | Reintento único tras un OOM de CUDA |
+| `PACHAPP_TRYON_MANNEQUIN` | `m12-woman-crop-shorts` | Maniquí por defecto (`assets/tryon/mannequins/<id>/`) |
+| `PACHAPP_TRYON_ASSETS_DIR` / `PACHAPP_TRYON_CATVTON_DIR` | `<repo>/assets/tryon` / `<data dir>/vendor/CatVTON` | Activos versionados / clon externo fijado de CatVTON |
+| `PACHAPP_TRYON_BASE_REVISION` / `PACHAPP_TRYON_ATTN_REVISION` | commits fijados | Se rechazan refs móviles |
+
+Sin `CPU_OFFLOAD`: la pipeline de CatVTON no es una `DiffusionPipeline` (§12.9). Los pesos van a `PACHAPP_ML_CACHE_DIR`, no a un `TRYON_WEIGHTS_DIR`.
 
 ## 6. Arquitectura del backend
 

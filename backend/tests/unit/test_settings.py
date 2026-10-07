@@ -355,3 +355,71 @@ def test_get_settings_returns_settings_when_env_file_exists(
 
     assert isinstance(result, Settings)
     assert result.llm_provider == "anthropic"
+
+
+def test_tryon_defaults(tmp_path: Path) -> None:
+    kwargs = _base_kwargs(tmp_path)
+
+    settings = Settings(**kwargs)
+
+    assert settings.tryon_enabled is False
+    assert (settings.tryon_width, settings.tryon_height) == (576, 768)
+    assert settings.tryon_steps == 20
+    assert settings.tryon_guidance == 2.5
+    assert settings.tryon_seed == 42
+    assert settings.tryon_dtype == "fp16"
+    assert settings.tryon_max_passes == 3
+    assert settings.tryon_idle_unload_seconds == 300
+    assert (settings.tryon_oom_retry_width, settings.tryon_oom_retry_height) == (384, 512)
+    assert settings.tryon_mannequin == "m12-woman-crop-shorts"
+    assert settings.tryon_assets_dir == settings_module._REPO_ROOT / "assets" / "tryon"
+    assert settings.tryon_catvton_dir == kwargs["data_dir"] / "vendor" / "CatVTON"
+    assert settings.tryon_base_revision == "d260cf3646fe94c6d5d70820b77512f836d7cce2"
+    assert settings.tryon_attn_revision == "2969fcf85fe62f2036605716f0b56f0b81d01d79"
+
+
+def test_tryon_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PACHAPP_TRYON_ENABLED", "true")
+    monkeypatch.setenv("PACHAPP_TRYON_STEPS", "30")
+    monkeypatch.setenv("PACHAPP_TRYON_DTYPE", "fp32")
+
+    settings = Settings(**_base_kwargs(tmp_path))
+
+    assert settings.tryon_enabled is True
+    assert settings.tryon_steps == 30
+    assert settings.tryon_dtype == "fp32"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"tryon_width": 575},
+        {"tryon_height": 0},
+        {"tryon_oom_retry_width": 385},
+        {"tryon_steps": 0},
+        {"tryon_guidance": 0},
+        {"tryon_max_passes": 0},
+        {"tryon_idle_unload_seconds": -1},
+        {"tryon_dtype": "bf16"},
+    ],
+)
+def test_tryon_rejects_invalid_values(tmp_path: Path, overrides: dict) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**_base_kwargs(tmp_path), **overrides)
+
+
+def test_tryon_idle_unload_zero_means_never(tmp_path: Path) -> None:
+    settings = Settings(**_base_kwargs(tmp_path), tryon_idle_unload_seconds=0)
+
+    assert settings.tryon_idle_unload_seconds == 0
+
+
+@pytest.mark.parametrize("field", ["tryon_base_revision", "tryon_attn_revision"])
+def test_tryon_rejects_moving_revision(tmp_path: Path, field: str) -> None:
+    with pytest.raises(ValidationError, match=field.upper()):
+        Settings(**_base_kwargs(tmp_path), **{field: "main"})
+
+
+def test_tryon_catvton_dir_rejects_mnt(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="PACHAPP_TRYON_CATVTON_DIR"):
+        Settings(**_base_kwargs(tmp_path), tryon_catvton_dir=Path("/mnt/d/CatVTON"))
