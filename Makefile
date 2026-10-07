@@ -154,8 +154,9 @@ tryon-masks: ## Precompute a mannequin's CatVTON masks (MANNEQUIN=dir with perso
 	HF_HOME=$(TRYON_HF_HOME) "$(TRYON_CATVTON_DIR)/.venv/bin/python" \
 		backend/scripts/tryon_build_masks.py --catvton-dir "$(TRYON_CATVTON_DIR)" $(MANNEQUIN)
 
-# TRYON_SPIKE_ARGS e.g. "--mannequin M1 --mannequin M2 --garments G1 --out /tmp/x"
-tryon-spike: ## Measure CatVTON on the GPU (TRYON_SPIKE_ARGS="--mannequin D --garments D --out D")
+# TRYON_SPIKE_ARGS e.g. "--mannequin M1 --mannequin M2 --garments G1 --configs C,D --seeds 42,7 --out X"
+# (--cases adds `overall` for dresses; D = 768x1024/20 is opt-in; the report is checkpointed per set)
+tryon-spike: ## Measure CatVTON on the GPU (TRYON_SPIKE_ARGS="--mannequin D --garments D --out D [--configs A,B,C,D] [--cases ..,overall] [--seeds 42,7]")
 	$(BACKEND) uv run $(TRYON_WITH) python -m ml.tryon_spike \
 		--catvton-dir "$(TRYON_CATVTON_DIR)" $(TRYON_SPIKE_ARGS)
 

@@ -4,8 +4,8 @@ Usage (wired up as `make tryon-spike`; stop the API, worker and Expo first, §12
 
     python -m ml.tryon_spike --catvton-dir DIR --mannequin DIR [--mannequin DIR]
         --garments DIR [--garments DIR] --out OUT_DIR
-        [--configs A,B,C] [--cases upper,lower,outfit] [--base-revision SHA]
-        [--attn-revision SHA]
+        [--configs A,B,C] [--cases upper,lower,outfit] [--seeds 42,7,99]
+        [--base-revision SHA] [--attn-revision SHA]
 
 - `--catvton-dir`: a clone of `Zheng-Chong/CatVTON` at the commit pinned in the
   Makefile (CC BY-NC-SA 4.0, kept outside the repo, §12.6). Its pipeline is imported
@@ -14,21 +14,33 @@ Usage (wired up as `make tryon-spike`; stop the API, worker and Expo first, §12
 - `--mannequin DIR`: `person.png|jpg` plus `mask_upper.png`, `mask_lower.png` (and
   optionally `mask_overall.png`), made once with `make tryon-masks` (§5.1) or painted
   by hand (white = area to repaint). The folder name is the mannequin id.
-- `--garments DIR`: `upper.*` and/or `lower.*` (a cutout PNG with alpha or a photo).
+- `--garments DIR`: `upper.*`, `lower.*` and/or `overall.*` (a one-piece dress or
+  jumpsuit), each a cutout PNG with alpha or a photo.
   Pass one folder per input variant to compare, e.g. today's cutouts vs U5 clean
   cutouts vs original photos (§5.4, §12.4). The folder name is the set id.
 
-Configurations (§4): A 576x768/30 steps, B 384x512/30, C 576x768/20. Cases: `upper`
-(one pass), `lower` (one pass), `outfit` (lower then upper, the second pass dresses the
-output of the first with the mannequin's mask, §5.3).
+Configurations (§4): A 576x768/30 steps, B 384x512/30, C 576x768/20, D 768x1024/20
+(CatVTON's native training resolution). Default `--configs` stays A,B,C: ask for D
+explicitly. Cases: `upper` (one pass), `lower` (one pass), `outfit` (lower then upper,
+the second pass dresses the output of the first with the mannequin's mask, §5.3) and
+`overall` (one pass with `mask_overall.png` and CatVTON's `overall` cloth type; it is
+never part of `outfit`). Default `--cases` stays upper,lower,outfit; a case whose
+garment or mask is missing is skipped with a note in the report.
+
+`--seeds` (comma list of ints, default 42): every mannequin x garment set x config x
+case runs once per seed; output files are `<config>_<case>_s<seed>.png`.
 
 Per pass it records the time, the torch peak VRAM (`max_memory_allocated`), the time per
 diffusion step (counted through the scheduler, which also proves a per-step progress
 callback is possible, §6.3) and out-of-memory errors (recorded, then the run goes on).
 Per run: model load time, nvidia-smi peak VRAM (all processes), peak RSS of this
-process. It writes every image, one contact sheet per mannequin and garment set, and
-`tryon_spike_report.md` with the §4 criterion (no OOM, outfit of 2 garments <= 90 s);
-quality is the owner's call. Exit codes: 0 ok, 1 setup error.
+process. It writes every image, one contact sheet per mannequin and garment set
+(`contact_*.jpg`), one comparison sheet per garment set with a row per mannequin
+(`compare_<set>.jpg`), and `tryon_spike_report.md` with the §4 criterion (no OOM, outfit
+of 2 garments <= 90 s) aggregated per config across mannequins, garments and seeds, plus
+a per-mannequin summary; quality is the owner's call. The report is rewritten after
+every mannequin x garment set, so an interrupted run keeps its partial results.
+Exit codes: 0 ok, 1 setup error.
 
 Pure helpers are unit-tested with a fake dresser and tiny images (VIS-REQ-029); the
 CatVTON loader is never imported in tests.
@@ -59,7 +71,7 @@ ATTN_MODEL = "zhengchong/CatVTON"
 ATTN_VERSION = "mix"  # app.py default, loads the "mix-48k-1024" attention weights
 ATTN_SUBFOLDER = "mix-48k-1024"
 GUIDANCE = 2.5  # app.py / pipeline default, matches §5.5
-SEED = 42
+SEED = 42  # default seed
 # app.py blurs the AutoMasker mask with VaeImageProcessor.blur(blur_factor=9) before
 # inference; the pipeline then binarises it at 0.5.
 MASK_BLUR = 9
@@ -91,14 +103,20 @@ CONFIGS: dict[str, Config] = {
     "A": Config("A", 576, 768, 30),
     "B": Config("B", 384, 512, 30),
     "C": Config("C", 576, 768, 20),
+    "D": Config("D", 768, 1024, 20),  # CatVTON's native training resolution
 }
+# Defaults kept as before D and `overall` existed: those two are opt-in.
+DEFAULT_CONFIGS = ("A", "B", "C")
+DEFAULT_CASES = ("upper", "lower", "outfit")
 
 # Case -> passes as (garment slot, CatVTON mask/cloth type), in dressing order (§5.3).
 CASES: dict[str, tuple[tuple[str, str], ...]] = {
     "upper": (("upper", "upper"),),
     "lower": (("lower", "lower"),),
     "outfit": (("lower", "lower"), ("upper", "upper")),
+    "overall": (("overall", "overall"),),
 }
+GARMENT_SLOTS = ("upper", "lower", "overall")
 
 
 @dataclass(frozen=True)
@@ -111,7 +129,7 @@ class Mannequin:
 @dataclass(frozen=True)
 class GarmentSet:
     id: str
-    garments: dict[str, Path]  # slot ("upper" / "lower") -> image
+    garments: dict[str, Path]  # slot ("upper" / "lower" / "overall") -> image
 
 
 @dataclass
@@ -131,6 +149,7 @@ class CaseResult:
     garment_set: str
     config: str
     case: str
+    seed: int = SEED
     passes: list[PassResult] = field(default_factory=list)
     out_file: str | None = None
     skipped: str | None = None  # reason when the case could not run
@@ -171,9 +190,11 @@ class Dresser(Protocol):
         mask: Image.Image,
         *,
         config: Config,
+        seed: int,
         on_step: Callable[[], None],
     ) -> Image.Image:
-        """One CatVTON pass at `config`'s size; calls `on_step` after each diffusion step."""
+        """One CatVTON pass at `config`'s size and `seed`; calls `on_step` after each
+        diffusion step."""
         ...
 
     def peak_mib(self) -> float | None:
@@ -194,15 +215,30 @@ class Dresser(Protocol):
 # --- pure helpers ---------------------------------------------------------------------
 
 
-def parse_choice(raw: str | None, allowed: Sequence[str], what: str) -> list[str]:
-    """Validate a comma-separated list against `allowed` (all of them when empty)."""
+def parse_choice(
+    raw: str | None, allowed: Sequence[str], what: str, default: Sequence[str] | None = None
+) -> list[str]:
+    """Validate a comma-separated list against `allowed` (`default`, else all, when empty)."""
     if not raw:
-        return list(allowed)
+        return list(default if default is not None else allowed)
     chosen = list(dict.fromkeys(c.strip() for c in raw.split(",") if c.strip()))
     unknown = [c for c in chosen if c not in allowed]
     if unknown or not chosen:
         raise SpikeSetupError(f"unknown {what} {', '.join(unknown)}; choose from {list(allowed)}")
     return chosen
+
+
+def parse_seeds(raw: str | None) -> list[int]:
+    """Comma-separated integer seeds (default: the single `SEED`), without duplicates."""
+    if not raw:
+        return [SEED]
+    try:
+        seeds = list(dict.fromkeys(int(t) for t in raw.split(",") if t.strip()))
+    except ValueError:
+        raise SpikeSetupError(f"--seeds must be a comma list of integers, got {raw!r}") from None
+    if not seeds:
+        raise SpikeSetupError("--seeds is empty")
+    return seeds
 
 
 def _find_image(directory: Path, stem: str) -> Path | None:
@@ -231,9 +267,11 @@ def load_mannequin(directory: Path) -> Mannequin:
 def load_garment_set(directory: Path) -> GarmentSet:
     if not directory.is_dir():
         raise SpikeSetupError(f"garment directory not found: {directory}")
-    garments = {s: p for s in ("upper", "lower") if (p := _find_image(directory, s)) is not None}
+    garments = {s: p for s in GARMENT_SLOTS if (p := _find_image(directory, s)) is not None}
     if not garments:
-        raise SpikeSetupError(f"{directory}: needs upper.* and/or lower.* (png/jpg/webp)")
+        raise SpikeSetupError(
+            f"{directory}: needs upper.*, lower.* and/or overall.* (png/jpg/webp)"
+        )
     return GarmentSet(directory.name, garments)
 
 
@@ -345,10 +383,11 @@ def run_case(
     case: str,
     out_dir: Path,
     *,
+    seed: int = SEED,
     sample_gpu: Callable[[], None] = lambda: None,
 ) -> CaseResult:
     """Dress the mannequin pass by pass; stops at the first OOM (recorded, not raised)."""
-    result = CaseResult(mannequin.id, garments.id, config.name, case)
+    result = CaseResult(mannequin.id, garments.id, config.name, case, seed)
     reason = missing_inputs(case, mannequin, garments)
     if reason is not None:
         result.skipped = reason
@@ -370,12 +409,18 @@ def run_case(
         start = time.perf_counter()
         last[0] = start
         try:
-            person = dresser.dress(person, garment, mask, config=config, on_step=on_step)
+            person = dresser.dress(person, garment, mask, config=config, seed=seed, on_step=on_step)
         except Exception as exc:
             if not dresser.is_oom(exc):
                 raise
             logger.warning(
-                "OOM: %s %s %s %s/%s", mannequin.id, garments.id, config.name, case, slot
+                "OOM: %s %s %s %s s%d/%s",
+                mannequin.id,
+                garments.id,
+                config.name,
+                case,
+                seed,
+                slot,
             )
             dresser.free()
             result.passes.append(
@@ -397,7 +442,7 @@ def run_case(
             )
         )
 
-    rel = Path(mannequin.id) / garments.id / f"{config.name}_{case}.png"
+    rel = Path(mannequin.id) / garments.id / f"{config.name}_{case}_s{seed}.png"
     (out_dir / rel).parent.mkdir(parents=True, exist_ok=True)
     person.save(out_dir / rel)
     result.out_file = rel.as_posix()
@@ -412,26 +457,42 @@ def run_spike(
     cases: Sequence[str],
     out_dir: Path,
     *,
+    seeds: Sequence[int] = (SEED,),
     sample_gpu: Callable[[], None] = lambda: None,
+    on_group_done: Callable[[list[CaseResult]], None] | None = None,
 ) -> list[CaseResult]:
-    """Every mannequin x garment set x configuration x case, serially (VIS-REQ-025)."""
+    """Every mannequin x garment set x configuration x case x seed, serially (VIS-REQ-025).
+
+    `on_group_done` gets the results so far after each mannequin x garment set, so the
+    caller can checkpoint a report before a long run finishes."""
     results: list[CaseResult] = []
     for mannequin in mannequins:
         for garments in garment_sets:
             for config in configs:
                 for case in cases:
-                    logger.info("%s / %s / %s / %s", mannequin.id, garments.id, config.name, case)
-                    results.append(
-                        run_case(
-                            dresser,
-                            mannequin,
-                            garments,
-                            config,
+                    for seed in seeds:
+                        logger.info(
+                            "%s / %s / %s / %s / seed %d",
+                            mannequin.id,
+                            garments.id,
+                            config.name,
                             case,
-                            out_dir,
-                            sample_gpu=sample_gpu,
+                            seed,
                         )
-                    )
+                        results.append(
+                            run_case(
+                                dresser,
+                                mannequin,
+                                garments,
+                                config,
+                                case,
+                                out_dir,
+                                seed=seed,
+                                sample_gpu=sample_gpu,
+                            )
+                        )
+            if on_group_done is not None:
+                on_group_done(results)
     return results
 
 
@@ -448,6 +509,23 @@ def _cell(img: Image.Image | None, label: str) -> Image.Image:
     return cell
 
 
+def _stack(rows: Sequence[Sequence[Image.Image]]) -> Image.Image:
+    """Paste rows of equally sized cells into one white sheet."""
+    columns = max(len(r) for r in rows)
+    cell_w, cell_h = rows[0][0].size
+    sheet = Image.new("RGB", (columns * cell_w, len(rows) * cell_h), (255, 255, 255))
+    for y, row in enumerate(rows):
+        for x, cell in enumerate(row):
+            sheet.paste(cell, (x * cell_w, y * cell_h))
+    return sheet
+
+
+def _result_cell(out_dir: Path, r: CaseResult | None, label: str) -> Image.Image:
+    image = _open(out_dir / r.out_file) if r and r.out_file else None
+    status = "" if image else (" OOM" if r and r.oom else " -")
+    return _cell(image, f"{label}{status}")
+
+
 def write_contact_sheets(
     mannequins: Sequence[Mannequin],
     garment_sets: Sequence[GarmentSet],
@@ -455,9 +533,11 @@ def write_contact_sheets(
     cases: Sequence[str],
     results: Sequence[CaseResult],
     out_dir: Path,
+    seeds: Sequence[int] = (SEED,),
 ) -> list[Path]:
-    """One sheet per mannequin x garment set: inputs row, then a row per configuration."""
-    by_key = {(r.mannequin, r.garment_set, r.config, r.case): r for r in results}
+    """One sheet per mannequin x garment set: inputs row, then a row per configuration
+    (one column per case and seed)."""
+    by_key = {(r.mannequin, r.garment_set, r.config, r.case, r.seed): r for r in results}
     sheets: list[Path] = []
     for mannequin in mannequins:
         for garments in garment_sets:
@@ -468,23 +548,76 @@ def write_contact_sheets(
             ]
             rows = [inputs]
             for config in configs:
-                row = []
-                for case in cases:
-                    r = by_key.get((mannequin.id, garments.id, config.name, case))
-                    image = _open(out_dir / r.out_file) if r and r.out_file else None
-                    status = "" if image else (" OOM" if r and r.oom else " -")
-                    row.append(_cell(image, f"{config.name} {case}{status}"))
-                rows.append(row)
-            columns = max(len(r) for r in rows)
-            cell_w, cell_h = rows[0][0].size
-            sheet = Image.new("RGB", (columns * cell_w, len(rows) * cell_h), (255, 255, 255))
-            for y, row in enumerate(rows):
-                for x, cell in enumerate(row):
-                    sheet.paste(cell, (x * cell_w, y * cell_h))
+                rows.append(
+                    [
+                        _result_cell(
+                            out_dir,
+                            by_key.get((mannequin.id, garments.id, config.name, case, seed)),
+                            f"{config.name} {case} s{seed}",
+                        )
+                        for case in cases
+                        for seed in seeds
+                    ]
+                )
             path = out_dir / f"contact_{mannequin.id}_{garments.id}.jpg"
-            sheet.save(path, quality=88)
+            _stack(rows).save(path, quality=88)
             sheets.append(path)
     return sheets
+
+
+def write_comparison_sheets(
+    mannequins: Sequence[Mannequin],
+    garment_sets: Sequence[GarmentSet],
+    configs: Sequence[Config],
+    cases: Sequence[str],
+    results: Sequence[CaseResult],
+    out_dir: Path,
+    seeds: Sequence[int] = (SEED,),
+) -> list[Path]:
+    """One sheet per garment set to compare mannequins wearing the same clothes: a header
+    row with the garments, then a row per mannequin (its photo, then one column per
+    config / case / seed that ran for this set)."""
+    by_key = {(r.mannequin, r.garment_set, r.config, r.case, r.seed): r for r in results}
+    sheets: list[Path] = []
+    for garments in garment_sets:
+        columns = [
+            (config, case, seed)
+            for config in configs
+            for case in cases
+            for seed in seeds
+            if any(
+                (r := by_key.get((m.id, garments.id, config.name, case, seed))) is not None
+                and r.skipped is None
+                for m in mannequins
+            )
+        ]
+        header = [_cell(None, f"{garments.id}")] + [
+            _cell(prepare_garment(_open(path)), f"{slot}")
+            for slot, path in garments.garments.items()
+        ]
+        rows = [header]
+        for mannequin in mannequins:
+            row = [_cell(_open(mannequin.person), mannequin.id)]
+            for config, case, seed in columns:
+                r = by_key.get((mannequin.id, garments.id, config.name, case, seed))
+                row.append(_result_cell(out_dir, r, f"{config.name} {case} s{seed}"))
+            rows.append(row)
+        path = out_dir / f"compare_{garments.id}.jpg"
+        _stack(rows).save(path, quality=88)
+        sheets.append(path)
+    return sheets
+
+
+REPORT_NAME = "tryon_spike_report.md"
+
+
+def write_checkpoint(
+    out_dir: Path, results: Sequence[CaseResult], configs: Sequence[Config], info: RunInfo
+) -> Path:
+    """Write the report with what ran so far (no sheets), so an abort keeps it."""
+    path = out_dir / REPORT_NAME
+    path.write_text(format_report(results, configs, info, [], partial=True), encoding="utf-8")
+    return path
 
 
 def _fmt(value: float | None, digits: int = 0) -> str:
@@ -496,10 +629,16 @@ def format_report(
     configs: Sequence[Config],
     info: RunInfo,
     sheets: Sequence[Path],
+    *,
+    partial: bool = False,
 ) -> str:
     lines = [
         "# Try-on spike report (CatVTON)",
         "",
+    ]
+    if partial:
+        lines += [f"**PARTIAL: run in progress or interrupted ({len(results)} runs so far).**", ""]
+    lines += [
         f"device: {info.device}; dtype: {info.dtype}; model load: {info.load_seconds:.1f} s; "
         f"peak RSS: {_fmt(info.peak_rss_mib)} MiB; peak VRAM (nvidia-smi, all processes): "
         f"{_fmt(info.peak_vram_mib)} MiB",
@@ -508,8 +647,10 @@ def format_report(
         f"Criterion (§4): every outfit (2 passes) without OOM or blank output in <= "
         f"{OUTFIT_BUDGET_S:.0f} s. Quality is the owner's call (contact sheets).",
         "",
-        "| config | size | steps | outfit max s | criterion |",
-        "|---|---|---|---|---|",
+        "Per config, across every mannequin, garment set and seed:",
+        "",
+        "| config | size | steps | outfit max s | OOM runs | blank runs | criterion |",
+        "|---|---|---|---|---|---|---|",
     ]
     for config in configs:
         mine = [r for r in results if r.config == config.name]
@@ -518,20 +659,36 @@ def format_report(
         lines.append(
             f"| {config.name} | {config.width}x{config.height} | {config.steps} "
             f"| {_fmt(max(outfit_s) if outfit_s else None, 1)} "
+            f"| {sum(r.oom for r in mine)} | {sum(r.blank for r in mine)} "
             f"| {verdict[meets_criterion(mine)]} |"
+        )
+    lines += [
+        "",
+        "## Per mannequin",
+        "",
+        "| mannequin | passes | OOM runs | blank runs | median s/pass |",
+        "|---|---|---|---|---|",
+    ]
+    for name in dict.fromkeys(r.mannequin for r in results):
+        mine = [r for r in results if r.mannequin == name and r.skipped is None]
+        times = [p.seconds for r in mine for p in r.passes]
+        median = float(np.median(times)) if times else None
+        lines.append(
+            f"| {name} | {len(times)} | {sum(r.oom for r in mine)} "
+            f"| {sum(r.blank for r in mine)} | {_fmt(median, 1)} |"
         )
     lines += [
         "",
         "## Runs",
         "",
-        "| mannequin | garments | config | case | total s | per pass s | ms/step "
+        "| mannequin | garments | config | case | seed | total s | per pass s | ms/step "
         "| torch peak MiB | notes |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
         if r.skipped:
             lines.append(
-                f"| {r.mannequin} | {r.garment_set} | {r.config} | {r.case} "
+                f"| {r.mannequin} | {r.garment_set} | {r.config} | {r.case} | {r.seed} "
                 f"| - | - | - | - | skipped: {r.skipped} |"
             )
             continue
@@ -539,11 +696,12 @@ def format_report(
         step_ms = " / ".join(_fmt(p.step_ms) for p in r.passes)
         notes = ", ".join(n for n, on in (("OOM", r.oom), ("blank output", r.blank)) if on)
         lines.append(
-            f"| {r.mannequin} | {r.garment_set} | {r.config} | {r.case} | {r.seconds:.1f} "
+            f"| {r.mannequin} | {r.garment_set} | {r.config} | {r.case} | {r.seed} "
+            f"| {r.seconds:.1f} "
             f"| {per_pass} | {step_ms} | {_fmt(r.torch_peak_mib)} | {notes or '-'} |"
         )
     if sheets:
-        lines += ["", "## Contact sheets", ""] + [f"- {s.name}" for s in sheets]
+        lines += ["", "## Contact and comparison sheets", ""] + [f"- {s.name}" for s in sheets]
     return "\n".join(lines) + "\n"
 
 
@@ -625,11 +783,12 @@ class CatVTONDresser:  # pragma: no cover - needs torch, CatVTON and its weights
         mask: Image.Image,
         *,
         config: Config,
+        seed: int,
         on_step: Callable[[], None],
     ) -> Image.Image:
         import torch
 
-        generator = torch.Generator(device=self.device).manual_seed(SEED)
+        generator = torch.Generator(device=self.device).manual_seed(seed)
         self._on_step = on_step
         try:
             return self.pipeline(
@@ -682,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--configs", default=None, help=f"comma list of {list(CONFIGS)}")
     parser.add_argument("--cases", default=None, help=f"comma list of {list(CASES)}")
+    parser.add_argument("--seeds", default=None, help=f"comma list of integers (default {SEED})")
     parser.add_argument("--base-revision", default=None, help=f"commit of {BASE_MODEL}")
     parser.add_argument("--attn-revision", default=None, help=f"commit of {ATTN_MODEL}")
     parser.add_argument("--fp32", action="store_true", help="fp32 weights (default fp16 on GPU)")
@@ -691,8 +851,11 @@ def main(argv: list[str] | None = None) -> int:
     from shared.settings import _reject_mnt_path, get_settings
 
     try:
-        configs = [CONFIGS[c] for c in parse_choice(args.configs, list(CONFIGS), "config")]
-        cases = parse_choice(args.cases, list(CASES), "case")
+        configs = [
+            CONFIGS[c] for c in parse_choice(args.configs, list(CONFIGS), "config", DEFAULT_CONFIGS)
+        ]
+        cases = parse_choice(args.cases, list(CASES), "case", DEFAULT_CASES)
+        seeds = parse_seeds(args.seeds)
         mannequins = [load_mannequin(d.expanduser()) for d in args.mannequin]
         garment_sets = [load_garment_set(d.expanduser()) for d in args.garments]
         catvton_dir = args.catvton_dir.expanduser()
@@ -735,20 +898,35 @@ def main(argv: list[str] | None = None) -> int:
     load_seconds = time.perf_counter() - start
     sample_gpu()
 
+    def run_info() -> RunInfo:
+        return RunInfo(
+            device=device,
+            dtype="fp16" if fp16 else "fp32",
+            load_seconds=load_seconds,
+            revisions=revisions,
+            peak_rss_mib=peak_rss_mib(),
+            peak_vram_mib=max(vram_peak) if vram_peak else None,
+        )
+
+    def checkpoint(partial_results: list[CaseResult]) -> None:
+        write_checkpoint(out_dir, partial_results, configs, run_info())
+
     results = run_spike(
-        dresser, mannequins, garment_sets, configs, cases, out_dir, sample_gpu=sample_gpu
+        dresser,
+        mannequins,
+        garment_sets,
+        configs,
+        cases,
+        out_dir,
+        seeds=seeds,
+        sample_gpu=sample_gpu,
+        on_group_done=checkpoint,
     )
-    info = RunInfo(
-        device=device,
-        dtype="fp16" if fp16 else "fp32",
-        load_seconds=load_seconds,
-        revisions=revisions,
-        peak_rss_mib=peak_rss_mib(),
-        peak_vram_mib=max(vram_peak) if vram_peak else None,
-    )
-    sheets = write_contact_sheets(mannequins, garment_sets, configs, cases, results, out_dir)
-    report = format_report(results, configs, info, sheets)
-    (out_dir / "tryon_spike_report.md").write_text(report, encoding="utf-8")
+    sheets = write_contact_sheets(
+        mannequins, garment_sets, configs, cases, results, out_dir, seeds
+    ) + write_comparison_sheets(mannequins, garment_sets, configs, cases, results, out_dir, seeds)
+    report = format_report(results, configs, run_info(), sheets)
+    (out_dir / REPORT_NAME).write_text(report, encoding="utf-8")
     print(report)
     print(f"written to: {out_dir}")
     return 0

@@ -23,6 +23,7 @@ class FakeDresser:
 
     def __init__(self, *, oom_on: set[int] | None = None) -> None:
         self.calls: list[tuple[tuple[int, int], tuple[int, int], tuple[int, int], str]] = []
+        self.seeds: list[int] = []
         self.oom_on = oom_on or set()
         self.freed = 0
 
@@ -33,8 +34,10 @@ class FakeDresser:
         mask: Image.Image,
         *,
         config: ts.Config,
+        seed: int,
         on_step: Callable[[], None],
     ) -> Image.Image:
+        self.seeds.append(seed)
         self.calls.append((person.size, garment.size, mask.size, config.name))
         if len(self.calls) in self.oom_on:
             raise FakeOOM("CUDA out of memory")
@@ -80,6 +83,8 @@ def _garments(root: Path, name: str = "current", slots=("upper", "lower")) -> Pa
         cut.save(d / "upper.png")
     if "lower" in slots:
         Image.new("RGB", (40, 70), (200, 180, 100)).save(d / "lower.jpg")
+    if "overall" in slots:
+        Image.new("RGB", (45, 80), (150, 30, 90)).save(d / "overall.png")
     return d
 
 
@@ -95,10 +100,28 @@ def test_parse_choice_defaults_validates_and_dedupes() -> None:
         ts.parse_choice(" , ", ["A"], "config")
 
 
+def test_parse_choice_explicit_default() -> None:
+    assert ts.parse_choice(None, ["A", "D"], "config", ["A"]) == ["A"]
+    assert ts.parse_choice("D", ["A", "D"], "config", ["A"]) == ["D"]
+
+
+def test_parse_seeds() -> None:
+    assert ts.parse_seeds(None) == [42]
+    assert ts.parse_seeds("7, 42,7") == [7, 42]
+    with pytest.raises(ts.SpikeSetupError, match="integers"):
+        ts.parse_seeds("1,x")
+    with pytest.raises(ts.SpikeSetupError, match="empty"):
+        ts.parse_seeds(" , ")
+
+
 def test_spec_configurations() -> None:
     assert ts.CONFIGS["A"] == ts.Config("A", 576, 768, 30)
     assert ts.CONFIGS["B"] == ts.Config("B", 384, 512, 30)
     assert ts.CONFIGS["C"] == ts.Config("C", 576, 768, 20)
+    assert ts.CONFIGS["D"] == ts.Config("D", 768, 1024, 20)  # CatVTON's native resolution
+    assert ts.DEFAULT_CONFIGS == ("A", "B", "C")  # D is opt-in
+    assert ts.DEFAULT_CASES == ("upper", "lower", "outfit")  # overall is opt-in
+    assert [s for s, _ in ts.CASES["overall"]] == ["overall"]
     # Outfit: lower first, then upper over the result (§5.3).
     assert [s for s, _ in ts.CASES["outfit"]] == ["lower", "upper"]
 
@@ -132,6 +155,13 @@ def test_missing_inputs(tmp_path: Path) -> None:
     assert ts.missing_inputs("lower", m, g) == "no lower garment in current"
     g_full = ts.load_garment_set(_garments(tmp_path, "full"))
     assert ts.missing_inputs("outfit", m, g_full) == "no mask_lower.png for neutral-01"
+    # overall: needs overall.* in the set and mask_overall.png on the mannequin.
+    assert ts.missing_inputs("overall", m, g_full) == "no overall garment in full"
+    g_dress = ts.load_garment_set(_garments(tmp_path, "dress", slots=("overall",)))
+    assert set(g_dress.garments) == {"overall"}
+    assert ts.missing_inputs("overall", m, g_dress) == "no mask_overall.png for neutral-01"
+    m_all = ts.load_mannequin(_mannequin(tmp_path, "m2", masks=("upper", "overall")))
+    assert ts.missing_inputs("overall", m_all, g_dress) is None
 
 
 def test_fit_crop_matches_catvton_math() -> None:
@@ -275,6 +305,10 @@ def test_contact_sheets_and_report(tmp_path: Path) -> None:
     assert "| U | 30x40 | 2 |" in report and "| fails |" in report  # its outfit OOMed
     assert "OOM" in report
     assert "contact_neutral-01_current.jpg" in report
+    assert "| OOM runs | blank runs |" in report and "## Per mannequin" in report
+    assert "| neutral-01 |" in report and "PARTIAL" not in report
+    partial = ts.format_report(results, configs, info, [], partial=True)
+    assert "PARTIAL" in partial
 
 
 def test_main_reports_setup_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -285,3 +319,146 @@ def test_main_reports_setup_errors(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "tryon-setup" in capsys.readouterr().err
     assert ts.main(["--catvton-dir", str(tmp_path), *base, "--configs", "Z"]) == 1
     assert "unknown config Z" in capsys.readouterr().err
+
+
+# --- V0c: seeds, config D, overall, comparison sheets, checkpoints ---------------------------
+
+
+def test_seeds_multiply_runs_and_reach_the_dresser(tmp_path: Path) -> None:
+    mannequin = ts.load_mannequin(_mannequin(tmp_path / "in"))
+    garments = ts.load_garment_set(_garments(tmp_path / "in"))
+    dresser = FakeDresser()
+    out = tmp_path / "out"
+    results = ts.run_spike(
+        dresser, [mannequin], [garments], [TINY], ["upper", "outfit"], out, seeds=[42, 7]
+    )
+    assert [(r.case, r.seed) for r in results] == [
+        ("upper", 42),
+        ("upper", 7),
+        ("outfit", 42),
+        ("outfit", 7),
+    ]
+    assert dresser.seeds == [42, 7, 42, 42, 7, 7]  # outfit = 2 passes with the same seed
+    assert [r.out_file for r in results] == [
+        "neutral-01/current/T_upper_s42.png",
+        "neutral-01/current/T_upper_s7.png",
+        "neutral-01/current/T_outfit_s42.png",
+        "neutral-01/current/T_outfit_s7.png",
+    ]
+    assert all((out / r.out_file).is_file() for r in results if r.out_file)
+
+
+def test_default_seed_is_42(tmp_path: Path) -> None:
+    mannequin = ts.load_mannequin(_mannequin(tmp_path / "in"))
+    garments = ts.load_garment_set(_garments(tmp_path / "in"))
+    dresser = FakeDresser()
+    (result,) = ts.run_spike(dresser, [mannequin], [garments], [TINY], ["upper"], tmp_path / "o")
+    assert result.seed == 42 and dresser.seeds == [42]
+    assert result.out_file == "neutral-01/current/T_upper_s42.png"
+
+
+def test_config_d_dimensions_reach_the_dresser(tmp_path: Path) -> None:
+    mannequin = ts.load_mannequin(_mannequin(tmp_path / "in"))
+    garments = ts.load_garment_set(_garments(tmp_path / "in"))
+    dresser = FakeDresser()
+    config = ts.Config("D", 36, 48, 2)  # D's 3:4 ratio, shrunk to keep the test tiny
+    ts.run_spike(dresser, [mannequin], [garments], [config], ["upper"], tmp_path / "out")
+    assert dresser.calls[0][0] == (36, 48) and dresser.calls[0][3] == "D"
+    prepared = ts.prepare_person(Image.new("RGB", (60, 90)), ts.CONFIGS["D"])
+    assert prepared.size == (768, 1024)
+
+
+def test_overall_case_uses_mask_overall(tmp_path: Path) -> None:
+    mannequin = ts.load_mannequin(_mannequin(tmp_path / "in", masks=("upper", "lower", "overall")))
+    dress = ts.load_garment_set(_garments(tmp_path / "in", "dress", slots=("overall",)))
+    dresser = FakeDresser()
+    (result,) = ts.run_spike(dresser, [mannequin], [dress], [TINY], ["overall"], tmp_path / "out")
+    assert [p.slot for p in result.passes] == ["overall"] and result.out_file is not None
+    assert len(dresser.calls) == 1 and not result.skipped
+
+
+def test_overall_case_is_skipped_with_a_note(tmp_path: Path) -> None:
+    no_mask = ts.load_mannequin(_mannequin(tmp_path / "in"))  # upper + lower masks only
+    dress = ts.load_garment_set(_garments(tmp_path / "in", "dress", slots=("overall",)))
+    tee = ts.load_garment_set(_garments(tmp_path / "in", "tee", slots=("upper",)))
+    with_mask = ts.load_mannequin(
+        _mannequin(tmp_path / "in", "full", masks=("upper", "lower", "overall"))
+    )
+    dresser = FakeDresser()
+    results = ts.run_spike(
+        dresser, [no_mask, with_mask], [dress, tee], [TINY], ["overall"], tmp_path / "out"
+    )
+    assert [r.skipped for r in results] == [
+        "no mask_overall.png for neutral-01",
+        "no overall garment in tee",
+        None,
+        "no overall garment in tee",
+    ]
+    assert len(dresser.calls) == 1
+    report = ts.format_report(results, [TINY], ts.RunInfo("cpu", "fp32", 0.0, {}), [])
+    assert "skipped: no mask_overall.png for neutral-01" in report
+
+
+def test_outfit_never_includes_overall() -> None:
+    assert "overall" not in [slot for slot, _ in ts.CASES["outfit"]]
+
+
+def test_comparison_sheet_has_a_row_per_mannequin(tmp_path: Path) -> None:
+    mannequins = [
+        ts.load_mannequin(_mannequin(tmp_path / "in", "m1")),
+        ts.load_mannequin(_mannequin(tmp_path / "in", "m2")),
+        ts.load_mannequin(_mannequin(tmp_path / "in", "m3")),
+    ]
+    sets = [
+        ts.load_garment_set(_garments(tmp_path / "in", "g1")),
+        ts.load_garment_set(_garments(tmp_path / "in", "g2")),
+    ]
+    out = tmp_path / "out"
+    cases = ["upper", "outfit"]
+    results = ts.run_spike(FakeDresser(), mannequins, sets, [TINY], cases, out, seeds=[42, 7])
+    sheets = ts.write_comparison_sheets(mannequins, sets, [TINY], cases, results, out, [42, 7])
+    assert [s.name for s in sheets] == ["compare_g1.jpg", "compare_g2.jpg"]
+    cell_w, cell_h = ts._cell(None, "").size
+    for sheet in sheets:
+        width, height = Image.open(sheet).size
+        # header (garments) + one row per mannequin; mannequin + 2 cases x 2 seeds columns.
+        assert height == (1 + 3) * cell_h
+        assert width == 5 * cell_w
+    assert cell_h <= 280  # thumbnails stay around 256 px high
+
+
+def test_incremental_report_after_each_group(tmp_path: Path) -> None:
+    mannequins = [
+        ts.load_mannequin(_mannequin(tmp_path / "in", "m1")),
+        ts.load_mannequin(_mannequin(tmp_path / "in", "m2")),
+    ]
+    sets = [ts.load_garment_set(_garments(tmp_path / "in"))]
+    out = tmp_path / "out"
+    out.mkdir()
+    info = ts.RunInfo("cpu", "fp32", 0.0, {})
+    seen: list[str] = []
+
+    def checkpoint(partial: list[ts.CaseResult]) -> None:
+        path = ts.write_checkpoint(out, partial, [TINY], info)
+        seen.append(path.read_text(encoding="utf-8"))
+
+    results = ts.run_spike(
+        FakeDresser(), mannequins, sets, [TINY], ["upper"], out, on_group_done=checkpoint
+    )
+    assert len(seen) == 2 and len(results) == 2  # one checkpoint per mannequin x garment set
+    assert "PARTIAL" in seen[0] and "| m1 |" in seen[0] and "| m2 |" not in seen[0]
+    assert "| m2 |" in seen[1]
+    assert (out / "tryon_spike_report.md").is_file()
+
+
+def test_report_aggregates_per_mannequin() -> None:
+    def case(m: str, **flags: bool) -> ts.CaseResult:
+        r = ts.CaseResult(m, "g", "T", "outfit")
+        r.passes = [ts.PassResult("x", s, None, None, 1, **flags) for s in (10.0, 20.0)]
+        return r
+
+    results = [case("m1"), case("m2", oom=True), case("m2", blank=True)]
+    report = ts.format_report(results, [TINY], ts.RunInfo("cpu", "fp32", 0.0, {}), [])
+    assert "| T | 30x40 | 3 | 30.0 | 1 | 1 | fails |" in report
+    assert "| m1 | 2 | 0 | 0 | 15.0 |" in report
+    assert "| m2 | 4 | 1 | 1 | 15.0 |" in report
