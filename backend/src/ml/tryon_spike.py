@@ -683,7 +683,7 @@ def format_report(
         "",
         "| mannequin | garments | config | case | seed | total s | per pass s | ms/step "
         "| torch peak MiB | notes |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
         if r.skipped:
