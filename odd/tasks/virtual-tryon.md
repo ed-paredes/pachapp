@@ -57,7 +57,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   `make gen-client`. Delivery: one PR per task to main (stacked-to-main, as in V1). Owner 2026-10-08: plan
   accepted; RAM approach = measure first (lower the CatVTON load peak in V2c, measure with the full stack in
   V2d), a CatVTON subprocess only if it still does not fit.
-  - [ ] **V2a** Data and pure logic (torch-free): `TryOnRender` model (`tryon_renders`, spec §6.6; `status`
+  - [x] **V2a** Data and pure logic (torch-free): `TryOnRender` model (`tryon_renders`, spec §6.6; `status`
     reuses the job states, `step` is free text) + Alembic migration; `tryon/mapping.py` (category -> cloth
     type, pass plan with `tryon_max_passes`, skipped and unsupported ids; spec §5.2, §5.3, §12.8);
     `tryon/cache.py` (`cache_key` from mannequin id + version, sha256 of each cutout file in pass order, params,
@@ -249,6 +249,26 @@ over V2a-V2c: stacked-to-main, one PR per task.
   `PACHAPP_ML_CACHE_DIR` (or accept `~/.cache/huggingface`, 8.4 GB now) so the worker does not download twice.
   Results in `~/pachapp-data/eval-results/tryon-v1d-2026-10-08/`.
 
+- 2026-10-08: V2a (delegated writer, branch `tryon/v2a-data`, commit b1a7a67). `TryOnRender` (`tryon_renders`:
+  job-like status/step/progress/attempts/claim columns, JSON `garment_ids`/`skipped_garment_ids`/
+  `unsupported_garment_ids`/`params`, plain nullable `outfit_id`, `uq_tryon_renders_cache_key`,
+  `idx_tryon_renders_status`) + migration `c4e8f21a6d93`. `tryon/mapping.py`: `ClothType`, `cloth_type()`,
+  `plan_passes(garments, max_passes) -> PassPlan(passes, skipped, unsupported, is_empty)`; deterministic rules by
+  input order (first of a category wins, a one-piece wins over tops/bottoms but keeps mid layer/outerwear after
+  it, over the limit keep the base pass, then the innermost and outermost upper). `tryon/cache.py`:
+  `cache_key(...)` over canonical JSON; `hash_cutout`, `mannequin_version` (digest of the person image, masks
+  and `meta.json`), `model_version` (pinned revisions + `ATTN_VERSION`, moved here so the module stays
+  torch-free). `storage.tryon_path`, `imaging.encode_webp`. A subprocess test checks `tryon.mapping`/`tryon.cache`
+  import no torch. 738 authored lines (~370 tests). Checks: ruff format/check, ty clean; pytest 860 (+48).
+  Native review (high: the torch-free test starts a subprocess; granted, 4 lenses): approved and acknowledged
+  (lineage review-4c9a0105e4af3e1a). To fix in V2b (first user of `cache_key`): R3-cache-key-omits-cloth-type
+  (a recategorised garment with the same cutout keeps its key -> stale render; add the cloth type per pass),
+  R2-shadowed-version-params (rename the `cache_key` parameters). Other advisories: R3-max-passes-not-enforced-
+  below-base (settings already require >= 1), R3-cache-key-numeric-canonicalisation, R3/R2-encode-webp-palette-
+  alpha, R2-attn-constant-split, R2-dense-slot-trim. Writer notes for V2b/V2c: store `params` with the mannequin
+  and model versions; 422 when a garment has no `img_cutout`; refresh `last_accessed_at` on a cache hit;
+  consistent `step` names.
+
 ## Next step
 
-V2a (data and pure logic), then V2b, V2c, V2d, one PR each.
+V2b (API; fixes the two V2a cache-key advisories), then V2c, V2d, one PR each.
