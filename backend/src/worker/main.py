@@ -88,6 +88,7 @@ def _build_tryon_engine(settings: Settings) -> TryOnEngine:
         attn_revision=settings.tryon_attn_revision,
         dtype=settings.tryon_dtype,
         idle_unload_seconds=settings.tryon_idle_unload_seconds,
+        converted_dir=settings.ml_cache_dir / "tryon" if settings.ml_cache_dir else None,
     )
 
 

@@ -7,11 +7,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -21,6 +22,7 @@ from PIL import Image
 from ml.device import free_gpu_memory
 from tryon.cache import ATTN_VERSION
 from tryon.images import GarmentError, is_blank, prepare_garment, prepare_mask, prepare_person
+from tryon.weights import fp16_base_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +118,21 @@ def prepare_garment_input(garment: Image.Image) -> Image.Image:
         raise TryOnInvalidInput(str(exc)) from exc
 
 
+@contextlib.contextmanager
+def default_dtype(dtype: Any) -> Iterator[None]:
+    """Make `torch` build new tensors and models in `dtype` for the duration. CatVTON casts to
+    fp16 after `from_pretrained` has already built an fp32 model; building it in fp16 directly
+    halves the host-RAM peak of the load (see `tryon.weights`)."""
+    import torch
+
+    previous = torch.get_default_dtype()
+    torch.set_default_dtype(dtype)
+    try:
+        yield
+    finally:
+        torch.set_default_dtype(previous)
+
+
 def _is_cuda_oom(exc: BaseException) -> bool:
     try:
         import torch
@@ -134,6 +151,7 @@ class CatVTONEngine:
         dtype: Literal["fp16", "fp32"] = "fp16",
         device: str = "cuda",
         idle_unload_seconds: float = 0,
+        converted_dir: Path | None = None,
         pipeline_factory: Callable[[], Any] | None = None,
         is_oom: Callable[[BaseException], bool] = _is_cuda_oom,
         clock: Callable[[], float] = time.monotonic,
@@ -148,6 +166,8 @@ class CatVTONEngine:
         # 0 = never unload on idle (`PACHAPP_TRYON_IDLE_UNLOAD_SECONDS`, spec §5.5).
         self._idle_unload_seconds = idle_unload_seconds
         self._clock = clock
+        # Where the fp16 safetensors copy of the base UNet lives (None = load the original).
+        self._converted_dir = converted_dir
         self._last_used = 0.0
         self._pipeline: Any = None
         self._on_step: Callable[[], None] | None = None
@@ -308,14 +328,21 @@ class CatVTONEngine:
         attn_path = snapshot_download(
             ATTN_MODEL, revision=self._attn_revision, allow_patterns=[f"{ATTN_SUBFOLDER}/*"]
         )
-        return CatVTONPipeline(
-            base_ckpt=base_path,
-            attn_ckpt=attn_path,
-            attn_ckpt_version=ATTN_VERSION,
-            # Turing (RTX 20xx) has no fast bf16: fp16 on CUDA (§5.5, §12).
-            weight_dtype=torch.float16 if self._dtype == "fp16" else torch.float32,
-            device=self._device,
-            # The SD safety checker costs VRAM and may swap a mannequin for NSFW.jpg.
-            skip_safety_check=True,
-            use_tf32=False,
-        )
+        weight_dtype = torch.float16 if self._dtype == "fp16" else torch.float32
+        build_dtype: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+        if self._dtype == "fp16":
+            if self._converted_dir is not None:
+                base_path = str(fp16_base_checkpoint(base_path, self._converted_dir))
+            build_dtype = default_dtype(torch.float16)
+        with build_dtype:
+            return CatVTONPipeline(
+                base_ckpt=base_path,
+                attn_ckpt=attn_path,
+                attn_ckpt_version=ATTN_VERSION,
+                # Turing (RTX 20xx) has no fast bf16: fp16 on CUDA (§5.5, §12).
+                weight_dtype=weight_dtype,
+                device=self._device,
+                # The SD safety checker costs VRAM and may swap a mannequin for NSFW.jpg.
+                skip_safety_check=True,
+                use_tf32=False,
+            )
