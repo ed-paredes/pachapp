@@ -24,14 +24,14 @@ from tryon.mannequin import MannequinError
 
 _BASE: dict[str, Any] = {
     "mannequin_id": "m12",
-    "mannequin_version": "mv1",
-    "garments": [("g1", "h1"), ("g2", "h2")],
+    "mannequin_digest": "mv1",
+    "garments": [("g1", "h1", "upper"), ("g2", "h2", "lower")],
     "width": 576,
     "height": 768,
     "steps": 20,
     "guidance": 2.5,
     "seed": 42,
-    "model_version": "model1",
+    "model_tag": "model1",
 }
 
 
@@ -46,26 +46,27 @@ def test_key_is_stable_hex_sha256() -> None:
 
 
 def test_key_accepts_lists_and_tuples_alike() -> None:
-    assert _key(garments=[["g1", "h1"], ["g2", "h2"]]) == _key()
+    assert _key(garments=[["g1", "h1", "upper"], ["g2", "h2", "lower"]]) == _key()
 
 
 def test_key_depends_on_pass_order() -> None:
-    assert _key(garments=[("g2", "h2"), ("g1", "h1")]) != _key()
+    assert _key(garments=[("g2", "h2", "lower"), ("g1", "h1", "upper")]) != _key()
 
 
 @pytest.mark.parametrize(
     "changes",
     [
         {"mannequin_id": "other"},
-        {"mannequin_version": "mv2"},
-        {"garments": [("g1", "h1")]},
-        {"garments": [("g1", "h1"), ("g2", "changed")]},
+        {"mannequin_digest": "mv2"},
+        {"garments": [("g1", "h1", "upper")]},
+        {"garments": [("g1", "h1", "overall"), ("g2", "h2", "lower")]},
+        {"garments": [("g1", "h1", "upper"), ("g2", "changed", "lower")]},
         {"width": 384},
         {"height": 512},
         {"steps": 30},
         {"guidance": 3.0},
         {"seed": 1},
-        {"model_version": "model2"},
+        {"model_tag": "model2"},
     ],
 )
 def test_key_changes_with_every_input(changes: dict[str, Any]) -> None:
@@ -82,7 +83,7 @@ def test_hash_cutout_changes_when_the_file_changes(tmp_path: Path) -> None:
     Image.new("RGBA", (4, 4), (0, 255, 0, 255)).save(path)
     second = hash_cutout(tmp_path, "cutout/g1.png")
     assert second != first
-    assert _key(garments=[("g1", first)]) != _key(garments=[("g1", second)])
+    assert _key(garments=[("g1", first, "upper")]) != _key(garments=[("g1", second, "upper")])
 
 
 def test_hash_cutout_rejects_paths_outside_the_root(tmp_path: Path) -> None:
