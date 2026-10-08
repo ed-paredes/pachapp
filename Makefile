@@ -135,7 +135,8 @@ ml-cutout-eval: ## Compare garment-only cutout methods (CUTOUT_EVAL_ARGS="DIR...
 # that import with torch 2.4 (checked 2026-10-05). The spike runs in the backend venv, where
 # diffusers/accelerate are locked dependencies since V1a.
 # Stop the API, worker and Expo before tryon-masks/tryon-spike (§12.2: RAM/VRAM).
-TRYON_CATVTON_DIR ?= $(HOME)/pachapp-data/vendor/CatVTON
+# Same default as the `tryon_catvton_dir` setting: <data dir>/vendor/CatVTON.
+TRYON_CATVTON_DIR ?= $(or $(PACHAPP_TRYON_CATVTON_DIR),$(if $(PACHAPP_DATA_DIR),$(PACHAPP_DATA_DIR)/vendor/CatVTON),$(HOME)/pachapp-data/vendor/CatVTON)
 TRYON_CATVTON_COMMIT := 7818397f25613beedb3d861a34769f607cfcf3b1
 TRYON_HF_HOME ?= $(or $(PACHAPP_ML_CACHE_DIR),$(if $(PACHAPP_DATA_DIR),$(PACHAPP_DATA_DIR)/models),$(HOME)/pachapp-data/models)
 

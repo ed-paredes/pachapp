@@ -68,6 +68,7 @@ packages = [
     "src/engine",
     "src/shared",
     "src/ml",
+    "src/tryon",
 ]
 
 [tool.uv.sources]

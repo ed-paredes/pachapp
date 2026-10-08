@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 
 import ml.tryon_spike as ts
+from tryon.images import prepare_person
 
 TINY = ts.Config("T", 30, 40, 3)
 
@@ -162,51 +163,6 @@ def test_missing_inputs(tmp_path: Path) -> None:
     assert ts.missing_inputs("overall", m, g_dress) == "no mask_overall.png for neutral-01"
     m_all = ts.load_mannequin(_mannequin(tmp_path, "m2", masks=("upper", "overall")))
     assert ts.missing_inputs("overall", m_all, g_dress) is None
-
-
-def test_fit_crop_matches_catvton_math() -> None:
-    wide = Image.new("RGB", (200, 100))
-    wide.paste((255, 0, 0), (0, 0, 50, 100))  # left quarter red: cropped away
-    out = ts.fit_crop(wide, (30, 40), Image.Resampling.NEAREST)
-    assert out.size == (30, 40)
-    assert out.getpixel((0, 20)) == (0, 0, 0)
-    tall = ts.fit_crop(Image.new("RGB", (100, 400)), (30, 40), Image.Resampling.NEAREST)
-    assert tall.size == (30, 40)
-
-
-def test_prepare_mask_binarises_and_blurs() -> None:
-    mask = Image.new("L", (60, 80), 0)
-    mask.paste(100, (0, 0, 30, 80))  # below 128: dropped
-    mask.paste(200, (30, 0, 60, 80))  # kept
-    sharp = np.asarray(ts.prepare_mask(mask, TINY, blur=0))
-    assert set(np.unique(sharp)) == {0, 255}
-    assert sharp[:, :14].max() == 0 and sharp[:, 16:].min() == 255
-    blurred = np.asarray(ts.prepare_mask(mask, TINY))
-    assert blurred.shape == (40, 30) and 0 < blurred[20, 15] < 255
-
-
-def test_prepare_garment_crops_cutout_onto_white() -> None:
-    cut = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
-    cut.paste((0, 0, 255, 255), (40, 30, 60, 70))
-    out = ts.prepare_garment(cut, margin=0.1)
-    assert out.mode == "RGB" and out.size == (28, 48)  # 20x40 box + 4 px (10% of 40) a side
-    assert out.getpixel((0, 0)) == (255, 255, 255)
-    assert out.getpixel((14, 24)) == (0, 0, 255)
-
-
-def test_prepare_garment_keeps_photos() -> None:
-    photo = Image.new("RGB", (30, 50), (1, 2, 3))
-    assert ts.prepare_garment(photo).size == (30, 50)
-    opaque_png = Image.new("RGBA", (30, 50), (1, 2, 3, 255))
-    assert ts.prepare_garment(opaque_png).size == (30, 50)
-    with pytest.raises(ts.SpikeSetupError, match="transparent"):
-        ts.prepare_garment(Image.new("RGBA", (5, 5), (0, 0, 0, 0)))
-
-
-def test_is_blank() -> None:
-    assert ts.is_blank(Image.new("RGB", (10, 10)))
-    noisy = Image.fromarray(np.random.default_rng(0).integers(0, 255, (10, 10, 3), dtype=np.uint8))
-    assert not ts.is_blank(noisy)
 
 
 def _case(case: str, seconds: list[float], **flags: bool) -> ts.CaseResult:
@@ -364,7 +320,7 @@ def test_config_d_dimensions_reach_the_dresser(tmp_path: Path) -> None:
     config = ts.Config("D", 36, 48, 2)  # D's 3:4 ratio, shrunk to keep the test tiny
     ts.run_spike(dresser, [mannequin], [garments], [config], ["upper"], tmp_path / "out")
     assert dresser.calls[0][0] == (36, 48) and dresser.calls[0][3] == "D"
-    prepared = ts.prepare_person(Image.new("RGB", (60, 90)), ts.CONFIGS["D"])
+    prepared = prepare_person(Image.new("RGB", (60, 90)), (768, 1024))
     assert prepared.size == (768, 1024)
 
 

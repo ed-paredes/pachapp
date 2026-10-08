@@ -62,7 +62,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
+
+from tryon.images import is_blank, prepare_garment, prepare_mask, prepare_person
 
 logger = logging.getLogger(__name__)
 
@@ -72,15 +74,8 @@ ATTN_VERSION = "mix"  # app.py default, loads the "mix-48k-1024" attention weigh
 ATTN_SUBFOLDER = "mix-48k-1024"
 GUIDANCE = 2.5  # app.py / pipeline default, matches §5.5
 SEED = 42  # default seed
-# app.py blurs the AutoMasker mask with VaeImageProcessor.blur(blur_factor=9) before
-# inference; the pipeline then binarises it at 0.5.
-MASK_BLUR = 9
 # §4 acceptance: an outfit of 2 garments in <= 90 s, without running out of memory.
 OUTFIT_BUDGET_S = 90.0
-# Margin (share of the longest side) kept around a cutout before CatVTON pads it.
-GARMENT_MARGIN = 0.05
-# Output with a near-flat colour (std below this, 0-255 scale): fp16 NaNs decode to black.
-BLANK_STD = 2.0
 
 _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 MASK_TYPES = ("upper", "lower", "overall")
@@ -285,53 +280,6 @@ def missing_inputs(case: str, mannequin: Mannequin, garments: GarmentSet) -> str
     return None
 
 
-def fit_crop(image: Image.Image, size: tuple[int, int], resample: int) -> Image.Image:
-    """Centre-crop to `size`'s aspect ratio, then resize (CatVTON `resize_and_crop` math)."""
-    w, h = image.size
-    target_w, target_h = size
-    if w / h < target_w / target_h:
-        new_w, new_h = w, w * target_h // target_w
-    else:
-        new_w, new_h = h * target_w // target_h, h
-    left, top = (w - new_w) // 2, (h - new_h) // 2
-    return image.crop((left, top, left + new_w, top + new_h)).resize(size, resample)
-
-
-def prepare_person(image: Image.Image, config: Config) -> Image.Image:
-    return fit_crop(image.convert("RGB"), (config.width, config.height), Image.Resampling.LANCZOS)
-
-
-def prepare_mask(mask: Image.Image, config: Config, blur: int = MASK_BLUR) -> Image.Image:
-    """Mask at the working size, binarised then blurred like CatVTON's app.py."""
-    fitted = fit_crop(mask.convert("L"), (config.width, config.height), Image.Resampling.NEAREST)
-    binary = fitted.point(lambda v: 255 if v >= 128 else 0)
-    return binary.filter(ImageFilter.GaussianBlur(blur)) if blur > 0 else binary
-
-
-def prepare_garment(image: Image.Image, margin: float = GARMENT_MARGIN) -> Image.Image:
-    """RGB garment input: a cutout is cropped to its opaque area (plus `margin`) and
-    composited on white (§5.4); a photo without transparency is returned as is.
-    CatVTON then pads it to the working size with white (`resize_and_padding`)."""
-    if image.mode not in ("RGBA", "LA", "P"):
-        return image.convert("RGB")
-    rgba = image.convert("RGBA")
-    alpha = rgba.getchannel("A")
-    if alpha.getextrema()[0] == 255:  # fully opaque: a photo stored as PNG
-        return rgba.convert("RGB")
-    box = alpha.point(lambda a: 255 if a > 0 else 0).getbbox()
-    if box is None:
-        raise SpikeSetupError("garment cutout is fully transparent")
-    rgba = rgba.crop(box)
-    pad = round(max(rgba.size) * margin)
-    canvas = Image.new("RGB", (rgba.width + 2 * pad, rgba.height + 2 * pad), (255, 255, 255))
-    canvas.paste(rgba, (pad, pad), rgba)
-    return canvas
-
-
-def is_blank(image: Image.Image, threshold: float = BLANK_STD) -> bool:
-    return float(np.asarray(image.convert("L"), dtype=np.float32).std()) < threshold
-
-
 def meets_criterion(
     results: Sequence[CaseResult], budget_s: float = OUTFIT_BUDGET_S
 ) -> bool | None:
@@ -393,10 +341,10 @@ def run_case(
         result.skipped = reason
         return result
 
-    person = prepare_person(_open(mannequin.person), config)
+    person = prepare_person(_open(mannequin.person), (config.width, config.height))
     for slot, mask_type in CASES[case]:
         garment = prepare_garment(_open(garments.garments[slot]))
-        mask = prepare_mask(_open(mannequin.masks[mask_type]), config)
+        mask = prepare_mask(_open(mannequin.masks[mask_type]), (config.width, config.height))
         step_times: list[float] = []
         last = [time.perf_counter()]
 
