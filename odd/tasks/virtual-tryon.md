@@ -45,7 +45,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     (`person.png` 768x1024, `mask_{upper,lower,overall}.png`, `meta.json` with source and licence); flat
     `tryon_*` settings (`PACHAPP_TRYON_*`, V0 defaults, pinned base/attention revisions, `tryon_enabled=false`)
     in `.env.example`; `diffusers`/`accelerate` as backend dependencies (the Makefile stops passing `--with`).
-  - [ ] **V1b** `backend/src/tryon/`: `TryOnEngine` Protocol + `TryOnParams`, `CatVTONEngine` (lazy load
+  - [x] **V1b** `backend/src/tryon/`: `TryOnEngine` Protocol + `TryOnParams`, `CatVTONEngine` (lazy load
     from the pinned CatVTON clone, `dress`, `unload`, blank check, OOM -> free and retry once at 384x512),
     mannequin loader, image preparation shared with the spike, `FakeTryOnEngine`; unit tests without GPU.
   - [ ] **V1c** GPU memory management: unload hooks for BiRefNet (registry), FASHN (`CutoutEngine`) and
@@ -161,6 +161,27 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
   Makefile clones to `$HOME/pachapp-data/vendor/CatVTON` ignoring `PACHAPP_DATA_DIR`; fix in V1b),
   R3-mannequin-id-unvalidated, R3-oom-retry-size-unchecked.
 
+- 2026-10-08: V1b (delegated writer, branch `tryon/v1b-engine`, commit b71ad8e; resumed from the paused
+  partial work): `backend/src/tryon/` with `images.py` (prep helpers moved out of the spike), `mannequin.py`
+  (`load_mannequin`, id checked against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, mask size and `meta.json` checks),
+  `engine.py` (`TryOnParams` validating multiple-of-8 sizes and a retry size not larger than the main one;
+  `TryOnEngine` Protocol; `TryOnError` -> `TryOnOutOfMemory`/`TryOnBlankOutput`/`TryOnUnavailable`;
+  `CatVTONEngine` with lazy load, `pipeline_factory` seam, `on_step` via a wrapped `noise_scheduler.step`,
+  one OOM retry at the retry size, blank check, `unload`), `fake_engine.py`; Makefile `TRYON_CATVTON_DIR`
+  follows `PACHAPP_TRYON_CATVTON_DIR` > `PACHAPP_DATA_DIR/vendor/CatVTON` > `~/pachapp-data/vendor/CatVTON`.
+  Closes V1a advisories R3-catvton-dir-default-divergence, R3-mannequin-id-unvalidated,
+  R3-oom-retry-size-unchecked. 871 authored lines (~100 of them the helper move). Checks: ruff format/check,
+  ty clean; pytest 786 (+37). Native review (high, granted, 4 lenses): approved and acknowledged (lineage
+  review-cbf7225ab01d9afd). Advisories for later (non-blocking): R3/R4-garment-error-escapes-contract
+  (`GarmentError` is a `ValueError`, not a `TryOnError`), R3-on-step-overcount-on-oom-retry (progress keeps
+  counting across the retry), R2/R3-moved-helper-coverage-dropped (the helper tests left with the spike and
+  `tryon/images.py` has no direct tests), R4-oom-retry-inside-except, R3/R4-silent-degraded-size (caller
+  is not told the result came out at the retry size), R2-garment-error-type-change / R3-spike-error-type-changed,
+  R2-tautological-config-d-assert, R2-duplicated-model-constants, R2-protocol-output-size-undocumented,
+  R3-tracked-asset-dependency, R1-001.
+
 ## Next step
 
-V1b (`backend/src/tryon/` engine), then V1c, V1d, one PR each.
+Open the V1b PR (owner decides), then V1c (GPU memory management; fold in the V1b advisories that touch
+`engine.py`: garment error contract, on_step across the retry, retry size reported, tests for `tryon/images.py`),
+then V1d, one PR each.
