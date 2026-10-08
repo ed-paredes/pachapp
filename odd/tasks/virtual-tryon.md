@@ -54,7 +54,24 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   - [x] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
     VRAM and RSS, check the BiRefNet/SigLIP reload afterwards.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
-  `make gen-client`.
+  `make gen-client`. Delivery: one PR per task to main (stacked-to-main, as in V1). Owner 2026-10-08: plan
+  accepted; RAM approach = measure first (lower the CatVTON load peak in V2c, measure with the full stack in
+  V2d), a CatVTON subprocess only if it still does not fit.
+  - [ ] **V2a** Data and pure logic (torch-free): `TryOnRender` model (`tryon_renders`, spec §6.6; `status`
+    reuses the job states, `step` is free text) + Alembic migration; `tryon/mapping.py` (category -> cloth
+    type, pass plan with `tryon_max_passes`, skipped and unsupported ids; spec §5.2, §5.3, §12.8);
+    `tryon/cache.py` (`cache_key` from mannequin id + version, sha256 of each cutout file in pass order, params,
+    model version); `storage` path `tryon/<id>.webp`; unit tests.
+  - [ ] **V2b** API: `GET /tryon/capabilities`, `POST /tryon` (200 cached / 202 created / 503 disabled / 422
+    no compatible garment; `garment_ids` or optional `outfit_id`), `GET /tryon/{id}`, errors, schemas,
+    `make gen-client`, tests. The API never imports torch.
+  - [ ] **V2c** Worker: claim renders only when no upload job is pending, stuck-render recovery,
+    `tryon/service.run_render` (residents released, passes, progress per diffusion step, OOM retry, WebP,
+    `duration_ms`, `peak_vram_mb`), `CutoutEngine`/`LazyModels` reachable from the loop, `unload_if_idle()`
+    on idle iterations, engine built lazily and only with `tryon_enabled`; lower the CatVTON load RAM peak;
+    V1c/V1d advisories for V2.
+  - [ ] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
+    with the stack up (parent; no code).
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
 
@@ -64,6 +81,9 @@ TDD mode: off (no project/session TDD configuration). Runner: `cd backend && uv 
 `uv run ruff format --check .`, `uv run ruff check .`, `uv run ty check src`. Route: V1a-V1c delegated writer
 (each touches 2+ non-trivial files; mapping done by a read-only explorer on 2026-10-08), V1d parent (GPU run).
 Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> owner chose stacked-to-main.
+V2: same TDD mode, runner and checks. Route: V2a-V2c delegated writer (each touches 2+ non-trivial files;
+backend mapped by a read-only explorer on 2026-10-08), V2d parent (GPU run). Forecast ~1300 authored lines
+over V2a-V2c: stacked-to-main, one PR per task.
 
 ## Research notes (2026-10-05, reading CatVTON at `7818397f`)
 
@@ -231,5 +251,4 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
 
 ## Next step
 
-V2 (service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
-`make gen-client`), taking in the V1c and V1d findings for V2.
+V2a (data and pure logic), then V2b, V2c, V2d, one PR each.
