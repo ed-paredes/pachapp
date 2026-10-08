@@ -19,13 +19,13 @@ from typing import Any, Literal, Protocol
 from PIL import Image
 
 from ml.device import free_gpu_memory
+from tryon.cache import ATTN_VERSION
 from tryon.images import GarmentError, is_blank, prepare_garment, prepare_mask, prepare_person
 
 logger = logging.getLogger(__name__)
 
 BASE_MODEL = "booksforcharlie/stable-diffusion-inpainting"
 ATTN_MODEL = "zhengchong/CatVTON"
-ATTN_VERSION = "mix"
 ATTN_SUBFOLDER = "mix-48k-1024"
 
 

@@ -54,7 +54,24 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   - [x] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
     VRAM and RSS, check the BiRefNet/SigLIP reload afterwards.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
-  `make gen-client`.
+  `make gen-client`. Delivery: one PR per task to main (stacked-to-main, as in V1). Owner 2026-10-08: plan
+  accepted; RAM approach = measure first (lower the CatVTON load peak in V2c, measure with the full stack in
+  V2d), a CatVTON subprocess only if it still does not fit.
+  - [x] **V2a** Data and pure logic (torch-free): `TryOnRender` model (`tryon_renders`, spec §6.6; `status`
+    reuses the job states, `step` is free text) + Alembic migration; `tryon/mapping.py` (category -> cloth
+    type, pass plan with `tryon_max_passes`, skipped and unsupported ids; spec §5.2, §5.3, §12.8);
+    `tryon/cache.py` (`cache_key` from mannequin id + version, sha256 of each cutout file in pass order, params,
+    model version); `storage` path `tryon/<id>.webp`; unit tests.
+  - [ ] **V2b** API: `GET /tryon/capabilities`, `POST /tryon` (200 cached / 202 created / 503 disabled / 422
+    no compatible garment; `garment_ids` or optional `outfit_id`), `GET /tryon/{id}`, errors, schemas,
+    `make gen-client`, tests. The API never imports torch.
+  - [ ] **V2c** Worker: claim renders only when no upload job is pending, stuck-render recovery,
+    `tryon/service.run_render` (residents released, passes, progress per diffusion step, OOM retry, WebP,
+    `duration_ms`, `peak_vram_mb`), `CutoutEngine`/`LazyModels` reachable from the loop, `unload_if_idle()`
+    on idle iterations, engine built lazily and only with `tryon_enabled`; lower the CatVTON load RAM peak;
+    V1c/V1d advisories for V2.
+  - [ ] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
+    with the stack up (parent; no code).
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
 
@@ -64,6 +81,9 @@ TDD mode: off (no project/session TDD configuration). Runner: `cd backend && uv 
 `uv run ruff format --check .`, `uv run ruff check .`, `uv run ty check src`. Route: V1a-V1c delegated writer
 (each touches 2+ non-trivial files; mapping done by a read-only explorer on 2026-10-08), V1d parent (GPU run).
 Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> owner chose stacked-to-main.
+V2: same TDD mode, runner and checks. Route: V2a-V2c delegated writer (each touches 2+ non-trivial files;
+backend mapped by a read-only explorer on 2026-10-08), V2d parent (GPU run). Forecast ~1300 authored lines
+over V2a-V2c: stacked-to-main, one PR per task.
 
 ## Research notes (2026-10-05, reading CatVTON at `7818397f`)
 
@@ -229,7 +249,26 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
   `PACHAPP_ML_CACHE_DIR` (or accept `~/.cache/huggingface`, 8.4 GB now) so the worker does not download twice.
   Results in `~/pachapp-data/eval-results/tryon-v1d-2026-10-08/`.
 
+- 2026-10-08: V2a (delegated writer, branch `tryon/v2a-data`, commit b1a7a67). `TryOnRender` (`tryon_renders`:
+  job-like status/step/progress/attempts/claim columns, JSON `garment_ids`/`skipped_garment_ids`/
+  `unsupported_garment_ids`/`params`, plain nullable `outfit_id`, `uq_tryon_renders_cache_key`,
+  `idx_tryon_renders_status`) + migration `c4e8f21a6d93`. `tryon/mapping.py`: `ClothType`, `cloth_type()`,
+  `plan_passes(garments, max_passes) -> PassPlan(passes, skipped, unsupported, is_empty)`; deterministic rules by
+  input order (first of a category wins, a one-piece wins over tops/bottoms but keeps mid layer/outerwear after
+  it, over the limit keep the base pass, then the innermost and outermost upper). `tryon/cache.py`:
+  `cache_key(...)` over canonical JSON; `hash_cutout`, `mannequin_version` (digest of the person image, masks
+  and `meta.json`), `model_version` (pinned revisions + `ATTN_VERSION`, moved here so the module stays
+  torch-free). `storage.tryon_path`, `imaging.encode_webp`. A subprocess test checks `tryon.mapping`/`tryon.cache`
+  import no torch. 738 authored lines (~370 tests). Checks: ruff format/check, ty clean; pytest 860 (+48).
+  Native review (high: the torch-free test starts a subprocess; granted, 4 lenses): approved and acknowledged
+  (lineage review-4c9a0105e4af3e1a). To fix in V2b (first user of `cache_key`): R3-cache-key-omits-cloth-type
+  (a recategorised garment with the same cutout keeps its key -> stale render; add the cloth type per pass),
+  R2-shadowed-version-params (rename the `cache_key` parameters). Other advisories: R3-max-passes-not-enforced-
+  below-base (settings already require >= 1), R3-cache-key-numeric-canonicalisation, R3/R2-encode-webp-palette-
+  alpha, R2-attn-constant-split, R2-dense-slot-trim. Writer notes for V2b/V2c: store `params` with the mannequin
+  and model versions; 422 when a garment has no `img_cutout`; refresh `last_accessed_at` on a cache hit;
+  consistent `step` names.
+
 ## Next step
 
-V2 (service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
-`make gen-client`), taking in the V1c and V1d findings for V2.
+V2b (API; fixes the two V2a cache-key advisories), then V2c, V2d, one PR each.

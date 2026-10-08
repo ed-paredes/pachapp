@@ -198,6 +198,52 @@ class Job(SQLModel, table=True):
     garment: "Garment" = Relationship(back_populates="jobs")
 
 
+class TryOnRender(SQLModel, table=True):
+    """One virtual try-on render (09-virtual-tryon.md §6.6, §12.3).
+
+    Carries its own claim columns (mirroring `Job`) instead of generalising `job`; `status`
+    reuses `JobStatus`, `step` is free text (queued, loading_model, dressing_N, finalizing).
+    `outfit_id` is a plain nullable reference, not a FK: deleting an outfit must not be
+    blocked by, or cascade into, its cached renders."""
+
+    __tablename__ = "tryon_renders"
+    __table_args__ = (
+        UniqueConstraint("cache_key", name="uq_tryon_renders_cache_key"),
+        Index("idx_tryon_renders_status", "status"),
+    )
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    cache_key: str = Field(nullable=False)
+    mannequin_id: str = Field(nullable=False)
+    # Dressed garments in pass order; the other two lists are echoed by the API response.
+    garment_ids: list[str] = Field(default_factory=list, sa_column=Column(SAJSON, nullable=False))
+    skipped_garment_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(SAJSON, nullable=False)
+    )
+    unsupported_garment_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(SAJSON, nullable=False)
+    )
+    outfit_id: str | None = Field(default=None, nullable=True)
+    status: JobStatus = Field(
+        default=JobStatus.pending, sa_column=Column(_sa_enum(JobStatus), nullable=False)
+    )
+    step: str | None = Field(default=None, nullable=True)
+    progress: int = Field(default=0, nullable=False)
+    attempts: int = Field(default=0, nullable=False)
+    error: str | None = Field(default=None, nullable=True)
+    claimed_by: str | None = Field(default=None, nullable=True)
+    claimed_at: datetime | None = Field(default=None, nullable=True)
+    started_at: datetime | None = Field(default=None, nullable=True)
+    finished_at: datetime | None = Field(default=None, nullable=True)
+    # Relative to the images root (`shared.storage.tryon_path`).
+    img_path: str | None = Field(default=None, nullable=True)
+    params: dict = Field(default_factory=dict, sa_column=Column(SAJSON, nullable=False))
+    duration_ms: int | None = Field(default=None, nullable=True)
+    peak_vram_mb: int | None = Field(default=None, nullable=True)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    last_accessed_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
 class Setting(SQLModel, table=True):
     """Singleton row (`id = 1`), seeded by an Alembic data migration on the
     first `make migrate` (docs/specs/02-data-model.md)."""
