@@ -80,3 +80,12 @@ def make_thumbnail(image: Image.Image, thumb_px: int) -> bytes:
     buffer = io.BytesIO()
     thumb.save(buffer, format="WEBP", quality=WEBP_QUALITY)
     return buffer.getvalue()
+
+
+def encode_webp(image: Image.Image) -> bytes:
+    """Full-size lossy WebP bytes of `image` (try-on renders); alpha is kept if present."""
+    if image.mode not in ("RGB", "RGBA"):
+        image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+    buffer = io.BytesIO()
+    image.save(buffer, format="WEBP", quality=WEBP_QUALITY)
+    return buffer.getvalue()

@@ -84,8 +84,27 @@ def test_upgrade_head_creates_all_tables(migrated_db: Path) -> None:
         "job",
         "setting",
         "ai_correction",
+        "tryon_renders",
     ):
         assert table in tables
+
+
+def test_tryon_renders_indexes_and_unique_cache_key(migrated_db: Path) -> None:
+    conn = _connect_with_fk_enforcement(migrated_db)
+    try:
+        indexes = _index_names(conn, "tryon_renders")
+        unique_cols = [
+            [col[2] for col in conn.execute(f"PRAGMA index_info({row[1]})")]
+            for row in conn.execute("PRAGMA index_list(tryon_renders)")
+            if row[2]
+        ]
+        columns = _column_names(conn, "tryon_renders")
+    finally:
+        conn.close()
+
+    assert "idx_tryon_renders_status" in indexes
+    assert ["cache_key"] in unique_cols
+    assert {"cache_key", "garment_ids", "skipped_garment_ids", "unsupported_garment_ids"} <= columns
 
 
 def test_garment_columns_match_spec(migrated_db: Path) -> None:

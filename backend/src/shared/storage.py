@@ -25,6 +25,10 @@ def thumb_path(garment_id: str) -> str:
     return f"thumb/{garment_id}.webp"
 
 
+def tryon_path(render_id: str) -> str:
+    return f"tryon/{render_id}.webp"
+
+
 def resolve_path(images_root: Path, relative: str) -> Path:
     """Resolve a stored relative path against `images_root`.
 
