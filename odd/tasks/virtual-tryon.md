@@ -48,7 +48,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   - [x] **V1b** `backend/src/tryon/`: `TryOnEngine` Protocol + `TryOnParams`, `CatVTONEngine` (lazy load
     from the pinned CatVTON clone, `dress`, `unload`, blank check, OOM -> free and retry once at 384x512),
     mannequin loader, image preparation shared with the spike, `FakeTryOnEngine`; unit tests without GPU.
-  - [ ] **V1c** GPU memory management: unload hooks for BiRefNet (registry), FASHN (`CutoutEngine`) and
+  - [x] **V1c** GPU memory management: unload hooks for BiRefNet (registry), FASHN (`CutoutEngine`) and
     SigLIP (`LazyModels`) with `gc.collect()` + `torch.cuda.empty_cache()`; release them before CatVTON
     loads; CatVTON idle unload after `tryon_idle_unload_seconds`. Not wired into the worker loop yet (V2).
   - [ ] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
@@ -180,8 +180,30 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
   R2-tautological-config-d-assert, R2-duplicated-model-constants, R2-protocol-output-size-undocumented,
   R3-tracked-asset-dependency, R1-001.
 
+- 2026-10-08: V1b merged in #52 (owner: "revisa la pr si todo ok, merge y sigue"); parent read `engine.py`
+  before merging and added two V1c items (OOM retry inside `except`, OOM while loading).
+- 2026-10-08: V1c (delegated writer, branch `tryon/v1c-gpu-memory`, commit faba529). Shared
+  `ml.device.free_gpu_memory()`; unload hooks returning whether a model was loaded:
+  `registry.unload_background_remover()` (BiRefNet), `registry.unload_embedder()` + `LazyModels.unload()`
+  (SigLIP, via an optional `AiModels.release` hook), `CutoutEngine.unload()` (remover + FASHN `parser.close()`);
+  `tryon/memory.py`: `resident_unloaders(cutout, models)` + `release_resident_models(unloaders)` (runs all,
+  logs and counts failures, frees once). `CatVTONEngine(idle_unload_seconds=0, clock=time.monotonic)` +
+  `unload_if_idle()` on the Protocol: timer starts at load and resets after every `dress`; 0 = never (spec
+  §5.5), so V2 must pass `settings.tryon_idle_unload_seconds`; meant to be polled by V2's single-threaded
+  worker loop (no threads, no locks). V1b advisories folded in: retry outside the `except` (`_run_or_none`,
+  no exception chaining), `TryOnInvalidInput` for bad garments (prepared before loading), `on_retry`
+  callback (then `on_step` counts from zero), result `.size` is the size used (documented, tested), tests for
+  `tryon/images.py`, OOM while loading -> `TryOnOutOfMemory`. Not wired into the worker (V2). 635 authored
+  lines (~225 tests; six advisories folded in). Checks: ruff format/check, ty clean; pytest 812 (+26).
+  Native review (medium, granted, 1 lens): approved and acknowledged (lineage review-cf9091d595f6f403).
+  Advisories for V2: R3-idle-timer-mid-dress (`unload_if_idle` is safe only from the thread that calls
+  `dress`; if V2 ever polls from another thread, mark the engine in use during `dress`),
+  R3-oom-cause-dropped (log the original OOM message before dropping it). Writer notes for V2:
+  `make_cutout_step` builds its `CutoutEngine` internally, so V2 needs access to it for `resident_unloaders`;
+  `FakeTryOnEngine` has no OOM simulation and never calls `on_retry`; Pillow `getdata` deprecation warnings in
+  the new images tests.
+
 ## Next step
 
-Open the V1b PR (owner decides), then V1c (GPU memory management; fold in the V1b advisories that touch
-`engine.py`: garment error contract, on_step across the retry, retry size reported, tests for `tryon/images.py`),
-then V1d, one PR each.
+V1c PR, then V1d (real GPU smoke with the stack stopped: load via settings, dress one outfit on M12, time,
+VRAM, RSS, BiRefNet/SigLIP reload after `release_resident_models`), then V2.
