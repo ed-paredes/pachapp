@@ -21,7 +21,7 @@ from shared.enums import GarmentCategory, JobStatus, OutfitSlot, OutfitSource
 from shared.models import MAX_RENDER_ATTEMPTS, Garment, Outfit, OutfitItem, TryOnRender
 from shared.settings import Settings
 from tryon.mapping import PlanGarment, plan_passes
-from tryon.requests import _reuse
+from tryon.requests import PERMANENT_ERRORS, RETRY_COOLDOWN, _reuse
 
 
 def _settings(tmp_path: Path, *, enabled: bool = True) -> Settings:
@@ -268,7 +268,9 @@ def test_failed_render_is_reset_on_resubmit(client: TestClient, settings: Settin
     assert render.claimed_by is None
 
 
-def test_failed_render_at_the_attempts_cap_is_final(client: TestClient, settings: Settings) -> None:
+def test_failed_render_at_the_attempts_cap_is_final_during_the_cooldown(
+    client: TestClient, settings: Settings
+) -> None:
     top = _garment(client, settings, GarmentCategory.top)
     render_id = _post(client, garment_ids=[top]).json()["id"]
     _set_status(
@@ -278,10 +280,11 @@ def test_failed_render_at_the_attempts_cap_is_final(client: TestClient, settings
         error="out_of_memory",
         step="dressing_1",
         attempts=MAX_RENDER_ATTEMPTS,
+        finished_at=dt.datetime.now(dt.UTC),
     )
 
     response = _post(client, garment_ids=[top])
-    assert response.status_code == 200  # final: nothing to poll
+    assert response.status_code == 200  # final for now: nothing to poll
     assert response.json()["id"] == render_id
     assert response.json()["status"] == "failed"
     assert response.json()["error"] == "out_of_memory"
@@ -291,6 +294,51 @@ def test_failed_render_at_the_attempts_cap_is_final(client: TestClient, settings
         "dressing_1",
         MAX_RENDER_ATTEMPTS,
     )
+
+
+@pytest.mark.parametrize("error", ["out_of_memory", "engine_unavailable", "interrupted"])
+def test_capped_transient_failure_starts_a_new_round_after_the_cooldown(
+    client: TestClient, settings: Settings, error: str
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(
+        client,
+        render_id,
+        JobStatus.failed,
+        error=error,
+        attempts=MAX_RENDER_ATTEMPTS,
+        finished_at=dt.datetime.now(dt.UTC) - RETRY_COOLDOWN - dt.timedelta(seconds=1),
+    )
+
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 202
+    assert response.json()["id"] == render_id
+    assert response.json()["status"] == "pending"
+    render = _render(client, render_id)
+    assert (render.attempts, render.error, render.finished_at) == (0, None, None)
+
+
+@pytest.mark.parametrize("attempts", [1, MAX_RENDER_ATTEMPTS])
+@pytest.mark.parametrize("error", sorted(PERMANENT_ERRORS))
+def test_permanent_failures_are_never_retried(
+    client: TestClient, settings: Settings, error: str, attempts: int
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(
+        client,
+        render_id,
+        JobStatus.failed,
+        error=error,
+        attempts=attempts,
+        finished_at=dt.datetime(2020, 1, 1, tzinfo=dt.UTC),
+    )
+
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 200
+    assert (response.json()["status"], response.json()["error"]) == ("failed", error)
+    assert _render(client, render_id).attempts == attempts
 
 
 def test_requeue_loses_the_race_to_another_writer(client: TestClient, settings: Settings) -> None:

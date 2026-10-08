@@ -71,9 +71,10 @@ def create_tryon(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> TryOnRead:
-    """200 when the render is final (cached `done`, or `failed` with no attempts left); 202 when
-    queued, in progress, or re-queued after a failure (resubmitting a failed render retries it
-    under the same id, up to `MAX_RENDER_ATTEMPTS` tries in total)."""
+    """200 when the render is final (cached `done`, a permanent failure, or a failure that spent
+    its `MAX_RENDER_ATTEMPTS` tries less than `RETRY_COOLDOWN` ago); 202 when queued, in
+    progress, or re-queued after a failure (resubmitting a failed render retries it under the
+    same id; see `tryon.requests._reuse`)."""
     if not settings.tryon_enabled:
         raise AppError(TRYON_DISABLED, "La prueba virtual está desactivada.", 503)
     outcome = find_or_create_render(
