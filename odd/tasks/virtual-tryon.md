@@ -53,7 +53,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     loads; CatVTON idle unload after `tryon_idle_unload_seconds`. Not wired into the worker loop yet (V2).
   - [x] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
     VRAM and RSS, check the BiRefNet/SigLIP reload afterwards.
-- [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
+- [x] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`. Delivery: one PR per task to main (stacked-to-main, as in V1). Owner 2026-10-08: plan
   accepted; RAM approach = measure first (lower the CatVTON load peak in V2c, measure with the full stack in
   V2d), a CatVTON subprocess only if it still does not fit.
@@ -72,7 +72,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     V1c/V1d advisories for V2.
   - [x] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
     with the stack up (parent; no code).
-  - [ ] **V2e** V2c review fixes (added 2026-10-08): a failed render at `MAX_RENDER_ATTEMPTS` must be retryable
+  - [x] **V2e** V2c review fixes (added 2026-10-08): a failed render at `MAX_RENDER_ATTEMPTS` must be retryable
     again (R3-capped-render-unrecoverable; e.g. a resubmit after a transient error or a cooldown resets it), a
     partial fp16 copy is repaired instead of reconverted on every load (R3-partial-fp16-copy-reconverts-forever),
     malformed `params` fail as `invalid_params` (R3-bad-params-requeued-not-failed), progress never goes back on
@@ -80,6 +80,10 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     weights are cached, since every CatVTON load currently contacts the Hub (V2d log).
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
+  V2e advisories to fold in here: R3-cooldown-null-finished-at (no cooldown when `finished_at` is null),
+  R3-cached-snapshot-partial and R3-offline-partial-vae (a partial local snapshot is trusted: verify the needed
+  files before going offline), R3-deterministic-transient (consider `blank_output` permanent: same seed, same
+  result).
 
 ## Route and checks (V1)
 
@@ -335,6 +339,22 @@ over V2a-V2c: stacked-to-main, one PR per task.
   - Not covered: API and Expo RAM together with the worker (Expo was not running; WSL free RAM stayed > 4 GB).
     Every CatVTON load contacts the Hugging Face Hub (unauthenticated-request warnings): added to V2e.
 
+- 2026-10-09: V2d merged in #58. V2e (delegated writer, branch `tryon/v2e-fixes`, commit 2765b6f; no migration).
+  Retry rule: permanent errors (`invalid_garment`, `invalid_params`, `garment_missing`, `garment_changed`,
+  `mannequin_unavailable`) stay failed (POST 200); other failures requeue on resubmit while
+  `attempts < MAX_RENDER_ATTEMPTS`; at the cap a resubmit starts a new round (attempts 0) once `finished_at` is
+  `RETRY_COOLDOWN` (5 min) old, all inside the conditional `UPDATE ... WHERE status='failed'`. Partial fp16 copy
+  rebuilt in a temp sibling and swapped in. Malformed `params` fail as `invalid_params` before the engine runs.
+  Progress clamped to the highest value written. `safetensors>=0.8,<0.9` declared (lock: no version change).
+  Offline loading: `cached_snapshot()` tries `local_files_only=True` first; CatVTON's own VAE download
+  (`model/pipeline.py:40`) runs under a scoped `HF_HUB_OFFLINE` when the VAE is cached (not GPU-verified yet:
+  the next real load should show no Hub warnings). 401 authored lines (~220 tests). Checks: ruff format/check,
+  ty clean; pytest 941 (+26). Native review (medium, granted, 1 lens): approved and acknowledged (lineage
+  review-410cc9683d7fc579); advisories moved to V4. Writer notes for V3: POST returns 200 `failed` for a
+  permanent error or a capped render inside the cooldown (no `retry_after` field), so the retry button needs copy
+  for both; `error` holds codes.
+
 ## Next step
 
-V2e (V2c review fixes + offline Hub loading), then V3 (app).
+V3 (app: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests). Frontend
+tasks load the design skills first.
