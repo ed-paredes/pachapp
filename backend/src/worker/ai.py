@@ -24,6 +24,7 @@ import numpy as np
 from PIL import Image
 from sqlmodel import Session, col, select
 
+from ml.device import free_gpu_memory
 from ml.zero_shot import REVIEW_TRIGGER_ATTRIBUTES, ZeroShotResult
 from shared import storage
 from shared.enums import ConfidenceSource, GarmentCategory, GarmentPattern
@@ -54,6 +55,9 @@ class Classifier(Protocol):
 class AiModels:
     embedder: ImageEmbedder
     classifier: Classifier
+    # Drops whatever process-wide state the models live in (production: the
+    # `ml.registry` embedder); `LazyModels.unload` calls it. Fakes need none.
+    release: Callable[[], object] | None = None
 
 
 ModelsFactory = Callable[[], AiModels]
@@ -64,12 +68,12 @@ def production_models_factory(settings: Settings) -> ModelsFactory:
     (torch, open_clip) is imported only when the factory is called."""
 
     def build() -> AiModels:
-        from ml.registry import get_embedder
+        from ml.registry import get_embedder, unload_embedder
         from ml.zero_shot import ZeroShotClassifier
 
         embedder = get_embedder(settings)
         classifier = ZeroShotClassifier(embedder, margin_threshold=settings.ml_margin_threshold)
-        return AiModels(embedder=embedder, classifier=classifier)
+        return AiModels(embedder=embedder, classifier=classifier, release=unload_embedder)
 
     return build
 
@@ -87,6 +91,18 @@ class LazyModels:
             if self._models is None:
                 self._models = self._factory()
             return self._models
+
+    def unload(self) -> bool:
+        """Drop the models and free GPU memory; the next `get()` rebuilds them.
+        Returns whether any were loaded."""
+        with self._lock:
+            models, self._models = self._models, None
+        was_loaded = models is not None
+        if models is not None and models.release is not None:
+            models.release()
+        del models  # the last reference must go before the cache is emptied
+        free_gpu_memory()
+        return was_loaded
 
 
 def load_garment_image(settings: Settings, garment: Garment) -> Image.Image:

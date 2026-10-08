@@ -47,6 +47,7 @@ from ml.background import (
     MatteRemover,
     crop_to_foreground,
 )
+from ml.device import free_gpu_memory
 from ml.garment_parse import (
     GarmentParser,
     cut_garment_by_rule,
@@ -161,6 +162,19 @@ class CutoutEngine:
         self._parser_factory = parser_factory
         self._remover: BackgroundRemover | None = None
         self._parser: GarmentParser | None = None
+
+    def unload(self) -> bool:
+        """Drop the remover and the parser (FASHN) and free GPU memory; the next `cut`
+        rebuilds them. BiRefNet's session lives in `ml.registry` (`unload_background_remover`).
+        Returns whether anything was loaded."""
+        parser, self._parser = self._parser, None
+        was_loaded = parser is not None or self._remover is not None
+        self._remover = None
+        if parser is not None:
+            parser.close()
+        del parser
+        free_gpu_memory()
+        return was_loaded
 
     def cut(self, ctx: StepContext, image: Image.Image) -> CutoutResult:
         """Cut `image`. Model errors raise `RetryableStepError` (ING-REQ-022); an empty

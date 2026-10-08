@@ -22,6 +22,7 @@ from ml.bg_fp16 import ensure_fp16_model, fp16_path, should_use_fp16
 from ml.device import (
     LITE_FP16_GPU_MEM_LIMIT_BYTES,
     check_session_providers,
+    free_gpu_memory,
     onnxruntime_providers,
     resolve_device,
 )
@@ -242,6 +243,29 @@ def get_embedder(settings: Settings) -> GarmentEmbedder:
             model_id=model_id,
         )
         return _embedder
+
+
+def unload_background_remover() -> bool:
+    """Drop the BiRefNet session and give its GPU memory back; the next
+    `get_background_remover` reloads it. Returns whether one was loaded."""
+    global _bg_session
+    with _lock:
+        was_loaded = _bg_session is not None
+        _bg_session = None
+    free_gpu_memory()
+    return was_loaded
+
+
+def unload_embedder() -> bool:
+    """Drop the SigLIP embedder (and its text cache) and give its GPU memory back; the
+    next `get_embedder` reloads it. Returns whether one was loaded. Holders of the old
+    embedder (e.g. a zero-shot classifier) keep it alive until they let go."""
+    global _embedder
+    with _lock:
+        was_loaded = _embedder is not None
+        _embedder = None
+    free_gpu_memory()
+    return was_loaded
 
 
 def reset_registry() -> None:

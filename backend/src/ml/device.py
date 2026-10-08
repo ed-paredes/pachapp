@@ -9,6 +9,7 @@ should try, so BiRefNet runs on the same device as the embedder.
 
 from __future__ import annotations
 
+import gc
 from collections.abc import Sequence
 from typing import Any
 
@@ -96,6 +97,18 @@ def resolve_device(requested: str) -> Device:
         cuda_available=torch.cuda.is_available(),
         mps_available=torch.backends.mps.is_available(),
     )
+
+
+def free_gpu_memory() -> None:
+    """Collect garbage, then hand cached CUDA blocks back to the driver. Call it after
+    dropping the last reference to a model; torch is imported only if installed."""
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def onnxruntime_providers(device: Device, *, gpu_mem_limit: int | None = None) -> list[Any]:

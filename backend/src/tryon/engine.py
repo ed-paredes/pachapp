@@ -8,9 +8,9 @@
 from __future__ import annotations
 
 import functools
-import gc
 import logging
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +18,8 @@ from typing import Any, Literal, Protocol
 
 from PIL import Image
 
-from tryon.images import is_blank, prepare_garment, prepare_mask, prepare_person
+from ml.device import free_gpu_memory
+from tryon.images import GarmentError, is_blank, prepare_garment, prepare_mask, prepare_person
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,10 @@ ATTN_SUBFOLDER = "mix-48k-1024"
 
 class TryOnError(Exception):
     """A try-on generation failed."""
+
+
+class TryOnInvalidInput(TryOnError):
+    """The garment (or another input) cannot be used, e.g. a fully transparent cutout."""
 
 
 class TryOnOutOfMemory(TryOnError):
@@ -82,26 +87,33 @@ class TryOnEngine(Protocol):
         *,
         params: TryOnParams,
         on_step: Callable[[], None] | None = None,
+        on_retry: Callable[[], None] | None = None,
     ) -> Image.Image:
         """One CatVTON pass: dress the masked area of `person` with `garment`.
 
-        Inputs are unprepared (any size, garment possibly an RGBA cutout); `on_step` is
-        called once per diffusion step. Raises `TryOnError` subclasses."""
+        Inputs are unprepared (any size, garment possibly an RGBA cutout). `on_step` is
+        called once per diffusion step. After an out-of-memory error the pass restarts at
+        `params`' retry size: `on_retry` is called first and `on_step` counts from zero
+        again. The result's `size` is the size actually used, so it is smaller than
+        `(params.width, params.height)` when the retry ran. Raises `TryOnError` subclasses."""
         ...
 
     def unload(self) -> None:
         """Release the model and its GPU memory; the next `dress` reloads it."""
         ...
 
+    def unload_if_idle(self) -> bool:
+        """Unload when the model has sat unused for the engine's idle limit (never when
+        that is 0); returns whether it unloaded. Meant to be polled by the worker loop."""
+        ...
 
-def free_gpu_memory() -> None:
-    gc.collect()
+
+def prepare_garment_input(garment: Image.Image) -> Image.Image:
+    """`prepare_garment` with invalid input reported as `TryOnInvalidInput`."""
     try:
-        import torch
-    except ImportError:
-        return
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+        return prepare_garment(garment)
+    except GarmentError as exc:
+        raise TryOnInvalidInput(str(exc)) from exc
 
 
 def _is_cuda_oom(exc: BaseException) -> bool:
@@ -121,8 +133,10 @@ class CatVTONEngine:
         attn_revision: str | None,
         dtype: Literal["fp16", "fp32"] = "fp16",
         device: str = "cuda",
+        idle_unload_seconds: float = 0,
         pipeline_factory: Callable[[], Any] | None = None,
         is_oom: Callable[[BaseException], bool] = _is_cuda_oom,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._catvton_dir = catvton_dir
         self._base_revision = base_revision
@@ -131,6 +145,10 @@ class CatVTONEngine:
         self._device = device
         self._pipeline_factory = pipeline_factory or self._build_pipeline
         self._is_oom = is_oom
+        # 0 = never unload on idle (`PACHAPP_TRYON_IDLE_UNLOAD_SECONDS`, spec §5.5).
+        self._idle_unload_seconds = idle_unload_seconds
+        self._clock = clock
+        self._last_used = 0.0
         self._pipeline: Any = None
         self._on_step: Callable[[], None] | None = None
 
@@ -146,27 +164,29 @@ class CatVTONEngine:
         *,
         params: TryOnParams,
         on_step: Callable[[], None] | None = None,
+        on_retry: Callable[[], None] | None = None,
     ) -> Image.Image:
+        garment_rgb = prepare_garment_input(garment)  # before loading: bad input costs nothing
         pipeline = self._ensure_loaded()
-        garment_rgb = prepare_garment(garment)
         size = (params.width, params.height)
+        retry_size = (params.oom_retry_width, params.oom_retry_height)
         try:
-            result = self._run(pipeline, person, garment_rgb, mask, size, params, on_step)
-        except Exception as exc:
-            if not self._is_oom(exc):
-                raise
-            retry_size = (params.oom_retry_width, params.oom_retry_height)
-            logger.warning("try-on OOM at %dx%d, retrying at %dx%d", *size, *retry_size)
-            free_gpu_memory()
-            try:
-                result = self._run(pipeline, person, garment_rgb, mask, retry_size, params, on_step)
-            except Exception as retry_exc:
-                if not self._is_oom(retry_exc):
-                    raise
+            result = self._run_or_none(pipeline, person, garment_rgb, mask, size, params, on_step)
+            if result is None:
+                logger.warning("try-on OOM at %dx%d, retrying at %dx%d", *size, *retry_size)
                 free_gpu_memory()
-                raise TryOnOutOfMemory(
-                    f"out of memory at {size[0]}x{size[1]} and {retry_size[0]}x{retry_size[1]}"
-                ) from retry_exc
+                if on_retry is not None:
+                    on_retry()
+                result = self._run_or_none(
+                    pipeline, person, garment_rgb, mask, retry_size, params, on_step
+                )
+                if result is None:
+                    free_gpu_memory()
+                    raise TryOnOutOfMemory(
+                        f"out of memory at {size[0]}x{size[1]} and {retry_size[0]}x{retry_size[1]}"
+                    )
+        finally:
+            self._last_used = self._clock()
         if is_blank(result):
             raise TryOnBlankOutput("the model returned a flat image")
         return result
@@ -174,6 +194,36 @@ class CatVTONEngine:
     def unload(self) -> None:
         self._pipeline = None
         free_gpu_memory()
+
+    def unload_if_idle(self) -> bool:
+        if (
+            self._pipeline is None
+            or self._idle_unload_seconds <= 0
+            or self._clock() - self._last_used < self._idle_unload_seconds
+        ):
+            return False
+        logger.info("unloading CatVTON after %ss idle", self._idle_unload_seconds)
+        self.unload()
+        return True
+
+    def _run_or_none(
+        self,
+        pipeline: Any,
+        person: Image.Image,
+        garment: Image.Image,
+        mask: Image.Image,
+        size: tuple[int, int],
+        params: TryOnParams,
+        on_step: Callable[[], None] | None,
+    ) -> Image.Image | None:
+        """`_run`, but a CUDA OOM yields None. The exception is gone once this returns, so
+        its traceback no longer pins the failed pass's tensors when the caller frees memory."""
+        try:
+            return self._run(pipeline, person, garment, mask, size, params, on_step)
+        except Exception as exc:
+            if not self._is_oom(exc):
+                raise
+        return None
 
     def _run(
         self,
@@ -209,8 +259,18 @@ class CatVTONEngine:
                 pipeline = self._pipeline_factory()
             except (ImportError, OSError) as exc:
                 raise TryOnUnavailable(f"cannot load CatVTON: {exc}") from exc
-            self._wrap_scheduler(pipeline)
-            self._pipeline = pipeline
+            except Exception as exc:
+                if not self._is_oom(exc):
+                    raise
+            else:
+                self._wrap_scheduler(pipeline)
+                self._pipeline = pipeline
+                self._last_used = self._clock()
+                return pipeline
+            # Out of memory while loading: free what the half-built pipeline held, outside
+            # the except block, so the traceback does not keep it alive.
+            free_gpu_memory()
+            raise TryOnOutOfMemory("out of memory while loading CatVTON")
         return self._pipeline
 
     def _wrap_scheduler(self, pipeline: Any) -> None:
