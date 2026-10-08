@@ -198,6 +198,11 @@ class Job(SQLModel, table=True):
     garment: "Garment" = Relationship(back_populates="jobs")
 
 
+# Total tries a try-on render gets: `attempts` counts claims and survives resubmits, so a
+# render that keeps failing (or killing the worker) stops being re-queued.
+MAX_RENDER_ATTEMPTS = 3
+
+
 class TryOnRender(SQLModel, table=True):
     """One virtual try-on render (09-virtual-tryon.md §6.6, §12.3).
 

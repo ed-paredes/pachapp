@@ -71,8 +71,9 @@ def create_tryon(
     session: Annotated[Session, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> TryOnRead:
-    """200 when the render is cached (`done`); 202 when queued, in progress, or re-queued after
-    a failure (resubmitting a failed render retries it under the same id)."""
+    """200 when the render is final (cached `done`, or `failed` with no attempts left); 202 when
+    queued, in progress, or re-queued after a failure (resubmitting a failed render retries it
+    under the same id, up to `MAX_RENDER_ATTEMPTS` tries in total)."""
     if not settings.tryon_enabled:
         raise AppError(TRYON_DISABLED, "La prueba virtual está desactivada.", 503)
     outcome = find_or_create_render(
@@ -82,7 +83,8 @@ def create_tryon(
         outfit_id=str(body.outfit_id) if body.outfit_id else None,
         mannequin_id=body.mannequin_id,
     )
-    response.status_code = 200 if outcome.render.status == JobStatus.done else 202
+    in_flight = (JobStatus.pending, JobStatus.claimed, JobStatus.running)
+    response.status_code = 202 if outcome.render.status in in_flight else 200
     return _read(outcome.render)
 
 
