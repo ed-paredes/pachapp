@@ -28,6 +28,11 @@ WEAR_LOG_CONFLICT = "WEAR_LOG_CONFLICT"  # FBH-REQ-007: the day is already logge
 WEAR_LOG_WRITE_FAILED = "WEAR_LOG_WRITE_FAILED"  # transient: nothing was logged
 WEAR_LOG_NOT_FOUND = "WEAR_LOG_NOT_FOUND"
 INVALID_WEAR_DATE = "INVALID_WEAR_DATE"  # a wear date cannot be in the future
+TRYON_DISABLED = "TRYON_DISABLED"  # 09-virtual-tryon.md §6.7: `tryon_enabled` is off
+TRYON_NO_COMPATIBLE_GARMENTS = "TRYON_NO_COMPATIBLE_GARMENTS"  # nothing the mannequin can wear
+TRYON_GARMENT_NOT_READY = "TRYON_GARMENT_NOT_READY"  # a planned garment has no cutout yet
+TRYON_INVALID_MANNEQUIN = "TRYON_INVALID_MANNEQUIN"
+TRYON_NOT_FOUND = "TRYON_NOT_FOUND"
 
 
 class AppError(Exception):

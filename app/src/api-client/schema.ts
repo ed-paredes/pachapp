@@ -297,6 +297,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tryon/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Capabilities */
+        get: operations["get_capabilities_tryon_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tryon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Tryon
+         * @description 200 when the render is cached (`done`); 202 when queued, in progress, or re-queued after
+         *     a failure (resubmitting a failed render retries it under the same id).
+         */
+        post: operations["create_tryon_tryon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tryon/{render_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tryon */
+        get: operations["get_tryon_tryon__render_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -774,6 +829,55 @@ export interface components {
          * @enum {string}
          */
         StyleTag: "casual" | "classic" | "street" | "minimal" | "sport" | "elegant" | "bohemian" | "preppy";
+        /** TryOnCapabilities */
+        TryOnCapabilities: {
+            /** Enabled */
+            enabled: boolean;
+            /** Supported Categories */
+            supported_categories: string[];
+            /** Max Passes */
+            max_passes: number;
+        };
+        /**
+         * TryOnRead
+         * @description A render for polling; `img` is relative to the images root (API-REQ-016), set once done.
+         */
+        TryOnRead: {
+            /** Id */
+            id: string;
+            status: components["schemas"]["JobStatus"];
+            /** Step */
+            step: string | null;
+            /** Progress */
+            progress: number;
+            /** Error */
+            error: string | null;
+            /** Img */
+            img: string | null;
+            /** Garment Ids */
+            garment_ids: string[];
+            /** Skipped Garment Ids */
+            skipped_garment_ids: string[];
+            /** Unsupported Garment Ids */
+            unsupported_garment_ids: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * TryOnRequest
+         * @description `POST /tryon`: exactly one of `garment_ids` (order as given) or `outfit_id`.
+         */
+        TryOnRequest: {
+            /** Garment Ids */
+            garment_ids?: string[] | null;
+            /** Outfit Id */
+            outfit_id?: string | null;
+            /** Mannequin Id */
+            mannequin_id?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1583,6 +1687,126 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_capabilities_tryon_capabilities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TryOnCapabilities"];
+                };
+            };
+        };
+    };
+    create_tryon_tryon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TryOnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TryOnRead"];
+                };
+            };
+            /** @description Render queued or still in progress */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TryOnRead"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_tryon_tryon__render_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                render_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TryOnRead"];
+                };
             };
             /** @description Not Found */
             404: {

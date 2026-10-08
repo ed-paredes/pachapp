@@ -62,7 +62,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     type, pass plan with `tryon_max_passes`, skipped and unsupported ids; spec §5.2, §5.3, §12.8);
     `tryon/cache.py` (`cache_key` from mannequin id + version, sha256 of each cutout file in pass order, params,
     model version); `storage` path `tryon/<id>.webp`; unit tests.
-  - [ ] **V2b** API: `GET /tryon/capabilities`, `POST /tryon` (200 cached / 202 created / 503 disabled / 422
+  - [x] **V2b** API: `GET /tryon/capabilities`, `POST /tryon` (200 cached / 202 created / 503 disabled / 422
     no compatible garment; `garment_ids` or optional `outfit_id`), `GET /tryon/{id}`, errors, schemas,
     `make gen-client`, tests. The API never imports torch.
   - [ ] **V2c** Worker: claim renders only when no upload job is pending, stuck-render recovery,
@@ -269,6 +269,25 @@ over V2a-V2c: stacked-to-main, one PR per task.
   and model versions; 422 when a garment has no `img_cutout`; refresh `last_accessed_at` on a cache hit;
   consistent `step` names.
 
+- 2026-10-08: V2a merged in #55. V2b (delegated writer, branch `tryon/v2b-api`, commit b3b5814). Cache key fixes:
+  cloth type per pass in the key (R3-cache-key-omits-cloth-type), parameters renamed to `mannequin_digest` and
+  `model_tag`. `tryon/requests.py` (torch-free) `find_or_create_render`: exactly one of `garment_ids` (1-20) or
+  `outfit_id` (items by layer, slot, id); 404 `GARMENT_NOT_FOUND`/`OUTFIT_NOT_FOUND`; 422
+  `TRYON_INVALID_MANNEQUIN`, `TRYON_NO_COMPATIBLE_GARMENTS`, `TRYON_GARMENT_NOT_READY`; done -> 200 and
+  `last_accessed_at` refreshed; pending/claimed/running/new -> 202; failed -> same row reset to pending (202);
+  insert race -> re-read by key. `params` stores size, steps, guidance, seed, mannequin and model versions and
+  the pass cloth types. Router `api/routers/tryon.py`: `GET /tryon/capabilities`, `POST /tryon` (503
+  `TRYON_DISABLED` first), `GET /tryon/{id}` (works when disabled; `img` = `tryon/<id>.webp` once done, served by
+  the `/images` mount). `make gen-client` regenerated `app/src/api-client/schema.ts`; the parent ran `tsc --noEmit`
+  in the worktree with main's `node_modules` linked: clean. 740 authored lines (~330 tests) + 224 generated.
+  Checks: ruff format/check, ty clean; pytest 879 (+19). Native review (high: the torch-free subprocess test;
+  granted, 4 lenses): approved and acknowledged (lineage review-d55d87f5eb32d847). To fix in V2c (it owns
+  claiming and retries): R3/R4-requeue-race (requeue a failed render with `UPDATE ... WHERE status='failed'`,
+  check the row count), R1-requeue-resets-attempts (keep a cumulative failure count or cap resubmits),
+  R2-misleading-not-ready (a missing or unreadable cutout file is permanent: own code or detail). Other
+  advisories: R3-integrity-branch-untested, R2/R3-assert-images-root, R2-duplicated-pending-state,
+  R2-unused-created-flag, R2-cache-key-name-drift, R3-not-ready-dup.
+
 ## Next step
 
-V2b (API; fixes the two V2a cache-key advisories), then V2c, V2d, one PR each.
+V2c (worker; fixes the three V2b requeue/not-ready advisories), then V2d.

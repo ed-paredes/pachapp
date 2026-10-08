@@ -58,30 +58,33 @@ def model_version(base_revision: str | None, attn_revision: str | None) -> str:
 def cache_key(
     *,
     mannequin_id: str,
-    mannequin_version: str,
-    garments: Sequence[tuple[str, str]],
+    mannequin_digest: str,
+    garments: Sequence[tuple[str, str, str]],
     width: int,
     height: int,
     steps: int,
     guidance: float,
     seed: int,
-    model_version: str,
+    model_tag: str,
 ) -> str:
     """sha256 over a canonical serialisation of the inputs that determine the image.
 
-    `garments` is `(garment_id, cutout_sha256)` in pass order; skipped and unsupported garments
-    are not part of it. Order matters (each pass dresses the previous output).
+    `garments` is `(garment_id, cutout_sha256, cloth_type)` in pass order; skipped and unsupported
+    garments are not part of it. Order matters (each pass dresses the previous output), and the
+    cloth type is part of it so a recategorised garment with the same cutout gets a new key.
     """
     payload = {
         "mannequin_id": mannequin_id,
-        "mannequin_version": mannequin_version,
-        "garments": [[garment_id, cutout_hash] for garment_id, cutout_hash in garments],
+        "mannequin_version": mannequin_digest,
+        "garments": [
+            [garment_id, cutout_hash, cloth] for garment_id, cutout_hash, cloth in garments
+        ],
         "width": width,
         "height": height,
         "steps": steps,
         "guidance": guidance,
         "seed": seed,
-        "model_version": model_version,
+        "model_version": model_tag,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
