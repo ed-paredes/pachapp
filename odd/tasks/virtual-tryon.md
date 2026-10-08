@@ -70,13 +70,14 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     `duration_ms`, `peak_vram_mb`), `CutoutEngine`/`LazyModels` reachable from the loop, `unload_if_idle()`
     on idle iterations, engine built lazily and only with `tryon_enabled`; lower the CatVTON load RAM peak;
     V1c/V1d advisories for V2.
-  - [ ] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
+  - [x] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
     with the stack up (parent; no code).
   - [ ] **V2e** V2c review fixes (added 2026-10-08): a failed render at `MAX_RENDER_ATTEMPTS` must be retryable
     again (R3-capped-render-unrecoverable; e.g. a resubmit after a transient error or a cooldown resets it), a
     partial fp16 copy is repaired instead of reconverted on every load (R3-partial-fp16-copy-reconverts-forever),
     malformed `params` fail as `invalid_params` (R3-bad-params-requeued-not-failed), progress never goes back on
-    an OOM retry, `safetensors` declared as a backend dependency.
+    an OOM retry, `safetensors` declared as a backend dependency; set `HF_HUB_OFFLINE` (or pass `local_files_only`) once the
+    weights are cached, since every CatVTON load currently contacts the Hub (V2d log).
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
 
@@ -316,6 +317,24 @@ over V2a-V2c: stacked-to-main, one PR per task.
   V3: `error` holds codes, map them to copy; the first render after an idle unload stays in `loading_model` for the
   whole load.
 
+- 2026-10-08: V2c merged in #57. V2d end-to-end smoke (parent; no code change). On a copy of the owner's data
+  (`~/pachapp-data-v2d`: db + images; owner: "usa una copia"), migration `c4e8f21a6d93` applied to the copy, API
+  (port 8010) and worker started with `PACHAPP_TRYON_ENABLED=true`; model cache shared with
+  `~/pachapp-data-test/models` (the one-time fp16 copy now lives at `models/tryon/base-fp16-<rev>/`, 1.7 GB).
+  Results (scripts, logs and renders in `~/pachapp-data/eval-results/tryon-v2d-2026-10-08/`):
+  - Criterion 1: polo + sweater + trousers + sneakers -> 3 passes (trousers, polo, sweater), sneakers in
+    `unsupported_garment_ids`, done in 133.6 s including the one-time fp16 conversion (load ~84 s, then ~15 s per
+    pass); 576x768, no OOM, nvidia-smi peak 4948 MiB, worker peak RSS 5786 MiB (during the conversion). By eye:
+    trousers and sweater dressed well, polo under the sweater as expected. The fp16 default-dtype build renders
+    correctly on the GPU (R3-engine-fp16-build-untested checked).
+  - Criterion 2: the same POST again -> 200 in 0.23 s; `/images/tryon/<id>.webp` served (image/webp).
+  - Criterion 3: worker restarted with a render and an upload both pending -> upload first (done at 57 s, VRAM
+    5748 MiB), residents released (1182 MiB), **CatVTON cold load from the fp16 copy ~12 s** (V1d: ~107 s), 2-pass
+    render done at 93 s; worker peak RSS 4809 MiB. Upload sent while CatVTON was loaded -> CatVTON unloaded first
+    (5087 -> 1500 MiB), upload done in 21 s, no OOM.
+  - Not covered: API and Expo RAM together with the worker (Expo was not running; WSL free RAM stayed > 4 GB).
+    Every CatVTON load contacts the Hugging Face Hub (unauthenticated-request warnings): added to V2e.
+
 ## Next step
 
-V2d (end-to-end GPU smoke, also checks the fp16 build), then V2e (V2c review fixes), then V3.
+V2e (V2c review fixes + offline Hub loading), then V3 (app).
