@@ -29,7 +29,6 @@ FASHN's `top`/`glasses` are aliased to `upper_clothes`/`sunglasses` (its `arms`,
 
 from __future__ import annotations
 
-import gc
 import logging
 from dataclasses import dataclass
 from functools import partial
@@ -40,6 +39,7 @@ from PIL import Image, ImageFilter
 from scipy import ndimage
 
 from ml.background import OPACITY_THRESHOLD
+from ml.device import free_gpu_memory as _free_gpu
 
 if TYPE_CHECKING:
     from shared.settings import Settings
@@ -437,17 +437,6 @@ def cut_garment(
 
 
 # --- implementations (lazy, not loaded in tests) -------------------------------------
-
-
-def _free_gpu() -> None:
-    gc.collect()
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:  # pragma: no cover
-        pass
 
 
 class SegformerClothesParser:

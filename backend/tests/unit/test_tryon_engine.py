@@ -12,6 +12,7 @@ from tryon.engine import (
     CatVTONEngine,
     TryOnBlankOutput,
     TryOnError,
+    TryOnInvalidInput,
     TryOnOutOfMemory,
     TryOnParams,
     TryOnUnavailable,
@@ -70,7 +71,11 @@ def images() -> tuple[Image.Image, Image.Image, Image.Image]:
     )
 
 
-def make_engine(pipeline: FakePipeline, calls: list[int] | None = None) -> CatVTONEngine:
+def make_engine(
+    pipeline: FakePipeline,
+    calls: list[int] | None = None,
+    **kwargs: Any,
+) -> CatVTONEngine:
     def factory() -> FakePipeline:
         if calls is not None:
             calls.append(1)
@@ -83,6 +88,7 @@ def make_engine(pipeline: FakePipeline, calls: list[int] | None = None) -> CatVT
         device="cpu",
         pipeline_factory=factory,
         is_oom=lambda exc: isinstance(exc, FakeOOM),
+        **kwargs,
     )
 
 
@@ -127,6 +133,41 @@ def test_oom_retries_once_at_the_retry_size() -> None:
     result = make_engine(pipeline).dress(*images(), params=PARAMS)
     assert pipeline.sizes == [(48, 64), (24, 32)]
     assert result.size == (24, 32)
+
+
+def test_oom_retry_restarts_the_progress_count() -> None:
+    events: list[str] = []
+    make_engine(FakePipeline(oom_calls=1)).dress(
+        *images(),
+        params=PARAMS,
+        on_step=lambda: events.append("step"),
+        on_retry=lambda: events.append("retry"),
+    )
+    # A full failed pass, the retry signal, then a full pass from zero.
+    assert events == ["step"] * 4 + ["retry"] + ["step"] * 4
+
+
+def test_no_retry_signal_without_oom() -> None:
+    events: list[str] = []
+    make_engine(FakePipeline()).dress(*images(), params=PARAMS, on_retry=lambda: events.append("r"))
+    assert events == []
+
+
+def test_oom_retry_runs_outside_the_except_block() -> None:
+    # The retry must not run while the failed pass's exception is being handled, or its
+    # traceback keeps the failed pass's tensors alive.
+    import sys
+
+    class Spy(FakePipeline):
+        handling: list[bool] = []
+
+        def __call__(self, **kwargs: Any) -> list[Image.Image]:
+            self.handling.append(sys.exc_info()[0] is not None)
+            return super().__call__(**kwargs)
+
+    Spy.handling = []
+    make_engine(Spy(oom_calls=1)).dress(*images(), params=PARAMS)
+    assert Spy.handling == [False, False]
 
 
 def test_second_oom_raises_out_of_memory() -> None:
@@ -188,7 +229,7 @@ def test_import_failure_is_unavailable() -> None:
 
 
 def test_error_hierarchy() -> None:
-    for cls in (TryOnOutOfMemory, TryOnBlankOutput, TryOnUnavailable):
+    for cls in (TryOnOutOfMemory, TryOnBlankOutput, TryOnUnavailable, TryOnInvalidInput):
         assert issubclass(cls, TryOnError)
 
 
@@ -224,3 +265,108 @@ def test_fake_engine_raises_configured_error() -> None:
     engine = FakeTryOnEngine(error=TryOnBlankOutput("flat"))
     with pytest.raises(TryOnBlankOutput):
         engine.dress(*images(), params=PARAMS)
+
+
+def test_transparent_garment_is_invalid_input_and_does_not_load() -> None:
+    loads: list[int] = []
+    engine = make_engine(FakePipeline(), loads)
+    person, _, mask = images()
+    with pytest.raises(TryOnInvalidInput):
+        engine.dress(person, Image.new("RGBA", (20, 20), (1, 2, 3, 0)), mask, params=PARAMS)
+    assert loads == [] and not engine.loaded
+
+
+def test_fake_engine_rejects_a_transparent_garment() -> None:
+    person, _, mask = images()
+    with pytest.raises(TryOnInvalidInput):
+        FakeTryOnEngine().dress(
+            person, Image.new("RGBA", (20, 20), (1, 2, 3, 0)), mask, params=PARAMS
+        )
+
+
+def test_oom_while_loading_is_out_of_memory() -> None:
+    def factory() -> Any:
+        raise FakeOOM
+
+    engine = CatVTONEngine(
+        Path("/x"),
+        base_revision=None,
+        attn_revision=None,
+        device="cpu",
+        pipeline_factory=factory,
+        is_oom=lambda exc: isinstance(exc, FakeOOM),
+    )
+    with pytest.raises(TryOnOutOfMemory, match="loading"):
+        engine.dress(*images(), params=PARAMS)
+    assert not engine.loaded
+
+
+def test_other_load_errors_propagate() -> None:
+    def factory() -> Any:
+        raise RuntimeError("weights corrupt")
+
+    engine = CatVTONEngine(
+        Path("/x"), base_revision=None, attn_revision=None, device="cpu", pipeline_factory=factory
+    )
+    with pytest.raises(RuntimeError, match="corrupt"):
+        engine.dress(*images(), params=PARAMS)
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_idle_unload_after_the_limit() -> None:
+    clock = Clock()
+    loads: list[int] = []
+    engine = make_engine(FakePipeline(), loads, idle_unload_seconds=300, clock=clock)
+    assert engine.unload_if_idle() is False  # nothing loaded
+    engine.dress(*images(), params=PARAMS)
+    clock.now += 299
+    assert engine.unload_if_idle() is False and engine.loaded
+    clock.now += 1
+    assert engine.unload_if_idle() is True and not engine.loaded
+    assert engine.unload_if_idle() is False
+    engine.dress(*images(), params=PARAMS)  # reloads lazily
+    assert loads == [1, 1]
+
+
+def test_dress_resets_the_idle_timer() -> None:
+    clock = Clock()
+    engine = make_engine(FakePipeline(), idle_unload_seconds=300, clock=clock)
+    engine.dress(*images(), params=PARAMS)
+    clock.now += 250
+    engine.dress(*images(), params=PARAMS)
+    clock.now += 250
+    assert engine.unload_if_idle() is False  # 250s since the last dress
+    clock.now += 50
+    assert engine.unload_if_idle() is True
+
+
+def test_failed_dress_also_counts_as_use() -> None:
+    clock = Clock()
+    engine = make_engine(FakePipeline(blank=True), idle_unload_seconds=300, clock=clock)
+    with pytest.raises(TryOnBlankOutput):
+        engine.dress(*images(), params=PARAMS)
+    clock.now += 299
+    assert engine.unload_if_idle() is False
+
+
+def test_idle_unload_zero_means_never() -> None:
+    clock = Clock()
+    engine = make_engine(FakePipeline(), idle_unload_seconds=0, clock=clock)
+    engine.dress(*images(), params=PARAMS)
+    clock.now += 10**9
+    assert engine.unload_if_idle() is False and engine.loaded
+
+
+def test_fake_engine_idle_unload() -> None:
+    engine = FakeTryOnEngine()
+    engine.dress(*images(), params=PARAMS)
+    assert engine.unload_if_idle() is False
+    engine.idle = True
+    assert engine.unload_if_idle() is True and not engine.loaded and engine.unloads == 1
