@@ -39,7 +39,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     M10-M12 (Pexels) with CatVTON's lower mask and with a mask trimmed to the garment length.
 - [x] **V0 decision** (owner 2026-10-08): config C (576x768, 20 steps, guidance 2.5, seed 42, fp16) and
   mannequin M12 (`m12-woman-crop-shorts`, Pexels 30554616) alone.
-- [ ] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management. Delivery: one PR per
+- [x] **V1** Mannequin + precomputed masks + `CatVTONEngine` + GPU memory management. Delivery: one PR per
   task to main (owner 2026-10-08, stacked-to-main), each reviewed and merged before the next.
   - [x] **V1a** Mannequin asset + settings + dependencies: `assets/tryon/mannequins/m12-woman-crop-shorts/`
     (`person.png` 768x1024, `mask_{upper,lower,overall}.png`, `meta.json` with source and licence); flat
@@ -51,7 +51,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   - [x] **V1c** GPU memory management: unload hooks for BiRefNet (registry), FASHN (`CutoutEngine`) and
     SigLIP (`LazyModels`) with `gc.collect()` + `torch.cuda.empty_cache()`; release them before CatVTON
     loads; CatVTON idle unload after `tryon_idle_unload_seconds`. Not wired into the worker loop yet (V2).
-  - [ ] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
+  - [x] **V1d** Real GPU smoke (stack stopped): load via settings, dress one outfit on M12, measure time,
     VRAM and RSS, check the BiRefNet/SigLIP reload afterwards.
 - [ ] **V2** Service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
   `make gen-client`.
@@ -203,7 +203,33 @@ Forecast ~900 authored lines over V1a-V1d (> 400): delivery `ask-on-risk` -> own
   `FakeTryOnEngine` has no OOM simulation and never calls `on_retry`; Pillow `getdata` deprecation warnings in
   the new images tests.
 
+- 2026-10-08: V1c merged in #53. V1d real GPU smoke (parent; no code change; stack not running, checked: no
+  API/worker/Expo processes, no GPU compute apps). Script `v1d_smoke.py` (kept with the results) runs in one
+  process: BiRefNet + SigLIP loaded and used as the worker does -> `unload_background_remover()` +
+  `unload_embedder()` -> `CatVTONEngine` from `Settings` (M12, config C, fp16) dresses g01 lower then upper
+  (chained outfit) -> `unload()` -> BiRefNet + SigLIP reloaded and used. FASHN was not exercised (its
+  `CutoutEngine` needs a worker `StepContext`). The first run downloaded the weights into
+  `~/.cache/huggingface`: `.env` sets no `PACHAPP_ML_CACHE_DIR`, so the V0 weights were not found. Second run,
+  weights on disk:
+  | step | time | nvidia-smi | RSS (peak) |
+  |---|---|---|---|
+  | baseline (Windows desktop) | - | 1110 MiB | 519 MiB |
+  | residents loaded + used | 26.5 s | 5574 MiB | 2882 MiB (3694) |
+  | residents released | 0.6 s | 1164 MiB | 2876 MiB |
+  | CatVTON load + first pass | 119.6 s | 4799 MiB | 2727 MiB (**5910**) |
+  | second pass (warm) | 12.4 s | 4736 MiB, torch peak 2858 MiB | 2727 MiB |
+  | CatVTON unloaded | 0.3 s | 1142 MiB | 2615 MiB |
+  | residents reloaded + used | 16.1 s | 5637 MiB | 2439 MiB |
+  20 steps per pass, 576x768 output, no OOM retry, no blank. Unloading gives the VRAM back (~4.4 GB each way)
+  and the residents reload fine. By eye (`sheet.jpg`): g01 tee and trousers dressed convincingly on M12.
+  Findings for V2: (1) CatVTON load from disk takes ~107 s (the pass itself ~12 s), so the first render after
+  an idle unload is slow: the app needs a "preparing" state and the idle timeout matters; (2) unloading frees
+  VRAM but not host RAM (RSS stays ~2.7 GB after releasing the residents) and the CatVTON load peaks at 5.9 GB
+  RSS in a 7.9 GB WSL, so running the try-on with API and Expo up risks memory pressure; (3) set
+  `PACHAPP_ML_CACHE_DIR` (or accept `~/.cache/huggingface`, 8.4 GB now) so the worker does not download twice.
+  Results in `~/pachapp-data/eval-results/tryon-v1d-2026-10-08/`.
+
 ## Next step
 
-V1c PR, then V1d (real GPU smoke with the stack stopped: load via settings, dress one outfit on M12, time,
-VRAM, RSS, BiRefNet/SigLIP reload after `release_resident_models`), then V2.
+V2 (service, cache, `tryon_renders` + migration, worker integration, endpoints, backend tests,
+`make gen-client`), taking in the V1c and V1d findings for V2.
