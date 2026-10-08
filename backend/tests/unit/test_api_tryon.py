@@ -12,13 +12,16 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import Session, SQLModel, select
 
 from api.deps import get_engine
 from api.main import create_app
 from shared.enums import GarmentCategory, JobStatus, OutfitSlot, OutfitSource
-from shared.models import Garment, Outfit, OutfitItem, TryOnRender
+from shared.models import MAX_RENDER_ATTEMPTS, Garment, Outfit, OutfitItem, TryOnRender
 from shared.settings import Settings
+from tryon.mapping import PlanGarment, plan_passes
+from tryon.requests import _reuse
 
 
 def _settings(tmp_path: Path, *, enabled: bool = True) -> Settings:
@@ -156,6 +159,17 @@ def test_garment_without_cutout_is_422(client: TestClient, settings: Settings) -
     assert error["details"]["garment_ids"] == [top]
 
 
+def test_missing_cutout_file_is_a_permanent_422(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    assert settings.images_root is not None
+    for path in (settings.images_root / "cutout").glob("*.png"):
+        path.unlink()
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "TRYON_GARMENT_IMAGE_MISSING"
+    assert response.json()["error"]["details"]["garment_ids"] == [top]
+
+
 def test_unknown_garment_and_outfit_are_404(client: TestClient, settings: Settings) -> None:
     top = _garment(client, settings, GarmentCategory.top)
     missing = str(uuid4())
@@ -239,7 +253,7 @@ def test_failed_render_is_reset_on_resubmit(client: TestClient, settings: Settin
         error="boom",
         step="dressing_1",
         progress=40,
-        attempts=3,
+        attempts=2,
         claimed_by="w1",
     )
 
@@ -249,8 +263,59 @@ def test_failed_render_is_reset_on_resubmit(client: TestClient, settings: Settin
     assert response.json()["status"] == "pending"
     assert response.json()["error"] is None
     render = _render(client, render_id)
-    assert (render.step, render.progress, render.attempts) == ("queued", 0, 0)
+    # `attempts` is cumulative across resubmits (the worker counts claims).
+    assert (render.step, render.progress, render.attempts) == ("queued", 0, 2)
     assert render.claimed_by is None
+
+
+def test_failed_render_at_the_attempts_cap_is_final(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(
+        client,
+        render_id,
+        JobStatus.failed,
+        error="out_of_memory",
+        step="dressing_1",
+        attempts=MAX_RENDER_ATTEMPTS,
+    )
+
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 200  # final: nothing to poll
+    assert response.json()["id"] == render_id
+    assert response.json()["status"] == "failed"
+    assert response.json()["error"] == "out_of_memory"
+    render = _render(client, render_id)
+    assert (render.status, render.step, render.attempts) == (
+        JobStatus.failed,
+        "dressing_1",
+        MAX_RENDER_ATTEMPTS,
+    )
+
+
+def test_requeue_loses_the_race_to_another_writer(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(client, render_id, JobStatus.running, step="dressing_1", progress=30, attempts=2)
+
+    with _db(client) as session:
+        render = session.get(TryOnRender, render_id)
+        assert render is not None
+        # What this request read before the row moved on: failed with one attempt used.
+        set_committed_value(render, "status", JobStatus.failed)
+        set_committed_value(render, "attempts", 1)
+        plan = plan_passes([PlanGarment(top, GarmentCategory.top)], 3)
+        outcome = _reuse(session, render, plan, None)
+
+    assert outcome.created is False
+    assert outcome.render.status == JobStatus.running  # re-read, not overwritten
+    stored = _render(client, render_id)
+    assert (stored.status, stored.step, stored.progress, stored.attempts) == (
+        JobStatus.running,
+        "dressing_1",
+        30,
+        2,
+    )
 
 
 @pytest.mark.parametrize("status", [JobStatus.claimed, JobStatus.running])

@@ -235,11 +235,14 @@ def write_cutout_files(settings: Settings, garment_id: str, cutout: Image.Image)
 
 
 def make_cutout_step(
-    remover_factory: RemoverFactory, parser_factory: ParserFactory | None = None
+    remover_factory: RemoverFactory,
+    parser_factory: ParserFactory | None = None,
+    engine: CutoutEngine | None = None,
 ) -> Step:
     """Build the step; the remover (and the parser, when given and enabled by
-    `ml_garment_parse`) is created on first use and reused."""
-    engine = CutoutEngine(remover_factory, parser_factory)
+    `ml_garment_parse`) is created on first use and reused. Pass `engine` to keep a handle on
+    it (the try-on releases its models before CatVTON loads); the factories are then unused."""
+    engine = engine or CutoutEngine(remover_factory, parser_factory)
 
     def cutout_step(ctx: StepContext) -> None:
         assert ctx.settings.images_root is not None

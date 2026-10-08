@@ -13,19 +13,21 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Final
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
 from api.errors import (
     GARMENT_NOT_FOUND,
     OUTFIT_NOT_FOUND,
+    TRYON_GARMENT_IMAGE_MISSING,
     TRYON_GARMENT_NOT_READY,
     TRYON_INVALID_MANNEQUIN,
     TRYON_NO_COMPATIBLE_GARMENTS,
     AppError,
 )
 from shared.enums import JobStatus, OutfitSlot
-from shared.models import Garment, Outfit, OutfitItem, TryOnRender
+from shared.models import MAX_RENDER_ATTEMPTS, Garment, Outfit, OutfitItem, TryOnRender
 from shared.settings import Settings
 from tryon.cache import cache_key, hash_cutout, mannequin_version, model_version
 from tryon.mannequin import MannequinError, validate_mannequin_id
@@ -110,21 +112,29 @@ def find_or_create_render(
     plan = _plan(garments, ordered_ids, settings.tryon_max_passes)
 
     not_ready = [p.garment_id for p in plan.passes if not garments[p.garment_id].img_cutout]
-    hashes: dict[str, str] = {}
-    for item in plan.passes:
-        cutout = garments[item.garment_id].img_cutout
-        if cutout is None:
-            continue
-        try:
-            hashes[item.garment_id] = hash_cutout(settings.images_root, cutout)
-        except (OSError, ValueError):
-            not_ready.append(item.garment_id)
     if not_ready:
         raise AppError(
             TRYON_GARMENT_NOT_READY,
             "Alguna prenda todavía se está procesando.",
             422,
             {"garment_ids": not_ready},
+        )
+    hashes: dict[str, str] = {}
+    unreadable: list[str] = []
+    for item in plan.passes:
+        cutout = garments[item.garment_id].img_cutout
+        assert cutout is not None
+        try:
+            hashes[item.garment_id] = hash_cutout(settings.images_root, cutout)
+        except (OSError, ValueError):
+            unreadable.append(item.garment_id)
+    if unreadable:
+        # Permanent (the file is gone or outside the images root), unlike "still processing".
+        raise AppError(
+            TRYON_GARMENT_IMAGE_MISSING,
+            "No se encuentra la imagen de alguna prenda.",
+            422,
+            {"garment_ids": unreadable},
         )
 
     mannequin = mannequin_id or settings.tryon_mannequin
@@ -192,26 +202,49 @@ def _reuse(
     session: Session, render: TryOnRender, plan: PassPlan, outfit_id: str | None
 ) -> RenderOutcome:
     """Cache hit: refresh `last_accessed_at`; a `failed` render is reset to `pending` (retry on
-    resubmit, same id) so the user does not need a separate retry endpoint."""
-    render.last_accessed_at = _utcnow()
-    requeued = render.status == JobStatus.failed
-    if requeued:
-        render.status = JobStatus.pending
-        render.step = "queued"
-        render.progress = 0
-        render.attempts = 0
-        render.error = None
-        render.claimed_by = None
-        render.claimed_at = None
-        render.started_at = None
-        render.finished_at = None
-        render.img_path = None
-        render.duration_ms = None
-        render.peak_vram_mb = None
-        render.skipped_garment_ids = list(plan.skipped_garment_ids)
-        render.unsupported_garment_ids = list(plan.unsupported_garment_ids)
-        render.outfit_id = outfit_id
-    session.add(render)
+    resubmit, same id) so the user does not need a separate retry endpoint.
+
+    The reset is a conditional `UPDATE ... WHERE status = 'failed'`: if the worker or another
+    request changed the row meanwhile, nothing is overwritten and the fresh row is returned.
+    `attempts` is kept across resubmits; at `MAX_RENDER_ATTEMPTS` the failure is final and the
+    render comes back as it is."""
+    now = _utcnow()
+    requeued = False
+    if render.status == JobStatus.failed and render.attempts < MAX_RENDER_ATTEMPTS:
+        result = session.connection().execute(
+            update(TryOnRender)
+            .where(
+                col(TryOnRender.id) == render.id,
+                col(TryOnRender.status) == JobStatus.failed,
+                col(TryOnRender.attempts) < MAX_RENDER_ATTEMPTS,
+            )
+            .values(
+                status=JobStatus.pending,
+                step="queued",
+                progress=0,
+                error=None,
+                claimed_by=None,
+                claimed_at=None,
+                started_at=None,
+                finished_at=None,
+                img_path=None,
+                duration_ms=None,
+                peak_vram_mb=None,
+                skipped_garment_ids=list(plan.skipped_garment_ids),
+                unsupported_garment_ids=list(plan.unsupported_garment_ids),
+                outfit_id=outfit_id,
+                last_accessed_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        requeued = result.rowcount == 1
+    if not requeued:
+        session.connection().execute(
+            update(TryOnRender)
+            .where(col(TryOnRender.id) == render.id)
+            .values(last_accessed_at=now)
+            .execution_options(synchronize_session=False)
+        )
     session.commit()
     session.refresh(render)
     return RenderOutcome(render, created=requeued)

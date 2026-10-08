@@ -19,7 +19,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session
@@ -28,6 +28,10 @@ from shared.enums import JobStatus, JobStep
 from shared.models import Job
 from shared.settings import Settings
 from worker.claim import MAX_RETRIES, ClaimedJob
+
+if TYPE_CHECKING:
+    from worker.ai import LazyModels
+    from worker.steps.cutout import CutoutEngine
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +85,23 @@ def deferred_step(_ctx: StepContext) -> None:
     still advances so the table stays monotonic."""
 
 
-def default_steps(
+@dataclass(frozen=True)
+class Pipeline:
+    """The step registry plus the models its steps keep resident, so the try-on can release
+    them (`tryon.memory.resident_unloaders`)."""
+
+    steps: Mapping[JobStep, Step]
+    cutout: CutoutEngine
+    models: LazyModels
+
+
+def build_pipeline(
     settings: Settings,
     remover_factory: Callable[[], Any] | None = None,
     models_factory: Callable[[], Any] | None = None,
     parser_factory: Callable[[], Any] | None = None,
-) -> Mapping[JobStep, Step]:
-    """Production step registry. `remover_factory` builds the `BackgroundRemover`
+) -> Pipeline:
+    """Production pipeline. `remover_factory` builds the `BackgroundRemover`
     and `models_factory` the embedder + zero-shot classifier (`worker.ai.AiModels`),
     both lazily on the first job; `parser_factory` builds the garment parser (FASHN)
     used by the cutout step when `ml_garment_parse` is on. Tests inject fakes, production
@@ -98,6 +112,7 @@ def default_steps(
     from worker.steps.color import color_step
     from worker.steps.consolidate import consolidate_step
     from worker.steps.cutout import (
+        CutoutEngine,
         make_cutout_step,
         production_parser_factory,
         production_remover_factory,
@@ -105,18 +120,28 @@ def default_steps(
     from worker.steps.embedding import make_embedding_step
     from worker.steps.preprocess import preprocess_step
 
+    remover_factory = remover_factory or production_remover_factory(settings)
+    parser_factory = parser_factory or production_parser_factory(settings)
+    cutout = CutoutEngine(remover_factory, parser_factory)
+    models = LazyModels(models_factory or production_models_factory(settings))
     steps: dict[JobStep, Step] = {step: deferred_step for step in STEP_ORDER}
     steps[JobStep.preprocess] = preprocess_step
-    steps[JobStep.cutout] = make_cutout_step(
-        remover_factory or production_remover_factory(settings),
-        parser_factory or production_parser_factory(settings),
-    )
+    steps[JobStep.cutout] = make_cutout_step(remover_factory, parser_factory, engine=cutout)
     steps[JobStep.color] = color_step
-    models = LazyModels(models_factory or production_models_factory(settings))
     steps[JobStep.ai_attributes] = make_ai_attributes_step(models)
     steps[JobStep.embedding] = make_embedding_step(models)
     steps[JobStep.consolidate] = consolidate_step
-    return steps
+    return Pipeline(steps, cutout, models)
+
+
+def default_steps(
+    settings: Settings,
+    remover_factory: Callable[[], Any] | None = None,
+    models_factory: Callable[[], Any] | None = None,
+    parser_factory: Callable[[], Any] | None = None,
+) -> Mapping[JobStep, Step]:
+    """The step registry of `build_pipeline`."""
+    return build_pipeline(settings, remover_factory, models_factory, parser_factory).steps
 
 
 def _now() -> datetime:
