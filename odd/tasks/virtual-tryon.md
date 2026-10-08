@@ -65,13 +65,18 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   - [x] **V2b** API: `GET /tryon/capabilities`, `POST /tryon` (200 cached / 202 created / 503 disabled / 422
     no compatible garment; `garment_ids` or optional `outfit_id`), `GET /tryon/{id}`, errors, schemas,
     `make gen-client`, tests. The API never imports torch.
-  - [ ] **V2c** Worker: claim renders only when no upload job is pending, stuck-render recovery,
+  - [x] **V2c** Worker: claim renders only when no upload job is pending, stuck-render recovery,
     `tryon/service.run_render` (residents released, passes, progress per diffusion step, OOM retry, WebP,
     `duration_ms`, `peak_vram_mb`), `CutoutEngine`/`LazyModels` reachable from the loop, `unload_if_idle()`
     on idle iterations, engine built lazily and only with `tryon_enabled`; lower the CatVTON load RAM peak;
     V1c/V1d advisories for V2.
   - [ ] **V2d** End-to-end smoke with the real API + worker on the GPU: spec §9 criteria 1-3 and peak RAM
     with the stack up (parent; no code).
+  - [ ] **V2e** V2c review fixes (added 2026-10-08): a failed render at `MAX_RENDER_ATTEMPTS` must be retryable
+    again (R3-capped-render-unrecoverable; e.g. a resubmit after a transient error or a cooldown resets it), a
+    partial fp16 copy is repaired instead of reconverted on every load (R3-partial-fp16-copy-reconverts-forever),
+    malformed `params` fail as `invalid_params` (R3-bad-params-requeued-not-failed), progress never goes back on
+    an OOM retry, `safetensors` declared as a backend dependency.
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
 
@@ -288,6 +293,29 @@ over V2a-V2c: stacked-to-main, one PR per task.
   advisories: R3-integrity-branch-untested, R2/R3-assert-images-root, R2-duplicated-pending-state,
   R2-unused-created-flag, R2-cache-key-name-drift, R3-not-ready-dup.
 
+- 2026-10-08: V2b merged in #56. V2c (delegated writer, branch `tryon/v2c-worker`, commits dd8553d + 90954c4).
+  `worker/tryon_claim.py` (`claim_next_render`, `requeue_stuck_renders`, `release_orphaned_render`); the loop tries a
+  render only when no upload job was claimed and `tryon_enabled`, unloads a loaded CatVTON before an upload job,
+  calls `unload_if_idle()` on idle iterations; `CatVTONEngine` built lazily on the first render.
+  `runner.build_pipeline -> Pipeline(steps, cutout, models)` makes the residents reachable; they are released
+  once, before CatVTON loads. `tryon/service.run_render`: `loading_model` -> `dressing_i` -> `finalizing` -> done,
+  progress `5 + 92 * steps done / (passes * steps)` written at most once per second, chained passes with the base
+  mask, staleness check against the stored cache key (`garment_changed`), WebP at `tryon/<id>.webp`,
+  `duration_ms`, `peak_vram_mb`; error codes `out_of_memory`, `blank_output`, `invalid_garment`,
+  `engine_unavailable`, `engine_error`, `garment_missing`, `garment_changed`, `mannequin_unavailable`,
+  `invalid_params`, `interrupted`. V2b advisories: conditional requeue, cumulative `attempts` with
+  `MAX_RENDER_ATTEMPTS = 3` (POST returns a capped failed render with 200), `TRYON_GARMENT_IMAGE_MISSING`.
+  `FakeTryOnEngine(oom_calls=...)`. RAM (owner option 1): `tryon/weights.py` converts the base UNet and scheduler
+  once to fp16 safetensors under `<ml_cache_dir>/tryon/`, and the pipeline is built with fp16 as the default dtype;
+  peak RSS building on CPU 6043 MB -> **1440 MB** (first load with the one-time conversion: 5738 MB, ~79 s).
+  1629 authored lines (~700 tests); one PR because the worker, service and the three advisories are one
+  behaviour. Checks: ruff format/check, ty clean; pytest 915 (+36). Native review (medium, granted, 1 lens):
+  approved and acknowledged (lineage review-af7b5c7c4d321625). Fixes in V2e: capped render unrecoverable,
+  partial fp16 copy reconverts forever, malformed params retried, progress regresses on an OOM retry. To check in
+  V2d on the GPU: R3-engine-fp16-build-untested (same image and VRAM with the fp16 default dtype). Writer notes for
+  V3: `error` holds codes, map them to copy; the first render after an idle unload stays in `loading_model` for the
+  whole load.
+
 ## Next step
 
-V2c (worker; fixes the three V2b requeue/not-ready advisories), then V2d.
+V2d (end-to-end GPU smoke, also checks the fp16 build), then V2e (V2c review fixes), then V3.
