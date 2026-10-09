@@ -18,6 +18,7 @@ import {
   useWardrobeVersion,
   type ApiProposal,
 } from './useGenerateOutfits';
+import { pruneTryOn } from './useTryOn';
 import { useWearLook, WearConflictError } from './useWearLook';
 
 /** What Hoy already showed from the day's batches (persisted with the outfits cache on native). */
@@ -85,7 +86,10 @@ export function useTodayLooks({ now, wardrobeSize, notify }: Options) {
   const proposals = useMemo<ApiProposal[]>(() => batch?.proposals ?? [], [batch]);
 
   useEffect(() => {
-    if (fresh) pruneOutfits(queryClient, date, version);
+    if (fresh) {
+      pruneOutfits(queryClient, date, version);
+      pruneTryOn(queryClient);
+    }
   }, [fresh, queryClient, date, version]);
 
   const ids = useMemo(

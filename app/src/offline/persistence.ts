@@ -26,9 +26,9 @@ export function cacheBuster(): string {
 /**
  * Query families kept across restarts. Jobs and anything else stay in memory. `outfits` holds
  * Hoy's generated batches (a POST used as a query, never a mutation) so Hoy opens offline with
- * the last saved look.
+ * the last saved look. `tryon` holds the capabilities, the look -> render ids and the finished renders.
  */
-const PERSISTED_ROOTS = ['garments', 'settings', 'sync', 'outfits'];
+const PERSISTED_ROOTS = ['garments', 'settings', 'sync', 'outfits', 'tryon'];
 
 /**
  * Garment lists/details, settings, Hoy's looks and the sync stamp are written to disk once they hold data.
@@ -36,9 +36,14 @@ const PERSISTED_ROOTS = ['garments', 'settings', 'sync', 'outfits'];
  * status to `error` while the data stays, and dropping it then would wipe the saved copy.
  */
 export function shouldPersistQuery(query: Pick<Query, 'queryKey' | 'state'>): boolean {
-  return (
-    query.state.data !== undefined && PERSISTED_ROOTS.includes(String(query.queryKey[0] ?? ''))
-  );
+  if (query.state.data === undefined) return false;
+  const root = String(query.queryKey[0] ?? '');
+  if (!PERSISTED_ROOTS.includes(root)) return false;
+  // A render being polled is noise: only a finished one is worth keeping (its image is on disk).
+  if (root === 'tryon' && query.queryKey[1] === 'detail') {
+    return (query.state.data as { status?: string }).status === 'done';
+  }
+  return true;
 }
 
 /**

@@ -48,3 +48,10 @@ export async function prefetchGarmentImages(urls: string[]): Promise<number> {
   }
   return failed;
 }
+
+/** Downloads one finished try-on render to the disk cache so it is viewable offline. Native only. */
+export async function prefetchTryOnImage(img: string | null | undefined): Promise<boolean> {
+  const url = imageUrl(img);
+  if (!url) return false;
+  return (await prefetchGarmentImages([url])) === 0;
+}
