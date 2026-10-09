@@ -104,6 +104,10 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   R3-description-empty-name-regression, R3-stale-pending-scroll (clear the pending scroll on look change),
   R3-003 (clear the look link after a 404), R3-004 (test prune through `useTodayLooks`); wide layout: the
   "Look del día" card leaves a large empty area (pre-existing).
+  Split (2026-10-09), one PR each:
+  - [ ] **V4a** Backend: delete renders not accessed for `tryon_cache_max_age_days` (rows + WebP files), the four
+    V2e advisories, docs (how to enable the try-on, licence note CC BY-NC-SA 4.0 personal use) and `.env.example`.
+  - [ ] **V4b** App: the five V3 advisories.
 
 ## Route and checks (V1)
 
@@ -406,4 +410,4 @@ over V2a-V2c: stacked-to-main, one PR per task.
 
 ## Next step
 
-Merge V3a (#60) and V3b, then V4 (polish: copy, cache cleanup, docs and licence note, the V2e/V3 advisories).
+V4a (backend polish), then V4b (app polish).
