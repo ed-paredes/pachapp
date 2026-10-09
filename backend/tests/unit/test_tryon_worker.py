@@ -346,6 +346,56 @@ def test_oom_retries_smaller_and_still_succeeds(settings, factory) -> None:
         assert webp.size == (RETRY_SIZE, RETRY_SIZE)  # the size the last pass used
 
 
+def test_progress_never_goes_back_on_an_oom_retry(settings, factory) -> None:
+    render_id = _outfit_render(factory, settings)
+    fake = _RecordingEngine(factory, render_id, oom_calls=2)
+    seen: list[int] = []
+    original = fake.dress
+
+    def spy(*args, **kwargs):
+        on_step = kwargs["on_step"]
+        kwargs["on_step"] = lambda: (on_step(), seen.append(_get(factory, render_id).progress))
+        return original(*args, **kwargs)
+
+    fake.dress = spy  # type: ignore[method-assign]
+
+    assert _run(settings, factory, render_id, fake, clock=_Clock()) == JobStatus.done
+
+    assert fake.retries == 2
+    assert seen == sorted(seen)
+    assert fake.snapshots == sorted(fake.snapshots, key=lambda s: s[1])
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda p: p.pop("cloth_types"),
+        lambda p: p.pop("width"),
+        lambda p: p.pop("mannequin_version"),
+        lambda p: p.update(cloth_types=["upper"]),  # two garments, one cloth type
+        lambda p: p.update(cloth_types=["upper", "sleeves"]),  # no such mask
+        lambda p: p.update(steps=0),
+    ],
+)
+def test_malformed_params_fail_as_invalid_params(settings, factory, mutate) -> None:
+    render_id = _outfit_render(factory, settings)
+    with factory() as session:
+        render = session.get(TryOnRender, render_id)
+        assert render is not None
+        params = dict(render.params)
+        mutate(params)
+        render.params = params
+        session.add(render)
+        session.commit()
+    fake = FakeTryOnEngine()
+
+    assert _run(settings, factory, render_id, fake) == JobStatus.failed
+
+    row = _get(factory, render_id)
+    assert (row.status, row.error) == (JobStatus.failed, "invalid_params")
+    assert fake.calls == []
+
+
 def test_oom_at_the_retry_size_fails_with_out_of_memory(settings, factory, monkeypatch) -> None:
     render_id = _outfit_render(factory, settings)
     fake = FakeTryOnEngine(oom_calls=1)

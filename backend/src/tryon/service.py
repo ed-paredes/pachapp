@@ -136,7 +136,8 @@ class _Progress:
         return _LOAD_PROGRESS + _DRESS_PROGRESS * finished // self._total
 
     def _write(self, *, force: bool, progress: int | None = None) -> None:
-        percent = self._percent() if progress is None else progress
+        # Never goes back (an OOM retry restarts the pass's steps at zero).
+        percent = max(self._percent() if progress is None else progress, self._written_progress)
         step_changed = self._step_name != self._written_step
         if not (force or step_changed):
             now = self._clock()
@@ -276,23 +277,15 @@ def run_render(
         started_at=_now(),
     )
     try:
+        # Malformed stored parameters fail the render for good: first, so nothing else reads them.
+        _validate_params(render)
+        params = _parse_params(render, settings)
         mannequin = _load_mannequin(settings, render)
+        unknown = [c for c in render.params["cloth_types"] if c not in mannequin.masks]
+        if unknown:
+            raise RenderFailure(ERROR_INVALID_PARAMS, f"unknown cloth types {unknown}")
         garments = _load_garments(factory, settings, render)
         _check_unchanged(render, mannequin.id, garments)
-        p = render.params
-        try:
-            params = TryOnParams(
-                width=p["width"],
-                height=p["height"],
-                steps=p["steps"],
-                guidance=p["guidance"],
-                seed=p["seed"],
-                oom_retry_width=settings.tryon_oom_retry_width,
-                oom_retry_height=settings.tryon_oom_retry_height,
-            )
-        except (KeyError, ValueError) as exc:
-            raise RenderFailure(ERROR_INVALID_PARAMS, f"bad render parameters: {exc}") from exc
-
         progress = _Progress(factory, render_id, len(garments), params.steps, clock)
         if release_residents is not None and not engine.loaded:
             release_residents()
@@ -329,6 +322,49 @@ def run_render(
         error=None,
     )
     return JobStatus.done
+
+
+_PARAM_KEYS = (
+    "width",
+    "height",
+    "steps",
+    "guidance",
+    "seed",
+    "mannequin_version",
+    "model_version",
+    "cloth_types",
+)
+
+
+def _validate_params(render: TryOnRender) -> None:
+    """`params` must hold every key and one cloth type per garment, or the render can never run
+    (retrying would fail the same way): fail it as `invalid_params`."""
+    p = render.params
+    missing = [key for key in _PARAM_KEYS if not isinstance(p, dict) or key not in p]
+    if missing:
+        raise RenderFailure(ERROR_INVALID_PARAMS, f"render parameters lack {missing}")
+    cloth_types = p["cloth_types"]
+    if not isinstance(cloth_types, list) or len(cloth_types) != len(render.garment_ids):
+        raise RenderFailure(
+            ERROR_INVALID_PARAMS,
+            f"{len(render.garment_ids)} garments but cloth_types is {cloth_types!r}",
+        )
+
+
+def _parse_params(render: TryOnRender, settings: Settings) -> TryOnParams:
+    p = render.params
+    try:
+        return TryOnParams(
+            width=p["width"],
+            height=p["height"],
+            steps=p["steps"],
+            guidance=p["guidance"],
+            seed=p["seed"],
+            oom_retry_width=settings.tryon_oom_retry_width,
+            oom_retry_height=settings.tryon_oom_retry_height,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RenderFailure(ERROR_INVALID_PARAMS, f"bad render parameters: {exc}") from exc
 
 
 def _load_mannequin(settings: Settings, render: TryOnRender) -> Mannequin:

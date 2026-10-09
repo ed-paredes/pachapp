@@ -46,6 +46,8 @@ dependencies = [
     # CatVTON try-on (09-virtual-tryon.md); the pinned CatVTON clone is imported at runtime.
     "diffusers==0.40.0",
     "accelerate==1.15.0",
+    # Imported directly by tryon/weights.py (fp16 copy of the base UNet); already resolved via diffusers.
+    "safetensors>=0.8,<0.9",
 ]
 
 [dependency-groups]

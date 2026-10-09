@@ -13,7 +13,7 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
@@ -32,6 +32,22 @@ from shared.settings import Settings
 from tryon.cache import cache_key, hash_cutout, mannequin_version, model_version
 from tryon.mannequin import MannequinError, validate_mannequin_id
 from tryon.mapping import PassPlan, PlanGarment, plan_passes
+
+# Failures a retry cannot fix (the codes of `tryon.service`/`worker.tryon_claim`): a resubmit
+# returns them as they are. The others (`out_of_memory`, `engine_unavailable`, `engine_error`,
+# `interrupted`, `blank_output`) may be transient and can be retried.
+PERMANENT_ERRORS: Final = frozenset(
+    {
+        "invalid_garment",
+        "invalid_params",
+        "garment_missing",
+        "garment_changed",
+        "mannequin_unavailable",
+    }
+)
+# A failed render that spent its `MAX_RENDER_ATTEMPTS` can start a new round of attempts, but
+# only this long after it failed: a user mashing "Reintentar" cannot loop the GPU.
+RETRY_COOLDOWN: Final = dt.timedelta(minutes=5)
 
 _SLOT_ORDER: Final = {slot: index for index, slot in enumerate(OutfitSlot)}
 
@@ -204,24 +220,39 @@ def _reuse(
     """Cache hit: refresh `last_accessed_at`; a `failed` render is reset to `pending` (retry on
     resubmit, same id) so the user does not need a separate retry endpoint.
 
+    Retry rule: a permanent failure (`PERMANENT_ERRORS`) stays failed. Any other failure is
+    re-queued while `attempts` (cumulative across resubmits) is below `MAX_RENDER_ATTEMPTS`; once
+    the cap is reached it is re-queued only `RETRY_COOLDOWN` after it failed, starting a new
+    round (`attempts` back to 0). So tries are bounded to `MAX_RENDER_ATTEMPTS` per cooldown.
+
     The reset is a conditional `UPDATE ... WHERE status = 'failed'`: if the worker or another
-    request changed the row meanwhile, nothing is overwritten and the fresh row is returned.
-    `attempts` is kept across resubmits; at `MAX_RENDER_ATTEMPTS` the failure is final and the
-    render comes back as it is."""
+    request changed the row meanwhile, nothing is overwritten and the fresh row is returned."""
     now = _utcnow()
     requeued = False
-    if render.status == JobStatus.failed and render.attempts < MAX_RENDER_ATTEMPTS:
+    if render.status == JobStatus.failed and render.error not in PERMANENT_ERRORS:
+        capped = render.attempts >= MAX_RENDER_ATTEMPTS
+        conditions = [
+            col(TryOnRender.id) == render.id,
+            col(TryOnRender.status) == JobStatus.failed,
+        ]
+        if capped:
+            conditions += [
+                col(TryOnRender.attempts) >= MAX_RENDER_ATTEMPTS,
+                or_(
+                    col(TryOnRender.finished_at).is_(None),
+                    col(TryOnRender.finished_at) <= now - RETRY_COOLDOWN,
+                ),
+            ]
+        else:
+            conditions.append(col(TryOnRender.attempts) < MAX_RENDER_ATTEMPTS)
         result = session.connection().execute(
             update(TryOnRender)
-            .where(
-                col(TryOnRender.id) == render.id,
-                col(TryOnRender.status) == JobStatus.failed,
-                col(TryOnRender.attempts) < MAX_RENDER_ATTEMPTS,
-            )
+            .where(*conditions)
             .values(
                 status=JobStatus.pending,
                 step="queued",
                 progress=0,
+                attempts=0 if capped else col(TryOnRender.attempts),
                 error=None,
                 claimed_by=None,
                 claimed_at=None,

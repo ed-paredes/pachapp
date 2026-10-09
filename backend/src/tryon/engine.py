@@ -22,7 +22,7 @@ from PIL import Image
 from ml.device import free_gpu_memory
 from tryon.cache import ATTN_VERSION
 from tryon.images import GarmentError, is_blank, prepare_garment, prepare_mask, prepare_person
-from tryon.weights import fp16_base_checkpoint
+from tryon.weights import VAE_MODEL, cached_snapshot, fp16_base_checkpoint, hub_offline_if_cached
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +314,6 @@ class CatVTONEngine:
                 f"not a CatVTON clone: {self._catvton_dir} (run `make tryon-setup`)"
             )
         import torch
-        from huggingface_hub import snapshot_download
 
         if str(self._catvton_dir) not in sys.path:
             sys.path.insert(0, str(self._catvton_dir))
@@ -322,19 +321,17 @@ class CatVTONEngine:
 
         # Only what CatVTONPipeline loads from the base repo (no .ckpt, text encoder, safety
         # checker or VAE: the VAE comes from sd-vae-ft-mse).
-        base_path = snapshot_download(
-            BASE_MODEL, revision=self._base_revision, allow_patterns=["scheduler/*", "unet/*"]
-        )
-        attn_path = snapshot_download(
-            ATTN_MODEL, revision=self._attn_revision, allow_patterns=[f"{ATTN_SUBFOLDER}/*"]
-        )
+        # Cached snapshots load without contacting the Hub.
+        base_path = cached_snapshot(BASE_MODEL, self._base_revision, ["scheduler/*", "unet/*"])
+        attn_path = cached_snapshot(ATTN_MODEL, self._attn_revision, [f"{ATTN_SUBFOLDER}/*"])
         weight_dtype = torch.float16 if self._dtype == "fp16" else torch.float32
         build_dtype: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
         if self._dtype == "fp16":
             if self._converted_dir is not None:
                 base_path = str(fp16_base_checkpoint(base_path, self._converted_dir))
             build_dtype = default_dtype(torch.float16)
-        with build_dtype:
+        # CatVTONPipeline loads the VAE by name from the Hub; offline when it is cached.
+        with build_dtype, hub_offline_if_cached(VAE_MODEL):
             return CatVTONPipeline(
                 base_ckpt=base_path,
                 attn_ckpt=attn_path,
