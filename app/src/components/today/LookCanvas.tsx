@@ -8,6 +8,7 @@ import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { colors, fontFamilies, radii, shadows, tint } from '@/theme';
 
+import { showsTryOn, TryOnError, TryOnImage, TryOnProgress, type TryOnCanvas } from './TryOnLayer';
 import { matchLabel, type LookPiece } from './types';
 
 type Slot = 'layer' | 'top' | 'bottom' | 'shoes';
@@ -149,6 +150,8 @@ type LookCanvasProps = {
   matchPercent?: number;
   /** Canvas width / height; Hoy uses a landscape canvas on wide screens. Defaults to portrait. */
   aspectRatio?: number;
+  /** Try-on of this look; without it (or on `collage`) the canvas is the plain collage. */
+  tryOn?: TryOnCanvas;
   testID?: string;
 };
 
@@ -161,11 +164,16 @@ export function LookCanvas({
   formalityLabel,
   matchPercent,
   aspectRatio = 0.8,
+  tryOn,
   testID,
 }: LookCanvasProps) {
   const [hovered, setHovered] = useState(false);
   const reduced = useReducedMotion();
   const accessories = pieces.filter((piece) => piece.role === 'accessory' && piece.imageUri);
+  const puesto = showsTryOn(tryOn) ? tryOn : undefined;
+  const generated = puesto?.status.phase === 'done' ? puesto.imageUri : null;
+  // The collage stays behind the progress and the error, dimmed; the finished image replaces it.
+  const dimmed = !!puesto && !generated;
 
   return (
     <View
@@ -191,7 +199,13 @@ export function LookCanvas({
           style={StyleSheet.absoluteFill}
         />
       )}
-      <LookItems pieces={pieces} tilted={hovered && !reduced} />
+      {generated ? (
+        <TryOnImage uri={generated} description={puesto?.description ?? ''} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, dimmed && styles.dimmed]} testID="look-collage">
+          <LookItems pieces={pieces} tilted={hovered && !reduced} />
+        </View>
+      )}
       {formalityLabel ? (
         <View style={styles.tag}>
           <Text style={styles.tagText}>{formalityLabel}</Text>
@@ -203,7 +217,15 @@ export function LookCanvas({
           <Text style={styles.scoreText}>{matchLabel(matchPercent)}</Text>
         </View>
       ) : null}
-      {accessories.length ? (
+      {puesto?.status.phase === 'working' ? <TryOnProgress status={puesto.status} /> : null}
+      {puesto?.status.phase === 'error' ? (
+        <TryOnError
+          status={puesto.status}
+          onRetry={puesto.onRetry}
+          onShowCollage={puesto.onShowCollage}
+        />
+      ) : null}
+      {accessories.length && !puesto ? (
         <View style={styles.accessories}>
           {accessories.map((piece) => (
             <View
@@ -234,6 +256,7 @@ const styles = StyleSheet.create({
     boxShadow: shadows.card,
     backgroundColor: '#E5D8C8',
   },
+  dimmed: { opacity: 0.4 },
   stageHost: { alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' },
   image: { width: '100%', height: '100%', backgroundColor: 'transparent' },
   tag: {

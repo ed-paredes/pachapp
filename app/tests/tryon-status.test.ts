@@ -143,9 +143,16 @@ describe('not included and description', () => {
     expect(notIncludedIds(undefined)).toEqual([]);
   });
 
-  it('describes the dressed pieces by name, in pass order', () => {
+  it('describes the dressed pieces by name, outermost first, in lower case', () => {
     expect(tryOnDescription(render({ garment_ids: ['p', 't'] }), PIECES)).toBe(
-      'Outfit puesto en un modelo: pantalón beige, jersey negro',
+      'Outfit puesto en un modelo: jersey negro, pantalón beige',
+    );
+    expect(tryOnDescription(render({ garment_ids: ['p', 'c', 't'] }), PIECES)).toBe(
+      'Outfit puesto en un modelo: abrigo, jersey negro, pantalón beige',
+    );
+    const named = [piece('a', 'top', 'Polo shirt marrón'), piece('b', 'bottom', 'Trousers negros')];
+    expect(tryOnDescription(render({ garment_ids: ['b', 'a'] }), named)).toBe(
+      'Outfit puesto en un modelo: polo shirt marrón, trousers negros',
     );
     expect(tryOnDescription(render({ garment_ids: ['zz'] }), PIECES)).toBe(
       'Outfit puesto en un modelo',

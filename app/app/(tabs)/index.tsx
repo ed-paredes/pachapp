@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui';
 import { TodayView, type TodayProblem, type TodayTip } from '@/components/today/TodayView';
 import { useGarments } from '@/hooks/useGarments';
 import { useNow } from '@/hooks/useNow';
+import { useTodayTryOn } from '@/hooks/useTodayTryOn';
 import { useTodayLooks } from '@/hooks/useTodayLooks';
 import { garmentName } from '@/lib/garment-name';
 import { formatToday, greeting } from '@/lib/format-date';
@@ -51,6 +52,7 @@ export default function TodayScreen() {
         : 'loading';
 
   const looks = useTodayLooks({ now, wardrobeSize, notify: toast.show });
+  const tryOn = useTodayTryOn(looks.proposal?.pieces, looks.offline);
   const problem: TodayProblem | undefined =
     looks.status === 'error'
       ? looks.offline
@@ -102,6 +104,7 @@ export default function TodayScreen() {
       onOpenAlternative={looks.openAlternative}
       onWear={looks.wear}
       onShuffle={() => void looks.shuffle()}
+      tryOn={tryOn}
       wearDisabled={looks.offline || looks.wearing || looks.conflict}
       shuffleDisabled={looks.shuffleDisabled}
       actionNote={actionNote}

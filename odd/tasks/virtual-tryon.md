@@ -87,7 +87,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     look -> render association keyed by the sorted garment ids (persisted for offline, pruned with the outfits),
     `tryon-status.ts` mapping steps and error codes to Spanish copy, WebP prefetched to the disk cache when done;
     tests.
-  - [ ] **V3b** UI: "Verlo puesto" button, Collage | Puesto segmented control in the look canvas, generating
+  - [x] **V3b** UI: "Verlo puesto" button, Collage | Puesto segmented control in the look canvas, generating
     state (dimmed collage, terracotta progress, step copy), result (3:4 image, "No incluidos en la imagen"
     thumbnails, "Imagen generada · aproximación" tag), error state with Reintentar, offline disabled,
     accessibility labels; tests; screenshots with design critique and accessibility review.
@@ -100,6 +100,10 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   R3-cached-snapshot-partial and R3-offline-partial-vae (a partial local snapshot is trusted: verify the needed
   files before going offline), R3-deterministic-transient (consider `blank_output` permanent: same seed, same
   result).
+  V3 advisories: R3-poll-error-suppressed-indefinitely (cap consecutive poll failures, then show the error),
+  R3-description-empty-name-regression, R3-stale-pending-scroll (clear the pending scroll on look change),
+  R3-003 (clear the look link after a 404), R3-004 (test prune through `useTodayLooks`); wide layout: the
+  "Look del día" card leaves a large empty area (pre-existing).
 
 ## Route and checks (V1)
 
@@ -383,6 +387,23 @@ over V2a-V2c: stacked-to-main, one PR per task.
   acknowledged (lineage review-4789c747b383b9c7); R3-001 and R3-002 go to V3b; suggestions R3-003 (clear the
   link after a 404) and R3-004 (test prune through `useTodayLooks`) to V4.
 
+- 2026-10-09: V3b (delegated writer, branch `tryon/v3b-app-ui` stacked on V3a; commits 8fb12ae, 536dbdf, 43a1321).
+  `useTodayTryOn` (capabilities + `useLookTryOn` + per-look Collage/Puesto choice + button state), `TryOnLayer`
+  (generated image over a blurred cover copy of itself, "Imagen generada · aproximación" tag, progress panel over
+  the dimmed collage with the step label in a live region, compact error panel: `retry` -> Reintentar + Ver
+  collage, `later`/`final` -> message + Ver collage), "Verlo puesto" secondary button with a person icon in
+  `LookWhyCard` (main look only), Collage | Puesto segmented control above the canvas (shown once the look was
+  tried; a look with a done render opens in Puesto), "No incluidos en la imagen" thumbnails. V3a warnings fixed:
+  prune keeps observed links (R3-001), a failed poll mid-render keeps `working` (R3-002). Design critique and
+  accessibility review (parent) on real screenshots (Expo web + API + worker on the data copy, Playwright):
+  fixed in 536dbdf/43a1321: on one column the screen now scrolls to the canvas after the tap (verified in the
+  browser: tablist at y=212 after the tap, was -398), blurred backdrop instead of flat linen bands beside the 3:4
+  render, `aria-selected` on Segmented tabs (was missing on web; pre-existing), image description lowercase and
+  outermost garment first. Checked: contrast 4.9-17:1 on the new texts, 44 px targets, image alt text,
+  progressbar value. Screenshots in `~/pachapp-data/eval-results/tryon-v3b-2026-10-09/`. 848 authored lines
+  (~400 tests). Checks: prettier, typecheck, lint clean; jest 441 (+19). Native review (medium, granted,
+  1 lens): approved and acknowledged (lineage review-b68a8d79e8b60598); advisories moved to V4.
+
 ## Next step
 
-V3b (UI), then V4.
+Merge V3a (#60) and V3b, then V4 (polish: copy, cache cleanup, docs and licence note, the V2e/V3 advisories).

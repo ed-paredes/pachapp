@@ -1,13 +1,16 @@
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { Button, Eyebrow, Screen, Title } from '@/components/ui';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { Button, Eyebrow, Screen, Segmented, Title, type SegmentedOption } from '@/components/ui';
 import { colors, fontFamilies, radii, shadows, spacing, TWO_COLUMNS } from '@/theme';
 
 import { AltLooksList, type AltLook } from './AltLookCard';
 import { LookCanvas } from './LookCanvas';
 import { LookWhyCard, type ReplaceQuestion } from './LookWhyCard';
 import { TipCard } from './TipCard';
+import { NotIncludedRow, type TodayTryOn } from './TryOnLayer';
 import type { LookProposal } from './types';
 import { WeatherPill, type Weather } from './WeatherPill';
 
@@ -18,6 +21,11 @@ const CHART_ICON = {
   android: 'trending_up',
   web: 'trending_up',
 } as const;
+
+const VIEW_OPTIONS: SegmentedOption<'collage' | 'tryon'>[] = [
+  { value: 'collage', label: 'Collage' },
+  { value: 'tryon', label: 'Puesto' },
+];
 
 /** Why there is no look to show although the wardrobe has garments (offline, a failed request). */
 export type TodayProblem = { title: string; text: string; onRetry?: () => void };
@@ -49,6 +57,8 @@ type TodayViewProps = {
   onOpenAlternative?: (id: string) => void;
   onWear?: () => void;
   onShuffle?: () => void;
+  /** Try-on of the look on screen; the button, the Collage | Puesto control and the result need it. */
+  tryOn?: TodayTryOn;
   wearDisabled?: boolean;
   shuffleDisabled?: boolean;
   /** Why an action is off. */
@@ -83,6 +93,7 @@ export function TodayView({
   onOpenAlternative,
   onWear,
   onShuffle,
+  tryOn,
   wearDisabled,
   shuffleDisabled,
   actionNote,
@@ -93,6 +104,31 @@ export function TodayView({
 }: TodayViewProps) {
   const { width } = useWindowDimensions();
   const wide = width >= TWO_COLUMNS;
+  const reduced = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
+  // Offsets from onLayout are relative to the parent: page inside the scroll content, look inside the page.
+  const pageTop = useRef(0);
+  const lookTop = useRef(0);
+  // On one column the canvas is above the card that holds the button: bring it into view so the
+  // progress is seen starting. Side by side (wide) both are already on screen.
+  const [pendingScroll, setPendingScroll] = useState(false);
+  const showTryOn = () => {
+    tryOn?.onTryOn();
+    if (!wide) setPendingScroll(true);
+  };
+  const toggleShown = !!tryOn?.showToggle;
+  // Scroll once the control is inserted above the canvas: the layout shift would cancel an earlier scroll.
+  useEffect(() => {
+    if (!pendingScroll || !toggleShown) return undefined;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, pageTop.current + lookTop.current - spacing.md),
+        animated: !reduced,
+      });
+      setPendingScroll(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingScroll, toggleShown, reduced]);
   const hasGarments = typeof wardrobeSize === 'number' && wardrobeSize > 0;
   const soon = hasGarments || wardrobeSize === 'unknown';
   const tips =
@@ -112,8 +148,13 @@ export function TodayView({
     ) : null;
 
   return (
-    <Screen testID="today-screen">
-      <View style={styles.page}>
+    <Screen testID="today-screen" scrollRef={scrollRef}>
+      <View
+        style={styles.page}
+        onLayout={(event) => {
+          pageTop.current = event.nativeEvent.layout.y;
+        }}
+      >
         <View style={[styles.header, wide && styles.headerWide]}>
           <View style={styles.titleBlock}>
             <Eyebrow>{dateLabel}</Eyebrow>
@@ -142,14 +183,31 @@ export function TodayView({
         ) : null}
 
         {proposal ? (
-          <View style={[styles.look, wide && styles.lookWide]}>
-            <View style={wide ? styles.canvasCol : undefined}>
+          <View
+            style={[styles.look, wide && styles.lookWide]}
+            onLayout={(event) => {
+              lookTop.current = event.nativeEvent.layout.y;
+            }}
+          >
+            <View style={[styles.canvasStack, wide && styles.canvasCol]}>
+              {tryOn?.showToggle ? (
+                <Segmented
+                  accessibilityLabel="Vista del look"
+                  options={VIEW_OPTIONS}
+                  value={tryOn.mode}
+                  onChange={tryOn.onModeChange}
+                />
+              ) : null}
               <LookCanvas
                 pieces={proposal.pieces}
                 formalityLabel={proposal.formalityLabel}
                 matchPercent={proposal.matchPercent}
                 aspectRatio={wide ? 1.28 : 0.8}
+                tryOn={tryOn?.canvas}
               />
+              {tryOn?.mode === 'tryon' && tryOn.canvas.status.phase === 'done' ? (
+                <NotIncludedRow pieces={tryOn.notIncluded} />
+              ) : null}
             </View>
             <View style={wide ? styles.cardCol : undefined}>
               <LookWhyCard
@@ -159,6 +217,8 @@ export function TodayView({
                 onOpenPiece={onOpenPiece}
                 onWear={onWear}
                 onShuffle={onShuffle}
+                onTryOn={tryOn?.canTry ? showTryOn : undefined}
+                tryOnDisabled={tryOn?.tryOnDisabled}
                 wearDisabled={wearDisabled}
                 shuffleDisabled={shuffleDisabled}
                 note={actionNote}
@@ -235,6 +295,7 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 10 },
   look: { gap: spacing.xl },
   lookWide: { flexDirection: 'row', alignItems: 'stretch' },
+  canvasStack: { gap: spacing.md },
   canvasCol: { flex: 1.25 },
   fill: { flexGrow: 1 },
   tipColumn: { gap: spacing.md, justifyContent: 'flex-start' },
