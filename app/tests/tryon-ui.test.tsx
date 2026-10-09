@@ -99,10 +99,19 @@ describe('Hoy try-on view', () => {
   it('scrolls to the canvas when "Verlo puesto" is tapped on one column, not on two', async () => {
     const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
     const tryOn = tryOnProps({ showToggle: false });
-    await renderView(tryOn);
+    const view = await renderView(tryOn);
     await fireEvent.press(screen.getByRole('button', { name: 'Verlo puesto' }));
     expect(tryOn.onTryOn).toHaveBeenCalledTimes(1);
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ animated: true }));
+    // The control is not there yet: scrolling now would be undone by the layout shift.
+    expect(scrollTo).not.toHaveBeenCalled();
+    await view.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <TodayView {...base} onWear={jest.fn()} tryOn={{ ...tryOn, showToggle: true }} />
+      </SafeAreaProvider>,
+    );
+    await waitFor(() =>
+      expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ animated: true })),
+    );
     await cleanup();
     scrollTo.mockClear();
     jest

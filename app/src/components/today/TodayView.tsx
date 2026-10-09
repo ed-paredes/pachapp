@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
@@ -106,18 +106,29 @@ export function TodayView({
   const wide = width >= TWO_COLUMNS;
   const reduced = useReducedMotion();
   const scrollRef = useRef<ScrollView>(null);
+  // Offsets from onLayout are relative to the parent: page inside the scroll content, look inside the page.
+  const pageTop = useRef(0);
   const lookTop = useRef(0);
   // On one column the canvas is above the card that holds the button: bring it into view so the
   // progress is seen starting. Side by side (wide) both are already on screen.
+  const [pendingScroll, setPendingScroll] = useState(false);
   const showTryOn = () => {
     tryOn?.onTryOn();
-    if (!wide) {
+    if (!wide) setPendingScroll(true);
+  };
+  const toggleShown = !!tryOn?.showToggle;
+  // Scroll once the control is inserted above the canvas: the layout shift would cancel an earlier scroll.
+  useEffect(() => {
+    if (!pendingScroll || !toggleShown) return undefined;
+    const frame = requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({
-        y: Math.max(0, lookTop.current - spacing.md),
+        y: Math.max(0, pageTop.current + lookTop.current - spacing.md),
         animated: !reduced,
       });
-    }
-  };
+      setPendingScroll(false);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pendingScroll, toggleShown, reduced]);
   const hasGarments = typeof wardrobeSize === 'number' && wardrobeSize > 0;
   const soon = hasGarments || wardrobeSize === 'unknown';
   const tips =
@@ -138,7 +149,12 @@ export function TodayView({
 
   return (
     <Screen testID="today-screen" scrollRef={scrollRef}>
-      <View style={styles.page}>
+      <View
+        style={styles.page}
+        onLayout={(event) => {
+          pageTop.current = event.nativeEvent.layout.y;
+        }}
+      >
         <View style={[styles.header, wide && styles.headerWide]}>
           <View style={styles.titleBlock}>
             <Eyebrow>{dateLabel}</Eyebrow>
