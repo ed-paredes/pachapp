@@ -32,6 +32,18 @@ export const queryKeys = {
       ['outfits', 'generate', date, version, round] as const,
     today: (date: string, version: number) => ['outfits', 'today', date, version] as const,
   },
+  /**
+   * Virtual try-on. `byLook` maps a look (its sorted garment ids, see `lookKey`) to the id of its
+   * latest render; `detail` holds the polled render. Persisted on native (`offline/persistence.ts`).
+   */
+  tryon: {
+    all: ['tryon'] as const,
+    capabilities: ['tryon', 'capabilities'] as const,
+    details: () => ['tryon', 'detail'] as const,
+    detail: (id: string) => ['tryon', 'detail', id] as const,
+    byLooks: () => ['tryon', 'byLook'] as const,
+    byLook: (lookKey: string) => ['tryon', 'byLook', lookKey] as const,
+  },
   /** Historial; invalidated when the wear log changes. */
   history: { all: ['history'] as const },
   settings: ['settings'] as const,
