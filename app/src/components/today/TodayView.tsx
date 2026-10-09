@@ -1,13 +1,14 @@
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
-import { Button, Eyebrow, Screen, Title } from '@/components/ui';
+import { Button, Eyebrow, Screen, Segmented, Title, type SegmentedOption } from '@/components/ui';
 import { colors, fontFamilies, radii, shadows, spacing, TWO_COLUMNS } from '@/theme';
 
 import { AltLooksList, type AltLook } from './AltLookCard';
 import { LookCanvas } from './LookCanvas';
 import { LookWhyCard, type ReplaceQuestion } from './LookWhyCard';
 import { TipCard } from './TipCard';
+import { NotIncludedRow, type TodayTryOn } from './TryOnLayer';
 import type { LookProposal } from './types';
 import { WeatherPill, type Weather } from './WeatherPill';
 
@@ -18,6 +19,11 @@ const CHART_ICON = {
   android: 'trending_up',
   web: 'trending_up',
 } as const;
+
+const VIEW_OPTIONS: SegmentedOption<'collage' | 'tryon'>[] = [
+  { value: 'collage', label: 'Collage' },
+  { value: 'tryon', label: 'Puesto' },
+];
 
 /** Why there is no look to show although the wardrobe has garments (offline, a failed request). */
 export type TodayProblem = { title: string; text: string; onRetry?: () => void };
@@ -49,6 +55,8 @@ type TodayViewProps = {
   onOpenAlternative?: (id: string) => void;
   onWear?: () => void;
   onShuffle?: () => void;
+  /** Try-on of the look on screen; the button, the Collage | Puesto control and the result need it. */
+  tryOn?: TodayTryOn;
   wearDisabled?: boolean;
   shuffleDisabled?: boolean;
   /** Why an action is off. */
@@ -83,6 +91,7 @@ export function TodayView({
   onOpenAlternative,
   onWear,
   onShuffle,
+  tryOn,
   wearDisabled,
   shuffleDisabled,
   actionNote,
@@ -143,13 +152,25 @@ export function TodayView({
 
         {proposal ? (
           <View style={[styles.look, wide && styles.lookWide]}>
-            <View style={wide ? styles.canvasCol : undefined}>
+            <View style={[styles.canvasStack, wide && styles.canvasCol]}>
+              {tryOn?.showToggle ? (
+                <Segmented
+                  accessibilityLabel="Vista del look"
+                  options={VIEW_OPTIONS}
+                  value={tryOn.mode}
+                  onChange={tryOn.onModeChange}
+                />
+              ) : null}
               <LookCanvas
                 pieces={proposal.pieces}
                 formalityLabel={proposal.formalityLabel}
                 matchPercent={proposal.matchPercent}
                 aspectRatio={wide ? 1.28 : 0.8}
+                tryOn={tryOn?.canvas}
               />
+              {tryOn?.mode === 'tryon' && tryOn.canvas.status.phase === 'done' ? (
+                <NotIncludedRow pieces={tryOn.notIncluded} />
+              ) : null}
             </View>
             <View style={wide ? styles.cardCol : undefined}>
               <LookWhyCard
@@ -159,6 +180,8 @@ export function TodayView({
                 onOpenPiece={onOpenPiece}
                 onWear={onWear}
                 onShuffle={onShuffle}
+                onTryOn={tryOn?.canTry ? tryOn.onTryOn : undefined}
+                tryOnDisabled={tryOn?.tryOnDisabled}
                 wearDisabled={wearDisabled}
                 shuffleDisabled={shuffleDisabled}
                 note={actionNote}
@@ -235,6 +258,7 @@ const styles = StyleSheet.create({
   titleBlock: { gap: 10 },
   look: { gap: spacing.xl },
   lookWide: { flexDirection: 'row', alignItems: 'stretch' },
+  canvasStack: { gap: spacing.md },
   canvasCol: { flex: 1.25 },
   fill: { flexGrow: 1 },
   tipColumn: { gap: spacing.md, justifyContent: 'flex-start' },

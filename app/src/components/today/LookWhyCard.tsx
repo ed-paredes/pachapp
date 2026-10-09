@@ -15,6 +15,7 @@ const SHUFFLE_ICON = {
   android: 'refresh',
   web: 'refresh',
 } as const;
+const PERSON_ICON = { ios: 'figure.stand', android: 'person', web: 'person' } as const;
 
 /** The "¿Cambiarlo por este?" question shown when today already has a logged outfit. */
 export type ReplaceQuestion = { busy: boolean; onConfirm: () => void; onCancel: () => void };
@@ -30,6 +31,10 @@ type LookWhyCardProps = {
   onWear?: () => void;
   /** "Otra sugerencia". The button is hidden when absent. */
   onShuffle?: () => void;
+  /** "Verlo puesto". The button is hidden when absent (try-on off, or nothing in the look to try). */
+  onTryOn?: () => void;
+  /** "Verlo puesto" is shown but off (offline without a saved render, or a render is in flight). */
+  tryOnDisabled?: boolean;
   /** "Me lo pongo" is shown but off (offline, or a request is running). */
   wearDisabled?: boolean;
   /** "Otra sugerencia" is shown but off. */
@@ -51,6 +56,8 @@ export function LookWhyCard({
   onOpenPiece,
   onWear,
   onShuffle,
+  onTryOn,
+  tryOnDisabled,
   wearDisabled,
   shuffleDisabled,
   note,
@@ -141,7 +148,7 @@ export function LookWhyCard({
             />
           </View>
         </View>
-      ) : onWear || onShuffle ? (
+      ) : onWear || onShuffle || onTryOn ? (
         <View style={styles.actions}>
           {onWear ? (
             <View style={styles.wear}>
@@ -152,6 +159,16 @@ export function LookWhyCard({
                 disabled={wearDisabled}
               />
             </View>
+          ) : null}
+          {onTryOn ? (
+            <Button
+              label="Verlo puesto"
+              icon={PERSON_ICON}
+              variant="secondary"
+              onPress={onTryOn}
+              disabled={tryOnDisabled}
+              testID="try-on-button"
+            />
           ) : null}
           {onShuffle ? (
             <Button
@@ -201,8 +218,16 @@ const styles = StyleSheet.create({
   reasonTitle: { fontFamily: fontFamilies.bodySemiBold, color: colors.ink },
   pieces: { flexDirection: 'row', gap: 8, marginTop: 8, marginBottom: 14 },
   piece: { flex: 1, maxWidth: 120, aspectRatio: 1, borderRadius: radii.tile, overflow: 'hidden' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 6 },
-  wear: { flex: 1 },
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 'auto',
+    paddingTop: 6,
+  },
+  // Grows to fill the row; "Verlo puesto" wraps under it when the card is narrow.
+  wear: { flexGrow: 1, flexBasis: 150 },
   question: { gap: 6, marginTop: 'auto', paddingTop: 6 },
   questionTitle: {
     fontFamily: fontFamilies.display,

@@ -121,8 +121,10 @@ export function pruneTryOn(queryClient: QueryClient, now: number = Date.now()): 
   const cache = queryClient.getQueryCache();
   const kept = new Set<string>();
   for (const query of cache.findAll({ queryKey: queryKeys.tryon.byLooks() })) {
-    if (now - query.state.dataUpdatedAt > TRYON_MAX_AGE_MS) cache.remove(query);
-    else if (query.state.data) kept.add((query.state.data as TryOnLink).renderId);
+    // A link someone is looking at stays, however old: it would blank the canvas under the user.
+    if (now - query.state.dataUpdatedAt > TRYON_MAX_AGE_MS && query.getObserversCount() === 0) {
+      cache.remove(query);
+    } else if (query.state.data) kept.add((query.state.data as TryOnLink).renderId);
   }
   for (const query of cache.findAll({ queryKey: queryKeys.tryon.details() })) {
     const id = String(query.queryKey[2]);
@@ -160,7 +162,10 @@ export function useLookTryOn(
   // A render the server no longer has (404) is not an error: the look simply has none.
   const gone = query.error instanceof ApiError && query.error.status === 404;
   const render = gone ? undefined : query.data;
-  const error = requestError ?? (gone ? undefined : (query.error ?? undefined));
+  // A failed poll (network blip, 5xx) while the render is still in flight keeps the bar going: the
+  // next poll may succeed. Only a failed request or a render that failed itself shows the error.
+  const pollError = gone || isInFlight(render) ? undefined : (query.error ?? undefined);
+  const error = requestError ?? pollError;
   // A fresh render beats the failure of an earlier request.
   const status = useMemo(
     () =>

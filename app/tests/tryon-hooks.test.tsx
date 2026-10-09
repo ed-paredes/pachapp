@@ -253,6 +253,70 @@ describe('try-on data layer', () => {
   });
 });
 
+describe('try-on regressions', () => {
+  const originalFetch = globalThis.fetch;
+  beforeEach(() => {
+    globalThis.fetch = jest.fn();
+    setPlatform('android');
+    jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
+    jest.spyOn(Image, 'getCachePathAsync').mockResolvedValue(null);
+  });
+  afterEach(async () => {
+    await cleanup();
+    clients.splice(0).forEach((client) => client.clear());
+    globalThis.fetch = originalFetch;
+    setPlatform(realOS);
+    jest.restoreAllMocks();
+  });
+
+  it('a failed poll while the render is in flight keeps the working state (R3-002)', async () => {
+    const client = makeClient();
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'r1' });
+    client.setQueryData(
+      queryKeys.tryon.detail('r1'),
+      render({ status: 'running', step: 'dressing_1', progress: 30 }),
+    );
+    fetchMock()
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(json(render({ status: 'done', progress: 100, img: 'tryon/r1.webp' })));
+    const { result } = await renderHook(
+      () => useLookTryOn(['g1', 'g2'], PIECES, { refetchInterval: 10 }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(1));
+    expect(result.current.status.phase).toBe('working');
+    await waitFor(() => expect(result.current.status.phase).toBe('done'));
+  });
+
+  it('a failed poll without a render in flight still shows the error', async () => {
+    const client = makeClient();
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'r1' });
+    fetchMock().mockRejectedValueOnce(new TypeError('Network request failed'));
+    const { result } = await renderHook(() => useLookTryOn(['g1', 'g2'], PIECES), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(result.current.status.phase).toBe('error'));
+  });
+
+  it('pruning keeps the links someone observes, however old (R3-001)', async () => {
+    const client = makeClient();
+    const now = Date.now();
+    const old = now - TRYON_MAX_AGE_MS - 1000;
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'r1' }, { updatedAt: old });
+    client.setQueryData(queryKeys.tryon.detail('r1'), render({ status: 'done' }));
+    client.setQueryData(queryKeys.tryon.byLook('x'), { renderId: 'rx' }, { updatedAt: old });
+    const { result } = await renderHook(() => useLookTryOn(['g1', 'g2'], PIECES), {
+      wrapper: wrapperFor(client),
+    });
+    pruneTryOn(client, now);
+    expect(client.getQueryData(queryKeys.tryon.byLook('g1,g2'))).toEqual({ renderId: 'r1' });
+    expect(client.getQueryData(queryKeys.tryon.detail('r1'))).toBeDefined();
+    expect(result.current.status.phase).toBe('done');
+    // An old link nobody observes is still dropped.
+    expect(client.getQueryData(queryKeys.tryon.byLook('x'))).toBeUndefined();
+  });
+});
+
 describe('try-on persistence', () => {
   const query = (queryKey: readonly unknown[], data?: unknown) =>
     ({ queryKey, state: { data } }) as unknown as Parameters<typeof shouldPersistQuery>[0];
