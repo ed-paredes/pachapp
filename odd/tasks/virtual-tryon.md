@@ -79,6 +79,18 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     an OOM retry, `safetensors` declared as a backend dependency; set `HF_HUB_OFFLINE` (or pass `local_files_only`) once the
     weights are cached, since every CatVTON load currently contacts the Hub (V2d log).
 - [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
+  Delivery: one PR per task to main (stacked-to-main). Route: delegated writer per task (app mapped by a
+  read-only explorer on 2026-10-09); every UI task loads frontend-design, ux-copy, design-critique and
+  accessibility-review. App checks: `cd app && npm run typecheck && npm run lint && npm test && npm run format:check`.
+  - [ ] **V3a** Data layer (no UI): `queryKeys.tryon`, `useTryOnCapabilities` (long staleTime, persisted),
+    `useRequestTryOn` (POST; tells 200 done/failed from 202), `useTryOn(id)` polling while pending/claimed/running,
+    look -> render association keyed by the sorted garment ids (persisted for offline, pruned with the outfits),
+    `tryon-status.ts` mapping steps and error codes to Spanish copy, WebP prefetched to the disk cache when done;
+    tests.
+  - [ ] **V3b** UI: "Verlo puesto" button, Collage | Puesto segmented control in the look canvas, generating
+    state (dimmed collage, terracotta progress, step copy), result (3:4 image, "No incluidos en la imagen"
+    thumbnails, "Imagen generada · aproximación" tag), error state with Reintentar, offline disabled,
+    accessibility labels; tests; screenshots with design critique and accessibility review.
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
   V2e advisories to fold in here: R3-cooldown-null-finished-at (no cooldown when `finished_at` is null),
   R3-cached-snapshot-partial and R3-offline-partial-vae (a partial local snapshot is trusted: verify the needed
@@ -356,5 +368,4 @@ over V2a-V2c: stacked-to-main, one PR per task.
 
 ## Next step
 
-V3 (app: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests). Frontend
-tasks load the design skills first.
+V3a (app data layer), then V3b (UI).
