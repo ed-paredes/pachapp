@@ -158,7 +158,7 @@ describe('try-on data layer', () => {
     expect(fetchMock()).toHaveBeenCalledTimes(1);
     expect(prefetch).toHaveBeenCalledTimes(1);
     expect(result.current.description).toBe(
-      'Outfit puesto en un modelo: pantalón beige, jersey negro',
+      'Outfit puesto en un modelo: jersey negro, pantalón beige',
     );
   });
 

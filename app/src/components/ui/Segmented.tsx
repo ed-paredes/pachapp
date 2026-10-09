@@ -35,6 +35,8 @@ export function Segmented<T extends string>({
               option.count === undefined ? option.label : `${option.label}, ${option.count}`
             }
             accessibilityState={{ selected }}
+            // react-native-web only emits aria-selected from the aria prop.
+            aria-selected={selected}
             hitSlop={{ top: 2, bottom: 2 }}
             onPress={() => onChange(option.value)}
             style={[

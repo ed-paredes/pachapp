@@ -46,6 +46,18 @@ export const showsTryOn = (tryOn: TryOnCanvas | undefined): tryOn is TryOnCanvas
 export function TryOnImage({ uri, description }: { uri: string; description: string }) {
   return (
     <>
+      {/* The render is 3:4 and the canvas is not: a blurred copy fills the sides so the frame looks intended. */}
+      <Image
+        source={{ uri }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        blurRadius={30}
+        cachePolicy={GARMENT_IMAGE_CACHE_POLICY}
+        accessible={false}
+        importantForAccessibility="no-hide-descendants"
+        testID="tryon-backdrop"
+      />
+      <View style={styles.wash} />
       <Image
         source={{ uri }}
         style={StyleSheet.absoluteFill}
@@ -126,6 +138,14 @@ export function NotIncludedRow({ pieces }: { pieces: LookPiece[] }) {
 }
 
 const styles = StyleSheet.create({
+  wash: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(239,230,218,0.3)',
+  },
   generated: {
     position: 'absolute',
     left: 18,

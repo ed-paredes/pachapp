@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -24,6 +24,8 @@ type ScreenProps = {
    * bottom by the safe-area insets instead of reserving room for the bar.
    */
   standalone?: boolean;
+  /** Ref of the scroll view, for screens that scroll to a section themselves. */
+  scrollRef?: Ref<ScrollView>;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };
@@ -37,6 +39,7 @@ export function Screen({
   scroll = true,
   refreshControl,
   standalone = false,
+  scrollRef,
   style,
   testID,
 }: ScreenProps) {
@@ -59,6 +62,7 @@ export function Screen({
   }
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.root}
       contentContainerStyle={content}
       refreshControl={refreshControl}

@@ -1,6 +1,8 @@
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useRef } from 'react';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { IconSymbol } from '@/components/IconSymbol';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { Button, Eyebrow, Screen, Segmented, Title, type SegmentedOption } from '@/components/ui';
 import { colors, fontFamilies, radii, shadows, spacing, TWO_COLUMNS } from '@/theme';
 
@@ -102,6 +104,20 @@ export function TodayView({
 }: TodayViewProps) {
   const { width } = useWindowDimensions();
   const wide = width >= TWO_COLUMNS;
+  const reduced = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
+  const lookTop = useRef(0);
+  // On one column the canvas is above the card that holds the button: bring it into view so the
+  // progress is seen starting. Side by side (wide) both are already on screen.
+  const showTryOn = () => {
+    tryOn?.onTryOn();
+    if (!wide) {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, lookTop.current - spacing.md),
+        animated: !reduced,
+      });
+    }
+  };
   const hasGarments = typeof wardrobeSize === 'number' && wardrobeSize > 0;
   const soon = hasGarments || wardrobeSize === 'unknown';
   const tips =
@@ -121,7 +137,7 @@ export function TodayView({
     ) : null;
 
   return (
-    <Screen testID="today-screen">
+    <Screen testID="today-screen" scrollRef={scrollRef}>
       <View style={styles.page}>
         <View style={[styles.header, wide && styles.headerWide]}>
           <View style={styles.titleBlock}>
@@ -151,7 +167,12 @@ export function TodayView({
         ) : null}
 
         {proposal ? (
-          <View style={[styles.look, wide && styles.lookWide]}>
+          <View
+            style={[styles.look, wide && styles.lookWide]}
+            onLayout={(event) => {
+              lookTop.current = event.nativeEvent.layout.y;
+            }}
+          >
             <View style={[styles.canvasStack, wide && styles.canvasCol]}>
               {tryOn?.showToggle ? (
                 <Segmented
@@ -180,7 +201,7 @@ export function TodayView({
                 onOpenPiece={onOpenPiece}
                 onWear={onWear}
                 onShuffle={onShuffle}
-                onTryOn={tryOn?.canTry ? tryOn.onTryOn : undefined}
+                onTryOn={tryOn?.canTry ? showTryOn : undefined}
                 tryOnDisabled={tryOn?.tryOnDisabled}
                 wearDisabled={wearDisabled}
                 shuffleDisabled={shuffleDisabled}

@@ -9,7 +9,7 @@ import {
   within,
 } from '@testing-library/react-native';
 import { Image } from 'expo-image';
-import { Platform } from 'react-native';
+import { Dimensions, Platform, ScrollView } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryKeys } from '../src/api-client/query-keys';
@@ -69,7 +69,10 @@ const renderView = (tryOn?: TodayTryOn) =>
   );
 
 describe('Hoy try-on view', () => {
-  afterEach(cleanup);
+  afterEach(async () => {
+    await cleanup();
+    jest.restoreAllMocks();
+  });
 
   it('shows "Verlo puesto" only when the look can be tried', async () => {
     await renderView(tryOnProps({ showToggle: false }));
@@ -91,6 +94,23 @@ describe('Hoy try-on view', () => {
     await cleanup();
     await renderView(tryOnProps({ tryOnDisabled: true }));
     expect(screen.getByRole('button', { name: 'Verlo puesto' })).toBeDisabled();
+  });
+
+  it('scrolls to the canvas when "Verlo puesto" is tapped on one column, not on two', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    const tryOn = tryOnProps({ showToggle: false });
+    await renderView(tryOn);
+    await fireEvent.press(screen.getByRole('button', { name: 'Verlo puesto' }));
+    expect(tryOn.onTryOn).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ animated: true }));
+    await cleanup();
+    scrollTo.mockClear();
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 1200, height: 800, scale: 1, fontScale: 1 });
+    await renderView(tryOn);
+    await fireEvent.press(screen.getByRole('button', { name: 'Verlo puesto' }));
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 
   it('switches between Collage and Puesto with the segmented control', async () => {
@@ -136,6 +156,15 @@ describe('Hoy try-on view', () => {
     const image = screen.getByTestId('tryon-image');
     expect(image).toHaveProp('accessibilityLabel', 'Outfit puesto en un modelo: Camiseta marrón');
     expect(image).toHaveProp('contentFit', 'contain');
+    // A blurred copy fills the sides of the contained render.
+    expect(screen.getByTestId('tryon-backdrop', { includeHiddenElements: true })).toHaveProp(
+      'contentFit',
+      'cover',
+    );
+    expect(screen.getByTestId('tryon-backdrop', { includeHiddenElements: true })).toHaveProp(
+      'blurRadius',
+      30,
+    );
     expect(screen.getByText('Imagen generada · aproximación')).toBeTruthy();
     expect(screen.getByText('No incluidos en la imagen')).toBeTruthy();
     expect(within(screen.getByTestId('tryon-not-included')).getByLabelText('Botas')).toBeTruthy();

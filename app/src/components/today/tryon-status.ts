@@ -163,14 +163,25 @@ export function notIncludedIds(render: TryOnRender | null | undefined): string[]
   return [...new Set([...render.unsupported_garment_ids, ...render.skipped_garment_ids])];
 }
 
+const DESCRIBE_ORDER: LookRole[] = ['outerwear', 'mid_layer', 'top', 'one_piece', 'bottom'];
+
+const describeRank = (role: LookRole) => {
+  const rank = DESCRIBE_ORDER.indexOf(role);
+  return rank < 0 ? DESCRIBE_ORDER.length : rank;
+};
+
 /** Screen reader text of the result: 'Outfit puesto en un modelo: jersey negro, pantalón beige'. */
 export function tryOnDescription(
   render: TryOnRender | null | undefined,
   pieces: LookPiece[],
 ): string {
-  const names = (render?.garment_ids ?? [])
-    .map((id) => pieces.find((piece) => piece.garmentId === id)?.name)
-    .filter((name): name is string => !!name);
+  const worn = (render?.garment_ids ?? [])
+    .map((id) => pieces.find((piece) => piece.garmentId === id))
+    .filter((piece): piece is LookPiece => !!piece);
+  // Outermost first, whatever the order the passes ran in; the sort is stable within a role.
+  const names = worn
+    .sort((a, b) => describeRank(a.role) - describeRank(b.role))
+    .map((piece) => piece.name.charAt(0).toLowerCase() + piece.name.slice(1));
   return names.length > 0
     ? `Outfit puesto en un modelo: ${names.join(', ')}`
     : 'Outfit puesto en un modelo';
