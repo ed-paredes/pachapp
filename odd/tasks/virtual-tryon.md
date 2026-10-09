@@ -82,7 +82,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   Delivery: one PR per task to main (stacked-to-main). Route: delegated writer per task (app mapped by a
   read-only explorer on 2026-10-09); every UI task loads frontend-design, ux-copy, design-critique and
   accessibility-review. App checks: `cd app && npm run typecheck && npm run lint && npm test && npm run format:check`.
-  - [ ] **V3a** Data layer (no UI): `queryKeys.tryon`, `useTryOnCapabilities` (long staleTime, persisted),
+  - [x] **V3a** Data layer (no UI): `queryKeys.tryon`, `useTryOnCapabilities` (long staleTime, persisted),
     `useRequestTryOn` (POST; tells 200 done/failed from 202), `useTryOn(id)` polling while pending/claimed/running,
     look -> render association keyed by the sorted garment ids (persisted for offline, pruned with the outfits),
     `tryon-status.ts` mapping steps and error codes to Spanish copy, WebP prefetched to the disk cache when done;
@@ -91,6 +91,10 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     state (dimmed collage, terracotta progress, step copy), result (3:4 image, "No incluidos en la imagen"
     thumbnails, "Imagen generada · aproximación" tag), error state with Reintentar, offline disabled,
     accessibility labels; tests; screenshots with design critique and accessibility review.
+    Owner 2026-10-09: the button goes on the main look only (tapping an alternative already makes it the main
+    look); tapping it switches the canvas to "Puesto" with the progress overlay. Also fix the V3a review
+    warnings R3-001 (`pruneTryOn` must not remove observed `byLook` queries) and R3-002 (a failed poll while the
+    render is still in flight must not show the error state).
 - [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
   V2e advisories to fold in here: R3-cooldown-null-finished-at (no cooldown when `finished_at` is null),
   R3-cached-snapshot-partial and R3-offline-partial-vae (a partial local snapshot is trusted: verify the needed
@@ -366,6 +370,19 @@ over V2a-V2c: stacked-to-main, one PR per task.
   permanent error or a capped render inside the cooldown (no `retry_after` field), so the retry button needs copy
   for both; `error` holds codes.
 
+- 2026-10-09: V2e merged in #59. V3a (delegated writer, branch `tryon/v3a-app-data`, commit 9362492).
+  `queryKeys.tryon` (`capabilities`, `detail`, `byLook`); `useTryOnCapabilities` (24 h staleTime) +
+  `isLookTryable`; `useTryOn.ts`: `lookKey` (sorted ids), `useRequestTryOn` (200/202), `useTryOn` (polls every
+  1.5 s while pending/claimed/running, prefetches the WebP to the disk cache when done), `useLookTryOn(garmentIds,
+  pieces)` -> `{renderId, render, status, isRequesting, request, dismissError, notIncluded, description}`,
+  `pruneTryOn` (links older than 14 days, run with `pruneOutfits`). Persisted: capabilities, `byLook`, done
+  `detail` only. `components/today/tryon-status.ts`: steps and error codes -> Spanish copy and kinds
+  `retry`/`later`/`final` (table in the V3a report: e.g. 'Preparando el probador…', 'Vistiendo la parte de
+  abajo…', 'No pudimos probar este look. Inténtalo de nuevo.'). 887 authored lines (~550 tests). Checks:
+  prettier, typecheck, lint clean; jest 422 (+44). Native review (medium, granted, 1 lens): approved and
+  acknowledged (lineage review-4789c747b383b9c7); R3-001 and R3-002 go to V3b; suggestions R3-003 (clear the
+  link after a 404) and R3-004 (test prune through `useTodayLooks`) to V4.
+
 ## Next step
 
-V3a (app data layer), then V3b (UI).
+V3b (UI), then V4.
