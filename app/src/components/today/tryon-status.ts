@@ -75,10 +75,15 @@ const TRANSIENT_CODES = new Set([
   'interrupted',
 ]);
 
-/** Permanent failures the user can fix (a garment's photo or category): a new request then makes a new render. */
-export const GARMENT_FIXABLE_ERRORS: ReadonlySet<string> = new Set([
-  'garment_missing',
-  'invalid_garment',
+/**
+ * Permanent failures nothing on the user's side can change: asking again returns the same render.
+ * Garment problems are not here (fixing the photo or category makes a new render), nor are unknown
+ * codes (a new backend code must not lock the button).
+ */
+export const DEAD_END_ERRORS: ReadonlySet<string> = new Set([
+  'blank_output',
+  'invalid_params',
+  'mannequin_unavailable',
 ]);
 
 type ErrorStatus = Required<Pick<TryOnStatus, 'errorKind' | 'message'>>;

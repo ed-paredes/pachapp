@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import type { TodayTryOn } from '@/components/today/TryOnLayer';
 import type { LookPiece } from '@/components/today/types';
-import { GARMENT_FIXABLE_ERRORS } from '@/components/today/tryon-status';
+import { DEAD_END_ERRORS } from '@/components/today/tryon-status';
 import { imageUrl } from '@/lib/image-url';
 
 import { lookKey, useLookTryOn } from './useTryOn';
@@ -34,11 +34,8 @@ export function useTodayTryOn(pieces: LookPiece[] | undefined, offline: boolean)
   );
 
   // A render that failed for good: asking again returns the same failure, so the button waits
-  // for something to change (another look; or, for a garment problem, the garment).
-  const deadEnd =
-    render?.status === 'failed' &&
-    status.errorKind === 'final' &&
-    !GARMENT_FIXABLE_ERRORS.has(render.error ?? '');
+  // for another look.
+  const deadEnd = render?.status === 'failed' && DEAD_END_ERRORS.has(render.error ?? '');
 
   const onTryOn = useCallback(() => {
     setMode('tryon');

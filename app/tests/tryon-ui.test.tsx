@@ -365,8 +365,11 @@ describe('useTodayTryOn on Hoy', () => {
   it.each([
     ['blank_output', false],
     ['invalid_params', false],
+    ['mannequin_unavailable', false],
     ['garment_missing', true],
+    ['invalid_garment', true],
     ['engine_error', true],
+    ['some_new_code', true],
   ])('after a failed render (%s) the button is enabled: %s', async (error, enabled) => {
     client.setQueryData(queryKeys.tryon.capabilities, caps);
     client.setQueryData(queryKeys.tryon.byLook('g1,g2,g3'), { renderId: 'r1' });

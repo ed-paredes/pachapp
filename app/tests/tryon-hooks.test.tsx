@@ -11,7 +11,7 @@ import {
   lookKey,
   pruneTryOn,
   TRYON_MAX_AGE_MS,
-  clearPollFailures,
+  resetPollFailures,
   TRYON_MAX_POLL_FAILURES,
   useLookTryOn,
   useRequestTryOn,
@@ -77,6 +77,7 @@ describe('try-on data layer', () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    resetPollFailures();
     globalThis.fetch = jest.fn();
     setPlatform('android');
     prefetch = jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
@@ -277,7 +278,6 @@ describe('try-on data layer', () => {
 describe('try-on regressions', () => {
   const originalFetch = globalThis.fetch;
   // The failed-poll counts are module state: do not carry them from one case to the next.
-  const resetPollFailures = () => ['r1', 'shared'].forEach(clearPollFailures);
   beforeEach(() => {
     resetPollFailures();
     globalThis.fetch = jest.fn();

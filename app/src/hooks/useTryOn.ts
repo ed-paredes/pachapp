@@ -73,6 +73,9 @@ const pollFailures = new Map<string, number>();
 /** Forgets the failed-poll count of a render (it was pruned from the cache). */
 export const clearPollFailures = (id: string) => pollFailures.delete(id);
 
+/** Forgets every failed-poll count (tests: the counts are module state). */
+export const resetPollFailures = () => pollFailures.clear();
+
 export async function fetchTryOn(id: string): Promise<TryOnRender> {
   return unwrap(await apiClient.GET('/tryon/{render_id}', { params: { path: { render_id: id } } }));
 }
