@@ -91,6 +91,15 @@ def create_tryon(
     return _read(outcome.render)
 
 
+def _not_found(render_id: str) -> AppError:
+    return AppError(
+        TRYON_NOT_FOUND,
+        f"La prueba virtual {render_id} no existe.",
+        404,
+        {"render_id": render_id},
+    )
+
+
 @router.get(
     "/tryon/{render_id}",
     response_model=TryOnRead,
@@ -99,20 +108,18 @@ def create_tryon(
 def get_tryon(render_id: str, session: Annotated[Session, Depends(get_session)]) -> TryOnRead:
     render = session.get(TryOnRender, render_id)
     if render is None:
-        raise AppError(
-            TRYON_NOT_FOUND,
-            f"La prueba virtual {render_id} no existe.",
-            404,
-            {"render_id": render_id},
-        )
+        raise _not_found(render_id)
     if render.status == JobStatus.done:
         # A look the user keeps opening is not stale (`tryon.cleanup`).
-        session.connection().execute(
+        touched = session.connection().execute(
             update(TryOnRender)
             .where(col(TryOnRender.id) == render_id)
             .values(last_accessed_at=dt.datetime.now(dt.UTC))
             .execution_options(synchronize_session=False)
         )
         session.commit()
+        if touched.rowcount != 1:
+            # The cleanup purged the render between the load and the update.
+            raise _not_found(render_id)
         session.refresh(render)
     return _read(render)
