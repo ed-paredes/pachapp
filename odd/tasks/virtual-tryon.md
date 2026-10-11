@@ -95,7 +95,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     look); tapping it switches the canvas to "Puesto" with the progress overlay. Also fix the V3a review
     warnings R3-001 (`pruneTryOn` must not remove observed `byLook` queries) and R3-002 (a failed poll while the
     render is still in flight must not show the error state).
-- [ ] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
+- [x] **V4** Polish: copy, cache cleanup, docs (licence note in the backend README).
   V2e advisories to fold in here: R3-cooldown-null-finished-at (no cooldown when `finished_at` is null),
   R3-cached-snapshot-partial and R3-offline-partial-vae (a partial local snapshot is trusted: verify the needed
   files before going offline), R3-deterministic-transient (consider `blank_output` permanent: same seed, same
@@ -107,12 +107,13 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   Split (2026-10-09), one PR each:
   - [x] **V4a** Backend: delete renders not accessed for `tryon_cache_max_age_days` (rows + WebP files), the four
     V2e advisories, docs (how to enable the try-on, licence note CC BY-NC-SA 4.0 personal use) and `.env.example`.
-  - [ ] **V4b** App: the five V3 advisories; `blank_output` is now permanent, so `tryon-status.ts` must move it from
+  - [x] **V4b** App: the five V3 advisories; `blank_output` is now permanent, so `tryon-status.ts` must move it from
     `TRANSIENT_CODES` to a final message (resubmitting returns the same failed render). V4a review advisories
     (backend, fold in here): R3-get-refresh-after-concurrent-purge (GET of a done render purged between the load and
     the `last_accessed_at` UPDATE answers 500 instead of 404: check the rowcount or set the field without refresh;
     test it), R3-cleanup-recheck-untested (test that a row touched or requeued between the SELECT and the
-    conditional DELETE survives with its file). Open: cleanup runs only while the try-on is enabled.
+    conditional DELETE survives with its file). Cleanup only while the try-on is enabled: owner 2026-10-12 keeps
+    it (nothing new is generated while off, existing renders stay viewable, ~16 KB per WebP).
 
 ## Route and checks (V1)
 
@@ -426,6 +427,29 @@ over V2a-V2c: stacked-to-main, one PR per task.
   Checks: ruff format/check, ty clean; pytest 960 (+19); parent spot check 62 passed. Native review (medium,
   granted, 1 lens): approved and acknowledged (lineage review-bbe6b08a8ab7425c); advisories moved to V4b.
 
+- 2026-10-12: V4a merged in #63. Owner: keep the cleanup only while the try-on is enabled. V4b (delegated writer,
+  branch `tryon/v4b-polish`, commits 841c18e backend, 6e88b21 app; parent fix a86eafd). Backend: `get_tryon`
+  checks the rowcount of the `last_accessed_at` UPDATE and answers `TRYON_NOT_FOUND` 404 when the row is gone;
+  two cleanup tests change the row between the SELECT and the DELETE (touched, requeued) and it survives with its
+  file. App: `blank_output` is `final` ('No conseguimos generar una imagen con estas prendas. Prueba con otro
+  look.', only Ver collage); `TRYON_MAX_POLL_FAILURES = 5` consecutive failed polls (counted in the queryFn) then
+  the retry error, a good poll brings the progress back; empty garment names fall back to role names in the alt
+  text (abrigo, capa intermedia, parte de arriba, prenda entera, parte de abajo, calzado, accesorio); the pending
+  scroll is keyed by the look it was asked on; a 404 poll resets the `byLook` link and removes the detail so the
+  look is untried again; prune tested through `useTodayLooks`; wide Hoy: the "Look del día" card column is
+  centred (`alignSelf: 'center'`) instead of stretched to the canvas height. Design critique and accessibility
+  review (parent) on Expo web + API on `~/pachapp-data-v2d` (Playwright, 1280/900/390 px): at 900 px "Me lo
+  pongo" wrapped onto two lines and the shuffle button wrapped alone (pre-existing since V3b) -> a86eafd groups
+  the secondary actions so they wrap together; `blank_output` checked end to end (POST 200 failed, message in the
+  polite live region, data restored afterwards). Screenshots in `~/pachapp-data/eval-results/tryon-v4b-2026-10-12/`.
+  327 authored lines (~190 tests). Checks: prettier, typecheck, lint clean; jest 446 (+5); ruff format/check, ty
+  clean; pytest 963 (+3). Native review (medium, granted, 1 lens): approved and acknowledged (lineage
+  review-57bfb0a6cef91a98). Advisories, not fixed (follow-ups): R3-poll-failure-counter-scope (the counter lives
+  in each hook instance; not reachable today: `retry: false` in the QueryClient and one observer per render;
+  move it to the query cache if a second observer appears), R3-get-refresh-race (a purge committed between the
+  UPDATE and `session.refresh` still answers 500; build the response from the loaded object instead). Minor
+  (design): after a permanent failure "Verlo puesto" stays enabled and shows the same message again.
+
 ## Next step
 
-PR for V4a, then V4b (app polish plus the V4a backend advisories).
+PR for V4b. With V4 merged the try-on (V0-V4) is complete; the follow-ups above are optional.
