@@ -370,6 +370,7 @@ def test_tryon_defaults(tmp_path: Path) -> None:
     assert settings.tryon_dtype == "fp16"
     assert settings.tryon_max_passes == 3
     assert settings.tryon_idle_unload_seconds == 300
+    assert settings.tryon_cache_max_age_days == 30
     assert (settings.tryon_oom_retry_width, settings.tryon_oom_retry_height) == (384, 512)
     assert settings.tryon_mannequin == "m12-woman-crop-shorts"
     assert settings.tryon_assets_dir == settings_module._REPO_ROOT / "assets" / "tryon"
@@ -400,6 +401,7 @@ def test_tryon_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         {"tryon_guidance": 0},
         {"tryon_max_passes": 0},
         {"tryon_idle_unload_seconds": -1},
+        {"tryon_cache_max_age_days": -1},
         {"tryon_dtype": "bf16"},
     ],
 )

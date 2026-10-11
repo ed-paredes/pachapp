@@ -8,7 +8,9 @@ together with building the models directly in fp16 (`engine.default_dtype`) the 
 and writes 1.7 GB; the copy lives under the ML cache dir and is reused by every later load.
 
 This module also resolves the Hub snapshots from the local cache first (`cached_snapshot`), so a
-load with everything cached makes no network call.
+load with everything cached makes no network call. A cached snapshot is trusted only when the
+files the load needs are all there: a partial one (an interrupted download) falls back to the
+online download, which fills in what is missing.
 """
 
 from __future__ import annotations
@@ -32,32 +34,63 @@ _UNET_BIN = "diffusion_pytorch_model.bin"
 VAE_MODEL = "stabilityai/sd-vae-ft-mse"
 
 
-def cached_snapshot(repo_id: str, revision: str | None, allow_patterns: Sequence[str]) -> str:
+# Files the loads need, as globs relative to the snapshot (each must match a file).
+BASE_REQUIRED = (
+    "scheduler/scheduler_config.json",
+    "unet/config.json",
+    "unet/diffusion_pytorch_model.*",
+)
+VAE_REQUIRED = ("config.json", "diffusion_pytorch_model.*")
+
+
+def _has_files(snapshot: str | Path, required: Sequence[str]) -> bool:
+    """Whether every glob in `required` matches a readable file under `snapshot` (a symlink to
+    a missing blob does not count)."""
+    root = Path(snapshot)
+    return all(any(path.is_file() for path in root.glob(pattern)) for pattern in required)
+
+
+def cached_snapshot(
+    repo_id: str,
+    revision: str | None,
+    allow_patterns: Sequence[str],
+    required: Sequence[str] = (),
+) -> str:
     """Local path of a Hub snapshot. Tries the local cache first (`local_files_only`, no network
-    call, not even a revision check); downloads only when it is not cached yet."""
+    call, not even a revision check); downloads when it is not cached yet or when a file in
+    `required` (globs relative to the snapshot) is missing, i.e. the cached copy is partial."""
     try:
-        return snapshot_download(
+        path = snapshot_download(
             repo_id, revision=revision, allow_patterns=list(allow_patterns), local_files_only=True
         )
+        if _has_files(path, required):
+            return path
+        logger.warning("%s is only partly cached; downloading the rest", repo_id)
     except LocalEntryNotFoundError:
         logger.info("%s is not cached yet; downloading it from the Hugging Face Hub", repo_id)
-        return snapshot_download(repo_id, revision=revision, allow_patterns=list(allow_patterns))
+    return snapshot_download(repo_id, revision=revision, allow_patterns=list(allow_patterns))
 
 
 @contextmanager
-def hub_offline_if_cached(repo_id: str) -> Iterator[bool]:
-    """Within the block the Hub is offline (`HF_HUB_OFFLINE`) when `repo_id` is already cached,
-    so third-party code that loads it by name (CatVTON's VAE) makes no network call. Scoped to
-    the block: the worker's other models may still need a first download. Yields whether it is
-    offline. `huggingface_hub` reads the flag at import, so the module constant is patched too."""
+def hub_offline_if_cached(repo_id: str, required: Sequence[str] = ()) -> Iterator[bool]:
+    """Within the block the Hub is offline (`HF_HUB_OFFLINE`) when `repo_id` is already cached
+    with every file in `required`, so third-party code that loads it by name (CatVTON's VAE)
+    makes no network call. A missing or partial cache stays online so the load can download.
+    Scoped to the block: the worker's other models may still need a first download. Yields
+    whether it is offline. `huggingface_hub` reads the flag at import, so the module constant is
+    patched too."""
     from huggingface_hub import constants
 
     try:
-        snapshot_download(repo_id, local_files_only=True)
+        snapshot = snapshot_download(repo_id, local_files_only=True)
     except LocalEntryNotFoundError:
         logger.info(
             "%s is not cached yet; it will be downloaded from the Hugging Face Hub", repo_id
         )
+        yield False
+        return
+    if not _has_files(snapshot, required):
+        logger.warning("%s is only partly cached; it will be completed from the Hub", repo_id)
         yield False
         return
     previous_env = os.environ.get("HF_HUB_OFFLINE")

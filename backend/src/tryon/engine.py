@@ -22,7 +22,14 @@ from PIL import Image
 from ml.device import free_gpu_memory
 from tryon.cache import ATTN_VERSION
 from tryon.images import GarmentError, is_blank, prepare_garment, prepare_mask, prepare_person
-from tryon.weights import VAE_MODEL, cached_snapshot, fp16_base_checkpoint, hub_offline_if_cached
+from tryon.weights import (
+    BASE_REQUIRED,
+    VAE_MODEL,
+    VAE_REQUIRED,
+    cached_snapshot,
+    fp16_base_checkpoint,
+    hub_offline_if_cached,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -322,8 +329,15 @@ class CatVTONEngine:
         # Only what CatVTONPipeline loads from the base repo (no .ckpt, text encoder, safety
         # checker or VAE: the VAE comes from sd-vae-ft-mse).
         # Cached snapshots load without contacting the Hub.
-        base_path = cached_snapshot(BASE_MODEL, self._base_revision, ["scheduler/*", "unet/*"])
-        attn_path = cached_snapshot(ATTN_MODEL, self._attn_revision, [f"{ATTN_SUBFOLDER}/*"])
+        base_path = cached_snapshot(
+            BASE_MODEL, self._base_revision, ["scheduler/*", "unet/*"], BASE_REQUIRED
+        )
+        attn_path = cached_snapshot(
+            ATTN_MODEL,
+            self._attn_revision,
+            [f"{ATTN_SUBFOLDER}/*"],
+            [f"{ATTN_SUBFOLDER}/attention/model.safetensors"],
+        )
         weight_dtype = torch.float16 if self._dtype == "fp16" else torch.float32
         build_dtype: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
         if self._dtype == "fp16":
@@ -331,7 +345,7 @@ class CatVTONEngine:
                 base_path = str(fp16_base_checkpoint(base_path, self._converted_dir))
             build_dtype = default_dtype(torch.float16)
         # CatVTONPipeline loads the VAE by name from the Hub; offline when it is cached.
-        with build_dtype, hub_offline_if_cached(VAE_MODEL):
+        with build_dtype, hub_offline_if_cached(VAE_MODEL, VAE_REQUIRED):
             return CatVTONPipeline(
                 base_ckpt=base_path,
                 attn_ckpt=attn_path,

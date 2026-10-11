@@ -653,6 +653,32 @@ def test_idle_iterations_poll_unload_if_idle(settings, engine, factory) -> None:
     )
 
 
+def test_idle_loop_removes_stale_renders_and_their_files(settings, engine, factory) -> None:
+    old = datetime.now(UTC) - timedelta(days=settings.tryon_cache_max_age_days + 1)
+    stale = _outfit_render(factory, settings)
+    _set(
+        factory, stale, status=JobStatus.done, img_path=f"tryon/{stale}.webp", last_accessed_at=old
+    )
+    assert settings.images_root is not None
+    image = settings.images_root / f"tryon/{stale}.webp"
+    image.parent.mkdir(parents=True, exist_ok=True)
+    image.write_bytes(b"webp")
+
+    def gone() -> bool:
+        with factory() as session:
+            return session.get(TryOnRender, stale) is None
+
+    _run_loop(
+        settings,
+        engine,
+        {step: (lambda _ctx: None) for step in STEP_ORDER},
+        FakeTryOnEngine(),
+        gone,
+    )
+
+    assert not image.exists()
+
+
 def test_stuck_renders_are_recovered_at_start(settings, engine, factory) -> None:
     render_id = _outfit_render(factory, settings)
     _set(factory, render_id, status=JobStatus.running, attempts=1, step="dressing_1")
