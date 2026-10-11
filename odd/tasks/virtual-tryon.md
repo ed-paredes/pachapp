@@ -450,6 +450,23 @@ over V2a-V2c: stacked-to-main, one PR per task.
   UPDATE and `session.refresh` still answers 500; build the response from the loaded object instead). Minor
   (design): after a permanent failure "Verlo puesto" stays enabled and shows the same message again.
 
+- 2026-10-12: V4b merged in #64; the try-on V0-V4 is complete. Owner: fix the follow-ups if they are easy ->
+  V5 (delegated writer, branch `tryon/v5-follow-ups`, commits e890f9e backend, 1d788a8 app; parent f37063b).
+  R3-get-refresh-race: no `session.refresh` after the touch (`expire_on_commit=False`, `TryOnRead` has no
+  `last_accessed_at`), so a purge after the commit answers 200 with the loaded data (test: 500 before, 200 after).
+  R3-poll-failure-counter-scope: the failed-poll count is a module-level map per render id (cleared on a good
+  poll, on prune and on a 404), read by every observer; test with two observers. "Verlo puesto" is disabled when
+  the main look's render failed with `blank_output`, `invalid_params` or `mannequin_unavailable`
+  (`DEAD_END_ERRORS`); garment problems (fixing the garment makes a new render), transient errors and unknown codes
+  keep it enabled. Checked on Expo web with a forced `blank_output` (`aria-disabled="true"`, opacity 0.5; data
+  restored; screenshots `d-disabled-*.png` in `~/pachapp-data/eval-results/tryon-v4b-2026-10-12/`).
+  173 authored lines. Checks: prettier, typecheck, lint clean; jest 454 (+8; one unidentified failure in one
+  writer run before the test fixes, then 18 clean runs); ruff format/check, ty clean; pytest 964 (+1). Native
+  review (medium, granted, 1 lens) on e890f9e..1d788a8: approved and acknowledged (lineage
+  review-d87a101dedf94cdd); both advisories fixed by the parent in f37063b (unknown codes no longer lock the
+  button, R3-deadend-unknown-codes; every suite resets all poll counts, R3-pollfailures-test-isolation);
+  f37063b assessed medium, under budget (32 lines), not reviewed.
+
 ## Next step
 
-PR for V4b. With V4 merged the try-on (V0-V4) is complete; the follow-ups above are optional.
+PR for V5. Nothing else is open on the try-on.
