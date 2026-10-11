@@ -497,6 +497,34 @@ def test_get_answers_404_when_the_render_is_purged_during_the_read(
     assert response.json()["error"]["code"] == "TRYON_NOT_FOUND"
 
 
+def test_get_answers_the_loaded_render_when_it_is_purged_after_the_touch(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+    original_commit = Session.commit
+    purged = False
+
+    def commit_then_purge(self: Session) -> None:
+        nonlocal purged
+        original_commit(self)
+        if purged:
+            return
+        purged = True
+        # The cleanup removes the row once the touch is committed, before the response is built.
+        with _db(client) as other:
+            other.delete(other.get(TryOnRender, render_id))
+            other.commit()
+
+    monkeypatch.setattr(Session, "commit", commit_then_purge)
+
+    response = client.get(f"/tryon/{render_id}")
+
+    assert response.status_code == 200
+    assert response.json()["img"] == f"tryon/{render_id}.webp"
+
+
 def test_get_render(client: TestClient, settings: Settings) -> None:
     top = _garment(client, settings, GarmentCategory.top)
     render_id = _post(client, garment_ids=[top]).json()["id"]

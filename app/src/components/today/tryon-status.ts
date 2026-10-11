@@ -75,6 +75,17 @@ const TRANSIENT_CODES = new Set([
   'interrupted',
 ]);
 
+/**
+ * Permanent failures nothing on the user's side can change: asking again returns the same render.
+ * Garment problems are not here (fixing the photo or category makes a new render), nor are unknown
+ * codes (a new backend code must not lock the button).
+ */
+export const DEAD_END_ERRORS: ReadonlySet<string> = new Set([
+  'blank_output',
+  'invalid_params',
+  'mannequin_unavailable',
+]);
+
 type ErrorStatus = Required<Pick<TryOnStatus, 'errorKind' | 'message'>>;
 
 /** Maps a render `error` code or an `ApiError` code to what the user sees. Unknown codes are final. */

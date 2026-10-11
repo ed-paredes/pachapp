@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import type { TodayTryOn } from '@/components/today/TryOnLayer';
 import type { LookPiece } from '@/components/today/types';
+import { DEAD_END_ERRORS } from '@/components/today/tryon-status';
 import { imageUrl } from '@/lib/image-url';
 
 import { lookKey, useLookTryOn } from './useTryOn';
@@ -32,6 +33,10 @@ export function useTodayTryOn(pieces: LookPiece[] | undefined, offline: boolean)
     [key],
   );
 
+  // A render that failed for good: asking again returns the same failure, so the button waits
+  // for another look.
+  const deadEnd = render?.status === 'failed' && DEAD_END_ERRORS.has(render.error ?? '');
+
   const onTryOn = useCallback(() => {
     setMode('tryon');
     // A render that exists (working, done) is just shown; only a look without one, or a failed one, is requested.
@@ -47,7 +52,10 @@ export function useTodayTryOn(pieces: LookPiece[] | undefined, offline: boolean)
     canTry: isLookTryable(list, capabilities.data),
     // Offline a render can only be viewed, not made.
     tryOnDisabled:
-      status.phase === 'working' || tryOn.isRequesting || (offline && status.phase !== 'done'),
+      status.phase === 'working' ||
+      tryOn.isRequesting ||
+      deadEnd ||
+      (offline && status.phase !== 'done'),
     onTryOn,
     showToggle: tried,
     mode,

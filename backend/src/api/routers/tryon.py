@@ -121,5 +121,6 @@ def get_tryon(render_id: str, session: Annotated[Session, Depends(get_session)])
         if touched.rowcount != 1:
             # The cleanup purged the render between the load and the update.
             raise _not_found(render_id)
-        session.refresh(render)
+        # No refresh: the response does not carry `last_accessed_at`, and the session keeps loaded
+        # objects after a commit, so a purge landing from here on cannot turn this read into a 500.
     return _read(render)
