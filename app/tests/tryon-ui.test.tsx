@@ -122,6 +122,34 @@ describe('Hoy try-on view', () => {
     expect(scrollTo).not.toHaveBeenCalled();
   });
 
+  it('does not scroll later on another look when the look changed before the control showed (R3)', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    const tryOn = tryOnProps({ showToggle: false });
+    const view = await renderView(tryOn);
+    await fireEvent.press(screen.getByRole('button', { name: 'Verlo puesto' }));
+    // The user shuffles to another look before the control appears there.
+    const other: LookProposal = { ...proposal, pieces: proposal.pieces.slice(0, 2) };
+    await view.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <TodayView {...base} proposal={other} onWear={jest.fn()} tryOn={tryOn} />
+      </SafeAreaProvider>,
+    );
+    await view.rerender(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <TodayView
+          {...base}
+          proposal={other}
+          onWear={jest.fn()}
+          tryOn={{ ...tryOn, showToggle: true }}
+        />
+      </SafeAreaProvider>,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
   it('switches between Collage and Puesto with the segmented control', async () => {
     const tryOn = tryOnProps();
     await renderView(tryOn);

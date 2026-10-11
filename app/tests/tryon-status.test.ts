@@ -91,12 +91,18 @@ describe('tryOnStatus errors', () => {
     message,
   });
 
-  it.each(['out_of_memory', 'engine_unavailable', 'engine_error', 'interrupted', 'blank_output'])(
+  it.each(['out_of_memory', 'engine_unavailable', 'engine_error', 'interrupted'])(
     'polled transient %s -> retry',
     (code) => {
       expect(tryOnStatus(failed(code), PIECES)).toEqual(asError('retry', TRYON_MESSAGES.retry));
     },
   );
+
+  it('blank_output is final: a new attempt gives the same empty image', () => {
+    const final = asError('final', TRYON_MESSAGES.blankOutput);
+    expect(tryOnStatus(failed('blank_output'), PIECES)).toEqual(final);
+    expect(tryOnStatus(failed('blank_output'), PIECES, { fromRequest: true })).toEqual(final);
+  });
 
   it('a transient failure returned by the POST (capped or cooling down) -> later', () => {
     expect(tryOnStatus(failed('engine_error'), PIECES, { fromRequest: true })).toEqual(
@@ -156,6 +162,17 @@ describe('not included and description', () => {
     );
     expect(tryOnDescription(render({ garment_ids: ['zz'] }), PIECES)).toBe(
       'Outfit puesto en un modelo',
+    );
+  });
+
+  it('names a piece by its role when its name is empty (R3)', () => {
+    const unnamed = [
+      piece('a', 'top', ''),
+      piece('b', 'bottom', '   '),
+      piece('c', 'outerwear', 'Abrigo'),
+    ];
+    expect(tryOnDescription(render({ garment_ids: ['a', 'b', 'c'] }), unnamed)).toBe(
+      'Outfit puesto en un modelo: abrigo, parte de arriba, parte de abajo',
     );
   });
 });

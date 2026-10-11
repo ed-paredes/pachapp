@@ -62,6 +62,7 @@ export const TRYON_MESSAGES = {
   garmentNotReady: 'Una prenda todavía se está procesando. Vuelve a probar en un momento.',
   noCompatible: 'Este look no tiene prendas que podamos probar en el modelo.',
   disabled: 'La prueba virtual no está disponible ahora mismo.',
+  blankOutput: 'No conseguimos generar una imagen con estas prendas. Prueba con otro look.',
   generic: 'No pudimos preparar este look.',
   network: 'Sin conexión con el servidor. Comprueba la conexión e inténtalo de nuevo.',
 } as const;
@@ -72,7 +73,6 @@ const TRANSIENT_CODES = new Set([
   'engine_unavailable',
   'engine_error',
   'interrupted',
-  'blank_output',
 ]);
 
 type ErrorStatus = Required<Pick<TryOnStatus, 'errorKind' | 'message'>>;
@@ -85,6 +85,9 @@ function errorFor(code: string | null, fromRequest: boolean): ErrorStatus {
       : { errorKind: 'retry', message: TRYON_MESSAGES.retry };
   }
   switch (code) {
+    case 'blank_output':
+      // The same garments and seed give the same empty image, so trying again cannot help.
+      return { errorKind: 'final', message: TRYON_MESSAGES.blankOutput };
     case 'garment_changed':
       return { errorKind: 'retry', message: TRYON_MESSAGES.garmentChanged };
     case 'garment_missing':
@@ -170,6 +173,22 @@ const describeRank = (role: LookRole) => {
   return rank < 0 ? DESCRIBE_ORDER.length : rank;
 };
 
+/** What a piece is called in the description when its name is empty. */
+const ROLE_NAMES: Record<LookRole, string> = {
+  outerwear: 'abrigo',
+  mid_layer: 'capa intermedia',
+  top: 'parte de arriba',
+  one_piece: 'prenda entera',
+  bottom: 'parte de abajo',
+  shoes: 'calzado',
+  accessory: 'accesorio',
+};
+
+function describedName(piece: LookPiece): string {
+  const name = piece.name.trim();
+  return name ? name.charAt(0).toLowerCase() + name.slice(1) : ROLE_NAMES[piece.role];
+}
+
 /** Screen reader text of the result: 'Outfit puesto en un modelo: jersey negro, pantalón beige'. */
 export function tryOnDescription(
   render: TryOnRender | null | undefined,
@@ -179,9 +198,7 @@ export function tryOnDescription(
     .map((id) => pieces.find((piece) => piece.garmentId === id))
     .filter((piece): piece is LookPiece => !!piece);
   // Outermost first, whatever the order the passes ran in; the sort is stable within a role.
-  const names = worn
-    .sort((a, b) => describeRank(a.role) - describeRank(b.role))
-    .map((piece) => piece.name.charAt(0).toLowerCase() + piece.name.slice(1));
+  const names = worn.sort((a, b) => describeRank(a.role) - describeRank(b.role)).map(describedName);
   return names.length > 0
     ? `Outfit puesto en un modelo: ${names.join(', ')}`
     : 'Outfit puesto en un modelo';

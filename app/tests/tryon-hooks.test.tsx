@@ -11,6 +11,7 @@ import {
   lookKey,
   pruneTryOn,
   TRYON_MAX_AGE_MS,
+  TRYON_MAX_POLL_FAILURES,
   useLookTryOn,
   useRequestTryOn,
   useTryOn,
@@ -251,6 +252,25 @@ describe('try-on data layer', () => {
     await waitFor(() => expect(result.current.render).toBeUndefined());
     expect(result.current.status.phase).toBe('idle');
   });
+
+  it('forgets the look -> render link after a 404, so "Verlo puesto" can request it again (R3-003)', async () => {
+    const client = makeClient();
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'gone' });
+    fetchMock()
+      .mockResolvedValueOnce(apiError('NOT_FOUND', 404))
+      .mockResolvedValueOnce(json(render({ id: 'r2' }), 202));
+    const { result } = await renderHook(() => useLookTryOn(['g1', 'g2'], PIECES), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(result.current.renderId).toBeUndefined());
+    expect(client.getQueryData(queryKeys.tryon.byLook('g1,g2'))).toBeUndefined();
+    expect(client.getQueryData(queryKeys.tryon.detail('gone'))).toBeUndefined();
+    expect(result.current.status.phase).toBe('idle');
+    // Back to untried: a new request links the new render.
+    await act(async () => result.current.request());
+    await waitFor(() => expect(result.current.renderId).toBe('r2'));
+    expect(requestAt(1).method).toBe('POST');
+  });
 });
 
 describe('try-on regressions', () => {
@@ -286,6 +306,40 @@ describe('try-on regressions', () => {
     await waitFor(() => expect(fetchMock()).toHaveBeenCalledTimes(1));
     expect(result.current.status.phase).toBe('working');
     await waitFor(() => expect(result.current.status.phase).toBe('done'));
+  });
+
+  it('shows the error after too many failed polls in a row; a good poll resets the count', async () => {
+    const client = makeClient();
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'r1' });
+    client.setQueryData(queryKeys.tryon.detail('r1'), render({ status: 'running', progress: 30 }));
+    // The mount refetch of the seeded (stale) render.
+    fetchMock().mockResolvedValueOnce(json(render({ status: 'running' })));
+    const { result } = await renderHook(
+      // Polled by hand below: the interval is far beyond the test.
+      () => useLookTryOn(['g1', 'g2'], PIECES, { refetchInterval: 1_000_000 }),
+      { wrapper: wrapperFor(client) },
+    );
+    const poll = async (answer: 'fail' | 'running') => {
+      if (answer === 'fail')
+        fetchMock().mockRejectedValueOnce(new TypeError('Network request failed'));
+      else fetchMock().mockResolvedValueOnce(json(render({ status: 'running' })));
+      await act(async () => {
+        await client.refetchQueries({ queryKey: queryKeys.tryon.detail('r1') });
+      });
+    };
+    const failures = TRYON_MAX_POLL_FAILURES;
+    for (let i = 0; i < failures - 1; i++) await poll('fail');
+    expect(result.current.status.phase).toBe('working');
+    // A good poll starts the count again.
+    await poll('running');
+    for (let i = 0; i < failures - 1; i++) await poll('fail');
+    expect(result.current.status.phase).toBe('working');
+    await poll('fail');
+    expect(result.current.status.phase).toBe('error');
+    expect(result.current.status.errorKind).toBe('retry');
+    // The next good poll brings the bar back.
+    await poll('running');
+    expect(result.current.status.phase).toBe('working');
   });
 
   it('a failed poll without a render in flight still shows the error', async () => {

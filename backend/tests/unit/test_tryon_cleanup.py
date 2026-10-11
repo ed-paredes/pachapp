@@ -7,12 +7,14 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, col, create_engine
 
 from shared.enums import JobStatus
 from shared.models import TryOnRender
+from tryon import cleanup
 from tryon.cleanup import purge_stale_renders
 
 NOW = dt.datetime(2026, 10, 11, tzinfo=dt.UTC)
@@ -107,3 +109,31 @@ def test_zero_days_keeps_everything(factory, tmp_path: Path) -> None:
 
     assert _purge(factory, tmp_path, days=0) == 0
     assert _exists(factory, render.id)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"last_accessed_at": NOW}, {"status": JobStatus.pending}],
+    ids=["touched", "requeued"],
+)
+def test_a_row_changed_between_the_select_and_the_delete_survives_with_its_file(
+    factory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict
+) -> None:
+    render = _add(factory, tmp_path, "racing")
+    real_delete = cleanup.delete
+
+    def touch_then_delete(*args, **kwargs):
+        # A request touches or requeues the render after the cleanup selected it as stale.
+        with factory() as other:
+            other.connection().execute(
+                update(TryOnRender).where(col(TryOnRender.id) == render.id).values(**change)
+            )
+            other.commit()
+        return real_delete(*args, **kwargs)
+
+    monkeypatch.setattr(cleanup, "delete", touch_then_delete)
+
+    assert _purge(factory, tmp_path) == 0
+
+    assert _exists(factory, render.id)
+    assert render.img_path is not None and (tmp_path / render.img_path).is_file()

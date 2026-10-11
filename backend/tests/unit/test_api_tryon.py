@@ -472,6 +472,31 @@ def test_get_refreshes_last_accessed_only_for_a_done_render(
     assert _render(client, render_id).last_accessed_at.replace(tzinfo=dt.UTC) > old
 
 
+def test_get_answers_404_when_the_render_is_purged_during_the_read(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+    original_get = Session.get
+
+    def get_then_purge(self: Session, entity: Any, ident: Any, *args: Any, **kwargs: Any) -> Any:
+        found = original_get(self, entity, ident, *args, **kwargs)
+        if entity is TryOnRender:
+            # The worker's cleanup removes the row after the endpoint loaded it.
+            with _db(client) as other:
+                other.delete(original_get(other, TryOnRender, ident))
+                other.commit()
+        return found
+
+    monkeypatch.setattr(Session, "get", get_then_purge)
+
+    response = client.get(f"/tryon/{render_id}")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "TRYON_NOT_FOUND"
+
+
 def test_get_render(client: TestClient, settings: Settings) -> None:
     top = _garment(client, settings, GarmentCategory.top)
     render_id = _post(client, garment_ids=[top]).json()["id"]

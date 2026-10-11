@@ -43,7 +43,7 @@ type LookWhyCardProps = {
   replaceQuestion?: ReplaceQuestion;
   /** Why an action is off (calm, under the buttons). */
   note?: string;
-  /** Layout overrides (Hoy stretches the card to the canvas height). */
+  /** Layout overrides (Hoy centres the card beside the canvas). */
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };
@@ -160,24 +160,28 @@ export function LookWhyCard({
               />
             </View>
           ) : null}
-          {onTryOn ? (
-            <Button
-              label="Verlo puesto"
-              icon={PERSON_ICON}
-              variant="secondary"
-              onPress={onTryOn}
-              disabled={tryOnDisabled}
-              testID="try-on-button"
-            />
-          ) : null}
-          {onShuffle ? (
-            <Button
-              icon={SHUFFLE_ICON}
-              accessibilityLabel="Otra sugerencia"
-              variant="secondary"
-              onPress={onShuffle}
-              disabled={shuffleDisabled}
-            />
+          {onTryOn || onShuffle ? (
+            <View style={styles.secondary}>
+              {onTryOn ? (
+                <Button
+                  label="Verlo puesto"
+                  icon={PERSON_ICON}
+                  variant="secondary"
+                  onPress={onTryOn}
+                  disabled={tryOnDisabled}
+                  testID="try-on-button"
+                />
+              ) : null}
+              {onShuffle ? (
+                <Button
+                  icon={SHUFFLE_ICON}
+                  accessibilityLabel="Otra sugerencia"
+                  variant="secondary"
+                  onPress={onShuffle}
+                  disabled={shuffleDisabled}
+                />
+              ) : null}
+            </View>
           ) : null}
         </View>
       ) : null}
@@ -226,8 +230,10 @@ const styles = StyleSheet.create({
     marginTop: 'auto',
     paddingTop: 6,
   },
-  // Grows to fill the row; "Verlo puesto" wraps under it when the card is narrow.
-  wear: { flexGrow: 1, flexBasis: 150 },
+  // Grows to fill the row; wide enough for its label on one line, so on a narrow card the
+  // secondary actions wrap under it together instead of squeezing it.
+  wear: { flexGrow: 1, flexBasis: 180 },
+  secondary: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   question: { gap: 6, marginTop: 'auto', paddingTop: 6 },
   questionTitle: {
     fontFamily: fontFamilies.display,
