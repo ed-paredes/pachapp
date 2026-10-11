@@ -11,6 +11,7 @@ import {
   lookKey,
   pruneTryOn,
   TRYON_MAX_AGE_MS,
+  clearPollFailures,
   TRYON_MAX_POLL_FAILURES,
   useLookTryOn,
   useRequestTryOn,
@@ -275,7 +276,10 @@ describe('try-on data layer', () => {
 
 describe('try-on regressions', () => {
   const originalFetch = globalThis.fetch;
+  // The failed-poll counts are module state: do not carry them from one case to the next.
+  const resetPollFailures = () => ['r1', 'shared'].forEach(clearPollFailures);
   beforeEach(() => {
+    resetPollFailures();
     globalThis.fetch = jest.fn();
     setPlatform('android');
     jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
@@ -283,7 +287,10 @@ describe('try-on regressions', () => {
   });
   afterEach(async () => {
     await cleanup();
+    // A poll still in flight would settle after the reset and count for the next case.
+    await Promise.all(clients.map((client) => waitFor(() => expect(client.isFetching()).toBe(0))));
     clients.splice(0).forEach((client) => client.clear());
+    resetPollFailures();
     globalThis.fetch = originalFetch;
     setPlatform(realOS);
     jest.restoreAllMocks();
@@ -319,6 +326,7 @@ describe('try-on regressions', () => {
       () => useLookTryOn(['g1', 'g2'], PIECES, { refetchInterval: 1_000_000 }),
       { wrapper: wrapperFor(client) },
     );
+    await waitFor(() => expect(client.isFetching()).toBe(0));
     const poll = async (answer: 'fail' | 'running') => {
       if (answer === 'fail')
         fetchMock().mockRejectedValueOnce(new TypeError('Network request failed'));
@@ -329,17 +337,46 @@ describe('try-on regressions', () => {
     };
     const failures = TRYON_MAX_POLL_FAILURES;
     for (let i = 0; i < failures - 1; i++) await poll('fail');
-    expect(result.current.status.phase).toBe('working');
+    await waitFor(() => expect(result.current.status.phase).toBe('working'));
     // A good poll starts the count again.
     await poll('running');
     for (let i = 0; i < failures - 1; i++) await poll('fail');
-    expect(result.current.status.phase).toBe('working');
+    await waitFor(() => expect(result.current.status.phase).toBe('working'));
     await poll('fail');
-    expect(result.current.status.phase).toBe('error');
-    expect(result.current.status.errorKind).toBe('retry');
+    await waitFor(() => expect(result.current.status.phase).toBe('error'));
+    await waitFor(() => expect(result.current.status.errorKind).toBe('retry'));
     // The next good poll brings the bar back.
     await poll('running');
-    expect(result.current.status.phase).toBe('working');
+    await waitFor(() => expect(result.current.status.phase).toBe('working'));
+  });
+
+  it('two observers of one render both show the error after too many failed polls', async () => {
+    const client = makeClient();
+    client.setQueryData(
+      queryKeys.tryon.detail('shared'),
+      render({ id: 'shared', status: 'running' }),
+    );
+    // Every observer mount refetches the seeded (stale) render; those polls succeed.
+    fetchMock().mockImplementation(async () => json(render({ id: 'shared', status: 'running' })));
+    const options = { refetchInterval: 1_000_000 };
+    const first = await renderHook(() => useTryOn('shared', options), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    const second = await renderHook(() => useTryOn('shared', options), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    for (let i = 0; i < TRYON_MAX_POLL_FAILURES; i++) {
+      fetchMock().mockRejectedValueOnce(new TypeError('Network request failed'));
+      await act(async () => {
+        await client.refetchQueries({ queryKey: queryKeys.tryon.detail('shared') });
+      });
+    }
+    await waitFor(() => {
+      expect(first.result.current.failedPolls).toBe(TRYON_MAX_POLL_FAILURES);
+      expect(second.result.current.failedPolls).toBe(TRYON_MAX_POLL_FAILURES);
+    });
   });
 
   it('a failed poll without a render in flight still shows the error', async () => {

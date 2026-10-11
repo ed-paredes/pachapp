@@ -75,6 +75,12 @@ const TRANSIENT_CODES = new Set([
   'interrupted',
 ]);
 
+/** Permanent failures the user can fix (a garment's photo or category): a new request then makes a new render. */
+export const GARMENT_FIXABLE_ERRORS: ReadonlySet<string> = new Set([
+  'garment_missing',
+  'invalid_garment',
+]);
+
 type ErrorStatus = Required<Pick<TryOnStatus, 'errorKind' | 'message'>>;
 
 /** Maps a render `error` code or an `ApiError` code to what the user sees. Unknown codes are final. */

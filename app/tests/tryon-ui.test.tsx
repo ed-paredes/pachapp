@@ -362,6 +362,21 @@ describe('useTodayTryOn on Hoy', () => {
     expect(screen.queryByTestId('tryon-image')).toBeNull();
   });
 
+  it.each([
+    ['blank_output', false],
+    ['invalid_params', false],
+    ['garment_missing', true],
+    ['engine_error', true],
+  ])('after a failed render (%s) the button is enabled: %s', async (error, enabled) => {
+    client.setQueryData(queryKeys.tryon.capabilities, caps);
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2,g3'), { renderId: 'r1' });
+    client.setQueryData(queryKeys.tryon.detail('r1'), renderRow({ status: 'failed', error }));
+    await mount();
+    const button = await screen.findByRole('button', { name: 'Verlo puesto' });
+    if (enabled) expect(button).toBeEnabled();
+    else expect(button).toBeDisabled();
+  });
+
   it('offline: the button is off without a saved render and works with one', async () => {
     client.setQueryData(queryKeys.tryon.capabilities, caps);
     await mount({ offline: true });

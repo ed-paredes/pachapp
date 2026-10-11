@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { ApiError, unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
@@ -63,6 +63,16 @@ function keepImage(render: TryOnRender): void {
   if (render.status === 'done' && render.img) void prefetchTryOnImage(render.img);
 }
 
+/**
+ * Polls that failed in a row, per render id. Module state rather than hook state so every
+ * observer of the same `tryon.detail` key sees the count the query function updates (an observer
+ * re-renders on each failed poll, because the query's error state changes). A good poll clears it.
+ */
+const pollFailures = new Map<string, number>();
+
+/** Forgets the failed-poll count of a render (it was pruned from the cache). */
+export const clearPollFailures = (id: string) => pollFailures.delete(id);
+
 export async function fetchTryOn(id: string): Promise<TryOnRender> {
   return unwrap(await apiClient.GET('/tryon/{render_id}', { params: { path: { render_id: id } } }));
 }
@@ -79,26 +89,25 @@ type UseTryOnOptions = {
  */
 export function useTryOn(id: string | undefined, options: UseTryOnOptions = {}) {
   const { enabled = true, refetchInterval = TRYON_POLL_INTERVAL_MS } = options;
-  // Polls that failed in a row for this render; a successful poll resets it.
-  const [failures, setFailures] = useState({ id, count: 0 });
   const query = useQuery({
     queryKey: queryKeys.tryon.detail(id ?? ''),
     enabled: enabled && !!id,
     queryFn: async () => {
+      const renderId = id as string;
       try {
-        const render = await fetchTryOn(id as string);
-        setFailures({ id, count: 0 });
+        const render = await fetchTryOn(renderId);
+        pollFailures.delete(renderId);
         keepImage(render);
         return render;
       } catch (error) {
-        setFailures((prev) => ({ id, count: prev.id === id ? prev.count + 1 : 1 }));
+        pollFailures.set(renderId, (pollFailures.get(renderId) ?? 0) + 1);
         throw error;
       }
     },
     staleTime: (query) => (isTerminal(query.state.data) ? Infinity : 0),
     refetchInterval: (query) => (isInFlight(query.state.data) ? refetchInterval : false),
   });
-  return { ...query, failedPolls: failures.id === id ? failures.count : 0 };
+  return { ...query, failedPolls: (id && pollFailures.get(id)) || 0 };
 }
 
 /**
@@ -143,7 +152,10 @@ export function pruneTryOn(queryClient: QueryClient, now: number = Date.now()): 
   }
   for (const query of cache.findAll({ queryKey: queryKeys.tryon.details() })) {
     const id = String(query.queryKey[2]);
-    if (!kept.has(id) && query.getObserversCount() === 0) cache.remove(query);
+    if (!kept.has(id) && query.getObserversCount() === 0) {
+      cache.remove(query);
+      clearPollFailures(id);
+    }
   }
 }
 
@@ -183,6 +195,7 @@ export function useLookTryOn(
     if (!gone || !renderId) return;
     queryClient.resetQueries({ queryKey: queryKeys.tryon.byLook(key), exact: true });
     queryClient.removeQueries({ queryKey: queryKeys.tryon.detail(renderId), exact: true });
+    clearPollFailures(renderId);
   }, [gone, renderId, key, queryClient]);
   // A failed poll (network blip, 5xx) while the render is still in flight keeps the bar going: the
   // next poll may succeed. Only a failed request, a render that failed itself or a run of
