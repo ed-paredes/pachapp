@@ -78,7 +78,7 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
     malformed `params` fail as `invalid_params` (R3-bad-params-requeued-not-failed), progress never goes back on
     an OOM retry, `safetensors` declared as a backend dependency; set `HF_HUB_OFFLINE` (or pass `local_files_only`) once the
     weights are cached, since every CatVTON load currently contacts the Hub (V2d log).
-- [ ] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
+- [x] **V3** App: "Verlo puesto", polling, Collage | Puesto, states, offline storage of renders, tests.
   Delivery: one PR per task to main (stacked-to-main). Route: delegated writer per task (app mapped by a
   read-only explorer on 2026-10-09); every UI task loads frontend-design, ux-copy, design-critique and
   accessibility-review. App checks: `cd app && npm run typecheck && npm run lint && npm test && npm run format:check`.
@@ -104,6 +104,15 @@ V0 assuming U5 done (U5a in review); V0a tooling done, V0b (real run) pending. 2
   R3-description-empty-name-regression, R3-stale-pending-scroll (clear the pending scroll on look change),
   R3-003 (clear the look link after a 404), R3-004 (test prune through `useTodayLooks`); wide layout: the
   "Look del día" card leaves a large empty area (pre-existing).
+  Split (2026-10-09), one PR each:
+  - [x] **V4a** Backend: delete renders not accessed for `tryon_cache_max_age_days` (rows + WebP files), the four
+    V2e advisories, docs (how to enable the try-on, licence note CC BY-NC-SA 4.0 personal use) and `.env.example`.
+  - [ ] **V4b** App: the five V3 advisories; `blank_output` is now permanent, so `tryon-status.ts` must move it from
+    `TRANSIENT_CODES` to a final message (resubmitting returns the same failed render). V4a review advisories
+    (backend, fold in here): R3-get-refresh-after-concurrent-purge (GET of a done render purged between the load and
+    the `last_accessed_at` UPDATE answers 500 instead of 404: check the rowcount or set the field without refresh;
+    test it), R3-cleanup-recheck-untested (test that a row touched or requeued between the SELECT and the
+    conditional DELETE survives with its file). Open: cleanup runs only while the try-on is enabled.
 
 ## Route and checks (V1)
 
@@ -404,6 +413,19 @@ over V2a-V2c: stacked-to-main, one PR per task.
   (~400 tests). Checks: prettier, typecheck, lint clean; jest 441 (+19). Native review (medium, granted,
   1 lens): approved and acknowledged (lineage review-b68a8d79e8b60598); advisories moved to V4.
 
+- 2026-10-12: V3a merged in #60, V3b in #62. V4a (delegated writer, branch `tryon/v4a-backend-polish`, commit
+  5e46e7f; no migration). `last_accessed_at` already existed and was refreshed on POST cache hits; GET of a done
+  render now refreshes it too. `purge_stale_renders` (`tryon/cleanup.py`, setting `tryon_cache_max_age_days`,
+  env `PACHAPP_TRYON_CACHE_MAX_AGE_DAYS`, default 30, 0 keeps everything) deletes done/failed rows older than the
+  cutoff with a conditional DELETE, then their WebP files; the worker runs it on the first idle iteration and then
+  hourly, only with the try-on enabled. A capped failed render with NULL `finished_at` gets it stamped to now (not
+  retried on that request, retryable after the cooldown). `cached_snapshot(..., required=...)` and
+  `hub_offline_if_cached` check real files (attention path `mix-48k-1024/attention/model.safetensors` checked by
+  the parent against the local cache) and download otherwise. `blank_output` is permanent. New
+  `backend/README.md` (enable steps, GPU/RAM notes, housekeeping, licence). 521 authored lines (~260 tests).
+  Checks: ruff format/check, ty clean; pytest 960 (+19); parent spot check 62 passed. Native review (medium,
+  granted, 1 lens): approved and acknowledged (lineage review-bbe6b08a8ab7425c); advisories moved to V4b.
+
 ## Next step
 
-Merge V3a (#60) and V3b, then V4 (polish: copy, cache cleanup, docs and licence note, the V2e/V3 advisories).
+PR for V4a, then V4b (app polish plus the V4a backend advisories).

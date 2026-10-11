@@ -6,10 +6,12 @@ existing render work even when `tryon_enabled` is off, so renders already made s
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response
-from sqlmodel import Session
+from sqlalchemy import update
+from sqlmodel import Session, col
 
 from api.deps import get_session, get_settings_dep
 from api.errors import (
@@ -103,4 +105,14 @@ def get_tryon(render_id: str, session: Annotated[Session, Depends(get_session)])
             404,
             {"render_id": render_id},
         )
+    if render.status == JobStatus.done:
+        # A look the user keeps opening is not stale (`tryon.cleanup`).
+        session.connection().execute(
+            update(TryOnRender)
+            .where(col(TryOnRender.id) == render_id)
+            .values(last_accessed_at=dt.datetime.now(dt.UTC))
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+        session.refresh(render)
     return _read(render)

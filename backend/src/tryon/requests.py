@@ -13,7 +13,7 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import or_, update
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
@@ -35,7 +35,8 @@ from tryon.mapping import PassPlan, PlanGarment, plan_passes
 
 # Failures a retry cannot fix (the codes of `tryon.service`/`worker.tryon_claim`): a resubmit
 # returns them as they are. The others (`out_of_memory`, `engine_unavailable`, `engine_error`,
-# `interrupted`, `blank_output`) may be transient and can be retried.
+# `interrupted`) may be transient and can be retried. `blank_output` is permanent: the seed is
+# part of the cache key, so a retry reruns the same inputs and gets the same blank image.
 PERMANENT_ERRORS: Final = frozenset(
     {
         "invalid_garment",
@@ -43,6 +44,7 @@ PERMANENT_ERRORS: Final = frozenset(
         "garment_missing",
         "garment_changed",
         "mannequin_unavailable",
+        "blank_output",
     }
 )
 # A failed render that spent its `MAX_RENDER_ATTEMPTS` can start a new round of attempts, but
@@ -223,7 +225,9 @@ def _reuse(
     Retry rule: a permanent failure (`PERMANENT_ERRORS`) stays failed. Any other failure is
     re-queued while `attempts` (cumulative across resubmits) is below `MAX_RENDER_ATTEMPTS`; once
     the cap is reached it is re-queued only `RETRY_COOLDOWN` after it failed, starting a new
-    round (`attempts` back to 0). So tries are bounded to `MAX_RENDER_ATTEMPTS` per cooldown.
+    round (`attempts` back to 0). So tries are bounded to `MAX_RENDER_ATTEMPTS` per cooldown. A
+    capped failure without `finished_at` (a legacy row) has its cooldown start now, so it is
+    not retried at once and not stuck either.
 
     The reset is a conditional `UPDATE ... WHERE status = 'failed'`: if the worker or another
     request changed the row meanwhile, nothing is overwritten and the fresh row is returned."""
@@ -236,12 +240,15 @@ def _reuse(
             col(TryOnRender.status) == JobStatus.failed,
         ]
         if capped:
+            session.connection().execute(
+                update(TryOnRender)
+                .where(*conditions, col(TryOnRender.finished_at).is_(None))
+                .values(finished_at=now)
+                .execution_options(synchronize_session=False)
+            )
             conditions += [
                 col(TryOnRender.attempts) >= MAX_RENDER_ATTEMPTS,
-                or_(
-                    col(TryOnRender.finished_at).is_(None),
-                    col(TryOnRender.finished_at) <= now - RETRY_COOLDOWN,
-                ),
+                col(TryOnRender.finished_at) <= now - RETRY_COOLDOWN,
             ]
         else:
             conditions.append(col(TryOnRender.attempts) < MAX_RENDER_ATTEMPTS)

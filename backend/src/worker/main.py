@@ -17,6 +17,7 @@ import os
 import signal
 import socket
 import threading
+import time
 from collections.abc import Mapping
 from types import FrameType
 
@@ -28,6 +29,7 @@ from ml.cache import configure_model_cache
 from shared.db import create_db_engine, create_session_factory
 from shared.enums import JobStep
 from shared.settings import Settings, get_settings
+from tryon.cleanup import purge_stale_renders
 from tryon.engine import TryOnEngine
 from tryon.service import run_render
 from worker.claim import claim_next_job, release_orphaned_job, requeue_stuck_jobs
@@ -35,6 +37,9 @@ from worker.runner import Pipeline, Step, build_pipeline, run_job
 from worker.tryon_claim import claim_next_render, release_orphaned_render, requeue_stuck_renders
 
 logger = logging.getLogger(__name__)
+
+# How often an idle worker looks for stale try-on renders to delete.
+RENDER_CLEANUP_INTERVAL_S = 3600.0
 
 # Delays between best-effort attempts to settle an orphaned job (e.g. while the
 # database is still "locked"); bounded so a dead database cannot wedge the loop.
@@ -144,6 +149,7 @@ def run(
 
             release_resident_models(resident_unloaders(pipeline.cutout, pipeline.models))
 
+    next_cleanup = 0.0  # the first idle iteration cleans up
     while not stop_event.is_set():
         claimed = None
         render_id = None
@@ -171,6 +177,9 @@ def run(
                     continue
                 if tryon_engine is not None:
                     tryon_engine.unload_if_idle()
+                if time.monotonic() >= next_cleanup:
+                    next_cleanup = time.monotonic() + RENDER_CLEANUP_INTERVAL_S
+                    _purge_stale_renders(factory, settings)
         except Exception:
             logger.exception("worker iteration failed")
             if claimed is not None:
@@ -180,6 +189,16 @@ def run(
         stop_event.wait(interval_s)
 
     logger.info("pachapp worker stopped")
+
+
+def _purge_stale_renders(factory: sessionmaker[Session], settings: Settings) -> None:
+    """Housekeeping: a failure is logged and retried at the next interval, never fatal."""
+    assert settings.images_root is not None  # filled in by Settings
+    try:
+        with factory() as session:
+            purge_stale_renders(session, settings.images_root, settings.tryon_cache_max_age_days)
+    except Exception:
+        logger.exception("could not clean up stale try-on renders")
 
 
 def main() -> None:

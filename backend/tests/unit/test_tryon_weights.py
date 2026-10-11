@@ -157,3 +157,76 @@ def test_hub_stays_online_when_not_cached(monkeypatch: pytest.MonkeyPatch) -> No
     with weights.hub_offline_if_cached("a/vae") as offline:
         assert offline is False
         assert "HF_HUB_OFFLINE" not in os.environ
+
+
+def _snapshot(root: Path, *files: str) -> str:
+    for name in files:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_bytes(b"x")
+    return str(root)
+
+
+def test_cached_snapshot_with_a_missing_required_file_downloads_the_rest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    partial = _snapshot(tmp_path / "partial", "unet/config.json")
+    calls: list[bool] = []
+
+    def fake(repo_id: str, **kwargs: object) -> str:
+        calls.append(bool(kwargs.get("local_files_only")))
+        return partial if kwargs.get("local_files_only") else "/cache/complete"
+
+    monkeypatch.setattr(weights, "snapshot_download", fake)
+
+    result = weights.cached_snapshot("a/b", "rev1", ["unet/*"], ["unet/model.*"])
+
+    assert result == "/cache/complete"
+    assert calls == [True, False]
+
+
+def test_cached_snapshot_with_every_required_file_stays_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    full = _snapshot(tmp_path / "full", "unet/config.json", "unet/model.safetensors")
+    calls: list[bool] = []
+
+    def fake(repo_id: str, **kwargs: object) -> str:
+        calls.append(bool(kwargs.get("local_files_only")))
+        return full
+
+    monkeypatch.setattr(weights, "snapshot_download", fake)
+
+    assert weights.cached_snapshot("a/b", "rev1", ["unet/*"], ["unet/config.json", "unet/model.*"])
+    assert calls == [True]
+
+
+def test_a_dangling_symlink_does_not_count_as_a_file(tmp_path: Path) -> None:
+    root = tmp_path / "snap"
+    root.mkdir()
+    (root / "model.safetensors").symlink_to(tmp_path / "missing-blob")
+
+    assert not weights._has_files(root, ["model.*"])
+
+
+def test_hub_stays_online_when_the_cached_vae_is_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    partial = _snapshot(tmp_path / "vae", "config.json")  # the weights are missing
+    monkeypatch.setattr(weights, "snapshot_download", lambda repo_id, **kw: partial)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+
+    with weights.hub_offline_if_cached("a/vae", weights.VAE_REQUIRED) as offline:
+        assert offline is False
+        assert "HF_HUB_OFFLINE" not in os.environ
+
+
+def test_hub_is_offline_when_the_cached_vae_is_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    full = _snapshot(tmp_path / "vae", "config.json", "diffusion_pytorch_model.safetensors")
+    monkeypatch.setattr(weights, "snapshot_download", lambda repo_id, **kw: full)
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", False)
+
+    with weights.hub_offline_if_cached("a/vae", weights.VAE_REQUIRED) as offline:
+        assert offline is True

@@ -150,6 +150,8 @@ class Settings(BaseSettings):
     tryon_oom_retry_width: int = 384
     tryon_oom_retry_height: int = 512
     tryon_mannequin: str = "m12-woman-crop-shorts"
+    # Renders not accessed for this many days are deleted (row and WebP); 0 = keep them forever.
+    tryon_cache_max_age_days: int = Field(default=30, ge=0)
     # Tracked mannequin assets (§5.1); defaults to `<repo root>/assets/tryon`.
     tryon_assets_dir: Path = _REPO_ROOT / "assets" / "tryon"
     # External pinned CatVTON clone (`make tryon-setup`); defaults to `<data dir>/vendor/CatVTON`.

@@ -296,6 +296,39 @@ def test_failed_render_at_the_attempts_cap_is_final_during_the_cooldown(
     )
 
 
+def test_capped_failure_without_finished_at_starts_its_cooldown_now(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _set_status(
+        client,
+        render_id,
+        JobStatus.failed,
+        error="out_of_memory",
+        attempts=MAX_RENDER_ATTEMPTS,
+        finished_at=None,
+    )
+
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 200  # not retried at once
+    assert response.json()["status"] == "failed"
+    stamped = _render(client, render_id).finished_at
+    assert stamped is not None  # the cooldown runs from now: it cannot be stuck forever
+
+    _set_status(
+        client,
+        render_id,
+        JobStatus.failed,
+        finished_at=dt.datetime.now(dt.UTC) - RETRY_COOLDOWN - dt.timedelta(seconds=1),
+    )
+    assert _post(client, garment_ids=[top]).status_code == 202
+
+
+def test_blank_output_is_a_permanent_failure() -> None:
+    assert "blank_output" in PERMANENT_ERRORS  # same seed, same inputs, same blank image
+
+
 @pytest.mark.parametrize("error", ["out_of_memory", "engine_unavailable", "interrupted"])
 def test_capped_transient_failure_starts_a_new_round_after_the_cooldown(
     client: TestClient, settings: Settings, error: str
@@ -421,6 +454,22 @@ def test_outfit_id_path(client: TestClient, settings: Settings) -> None:
     assert body["garment_ids"] == [bottom, top]
     assert body["unsupported_garment_ids"] == [shoes]
     assert _render(client, body["id"]).outfit_id == outfit_id
+
+
+def test_get_refreshes_last_accessed_only_for_a_done_render(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    old = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    _set_status(client, render_id, JobStatus.pending, last_accessed_at=old)
+
+    client.get(f"/tryon/{render_id}")
+    assert _render(client, render_id).last_accessed_at.replace(tzinfo=dt.UTC) == old
+
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+    client.get(f"/tryon/{render_id}")
+    assert _render(client, render_id).last_accessed_at.replace(tzinfo=dt.UTC) > old
 
 
 def test_get_render(client: TestClient, settings: Settings) -> None:
