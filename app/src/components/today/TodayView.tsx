@@ -111,12 +111,16 @@ export function TodayView({
   const lookTop = useRef(0);
   // On one column the canvas is above the card that holds the button: bring it into view so the
   // progress is seen starting. Side by side (wide) both are already on screen.
-  const [pendingScroll, setPendingScroll] = useState(false);
+  const lookId = proposal?.pieces.map((piece) => piece.garmentId).join(',') ?? '';
+  const [pendingFor, setPendingFor] = useState<string | null>(null);
   const showTryOn = () => {
     tryOn?.onTryOn();
-    if (!wide) setPendingScroll(true);
+    if (!wide) setPendingFor(lookId);
   };
   const toggleShown = !!tryOn?.showToggle;
+  // The pending scroll belongs to the look it was asked on: shuffling must not fire it on another one.
+  if (pendingFor !== null && pendingFor !== lookId) setPendingFor(null);
+  const pendingScroll = pendingFor === lookId;
   // Scroll once the control is inserted above the canvas: the layout shift would cancel an earlier scroll.
   useEffect(() => {
     if (!pendingScroll || !toggleShown) return undefined;
@@ -125,7 +129,7 @@ export function TodayView({
         y: Math.max(0, pageTop.current + lookTop.current - spacing.md),
         animated: !reduced,
       });
-      setPendingScroll(false);
+      setPendingFor(null);
     });
     return () => cancelAnimationFrame(frame);
   }, [pendingScroll, toggleShown, reduced]);
@@ -209,7 +213,7 @@ export function TodayView({
                 <NotIncludedRow pieces={tryOn.notIncluded} />
               ) : null}
             </View>
-            <View style={wide ? styles.cardCol : undefined}>
+            <View style={wide ? [styles.cardCol, styles.cardColCentered] : undefined}>
               <LookWhyCard
                 name={proposal.name}
                 reasons={proposal.reasons}
@@ -223,7 +227,6 @@ export function TodayView({
                 shuffleDisabled={shuffleDisabled}
                 note={actionNote}
                 replaceQuestion={replaceQuestion}
-                style={wide ? styles.fill : undefined}
               />
             </View>
           </View>
@@ -297,9 +300,10 @@ const styles = StyleSheet.create({
   lookWide: { flexDirection: 'row', alignItems: 'stretch' },
   canvasStack: { gap: spacing.md },
   canvasCol: { flex: 1.25 },
-  fill: { flexGrow: 1 },
   tipColumn: { gap: spacing.md, justifyContent: 'flex-start' },
   cardCol: { flex: 1 },
+  // The card keeps its own height, centred beside the canvas, instead of stretching over empty space.
+  cardColCentered: { alignSelf: 'center' },
   empty: {
     alignItems: 'flex-start',
     gap: 14,

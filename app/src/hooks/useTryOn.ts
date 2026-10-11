@@ -5,7 +5,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, unwrap } from '@/api-client/errors';
 import { apiClient } from '@/api-client/http-client';
@@ -23,6 +23,12 @@ import { prefetchTryOnImage } from '@/offline/images';
 
 /** Default polling interval for `GET /tryon/{id}` while the render is not finished. */
 export const TRYON_POLL_INTERVAL_MS = 1500;
+
+/**
+ * Consecutive failed polls of a render still in flight that are hidden behind the progress bar;
+ * one more shows the error (about 7 s at the default interval). A successful poll resets the count.
+ */
+export const TRYON_MAX_POLL_FAILURES = 5;
 
 /** A look -> render association older than this is dropped (see `pruneTryOn`). */
 export const TRYON_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -73,17 +79,26 @@ type UseTryOnOptions = {
  */
 export function useTryOn(id: string | undefined, options: UseTryOnOptions = {}) {
   const { enabled = true, refetchInterval = TRYON_POLL_INTERVAL_MS } = options;
-  return useQuery({
+  // Polls that failed in a row for this render; a successful poll resets it.
+  const [failures, setFailures] = useState({ id, count: 0 });
+  const query = useQuery({
     queryKey: queryKeys.tryon.detail(id ?? ''),
     enabled: enabled && !!id,
     queryFn: async () => {
-      const render = await fetchTryOn(id as string);
-      keepImage(render);
-      return render;
+      try {
+        const render = await fetchTryOn(id as string);
+        setFailures({ id, count: 0 });
+        keepImage(render);
+        return render;
+      } catch (error) {
+        setFailures((prev) => ({ id, count: prev.id === id ? prev.count + 1 : 1 }));
+        throw error;
+      }
     },
     staleTime: (query) => (isTerminal(query.state.data) ? Infinity : 0),
     refetchInterval: (query) => (isInFlight(query.state.data) ? refetchInterval : false),
   });
+  return { ...query, failedPolls: failures.id === id ? failures.count : 0 };
 }
 
 /**
@@ -151,6 +166,7 @@ export function useLookTryOn(
   const query = useTryOn(renderId, options);
   const mutation = useRequestTryOn();
   const { mutate, reset } = mutation;
+  const queryClient = useQueryClient();
 
   const request = useCallback(() => mutate(garmentIds), [mutate, garmentIds]);
 
@@ -162,9 +178,19 @@ export function useLookTryOn(
   // A render the server no longer has (404) is not an error: the look simply has none.
   const gone = query.error instanceof ApiError && query.error.status === 404;
   const render = gone ? undefined : query.data;
+  // The render was purged: forget the link so the look is untried again and can be requested anew.
+  useEffect(() => {
+    if (!gone || !renderId) return;
+    queryClient.resetQueries({ queryKey: queryKeys.tryon.byLook(key), exact: true });
+    queryClient.removeQueries({ queryKey: queryKeys.tryon.detail(renderId), exact: true });
+  }, [gone, renderId, key, queryClient]);
   // A failed poll (network blip, 5xx) while the render is still in flight keeps the bar going: the
-  // next poll may succeed. Only a failed request or a render that failed itself shows the error.
-  const pollError = gone || isInFlight(render) ? undefined : (query.error ?? undefined);
+  // next poll may succeed. Only a failed request, a render that failed itself or a run of
+  // `TRYON_MAX_POLL_FAILURES` failed polls shows the error.
+  const pollError =
+    gone || (isInFlight(render) && query.failedPolls < TRYON_MAX_POLL_FAILURES)
+      ? undefined
+      : (query.error ?? undefined);
   const error = requestError ?? pollError;
   // A fresh render beats the failure of an earlier request.
   const status = useMemo(

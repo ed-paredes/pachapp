@@ -43,7 +43,7 @@ type LookWhyCardProps = {
   replaceQuestion?: ReplaceQuestion;
   /** Why an action is off (calm, under the buttons). */
   note?: string;
-  /** Layout overrides (Hoy stretches the card to the canvas height). */
+  /** Layout overrides (Hoy centres the card beside the canvas). */
   style?: StyleProp<ViewStyle>;
   testID?: string;
 };

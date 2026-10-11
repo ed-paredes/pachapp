@@ -7,6 +7,7 @@ import { queryKeys } from '../src/api-client/query-keys';
 import { OFFLINE_NOTE } from '../src/components/OfflineBanner';
 import { ToastProvider } from '../src/components/ui';
 import { bumpWardrobeVersion, proposalSet } from '../src/hooks/useGenerateOutfits';
+import { TRYON_MAX_AGE_MS } from '../src/hooks/useTryOn';
 import { localDateKey, msUntilEndOfDay } from '../src/lib/look-day';
 import { reportUnreachable, resetBackendStatus } from '../src/offline/reachability';
 
@@ -177,6 +178,24 @@ describe('Hoy: the look of the day', () => {
     expect(screen.queryByText(/% match/)).toBeNull();
     // One generation request, without exclusions.
     expect(generateBodies).toEqual([{}]);
+  });
+
+  it('prunes old try-on links and unlinked renders along with the outfits (R3-004)', async () => {
+    mockApi();
+    const client = makeClient();
+    const old = Date.now() - TRYON_MAX_AGE_MS - 1000;
+    const done = { id: 'r1', status: 'done', garment_ids: ['x'] };
+    client.setQueryData(queryKeys.tryon.byLook('x'), { renderId: 'r1' }, { updatedAt: old });
+    client.setQueryData(queryKeys.tryon.detail('r1'), done);
+    client.setQueryData(queryKeys.tryon.byLook('y'), { renderId: 'r2' });
+    client.setQueryData(queryKeys.tryon.detail('r2'), { ...done, id: 'r2' });
+    await renderToday(client);
+    await lookOfTheDay();
+    await waitFor(() => expect(client.getQueryData(queryKeys.tryon.byLook('x'))).toBeUndefined());
+    expect(client.getQueryData(queryKeys.tryon.detail('r1'))).toBeUndefined();
+    // A recent link and its render stay.
+    expect(client.getQueryData(queryKeys.tryon.byLook('y'))).toEqual({ renderId: 'r2' });
+    expect(client.getQueryData(queryKeys.tryon.detail('r2'))).toBeDefined();
   });
 
   it('promotes an alternative to the look of the day', async () => {
