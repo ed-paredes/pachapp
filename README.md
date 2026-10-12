@@ -42,6 +42,8 @@ make run-worker # processing worker
 make run-ui     # Expo dev server, web on :8081
 ```
 
+Or all three at once: see [Quick start for testing](#quick-start-for-testing).
+
 ### Hosting the web build
 
 The web build is a single-page app (`web.output: "single"` in `app/app.json`):
@@ -81,6 +83,9 @@ live list.
 | `run`         | Start the API (uvicorn, auto-reload)                      |
 | `run-worker`  | Start the processing worker                               |
 | `run-ui`      | Start the Expo dev server (web on :8081)                  |
+| `dev`         | Run API + worker + Expo together with prefixed logs       |
+| `dev-phone`   | `dev` with `.env.lan` and a phone reachability check      |
+| `dev-phone-check` | Only the phone reachability check                     |
 | `test`        | Run backend and app tests                                 |
 | `lint`        | Lint backend and app                                      |
 | `fmt`         | Format backend and app in place                           |
@@ -149,18 +154,61 @@ percentage and timings. The folder holds `*.jpg/*.jpeg/*.png` plus a
 Direct use: `cd backend && uv run python -m ml.eval [DIR] [--no-cutout] [--limit N]`.
 Add `--min-category-accuracy 0.85` to exit with code 2 (after the report) when category accuracy is below the gate.
 
-## Phone / LAN access (manual)
+## Quick start for testing
 
-To open the app on a phone via Expo Go, the phone needs to reach the API
-running in WSL (D13). This typically means:
+One terminal runs the API, the worker and Expo, with their logs prefixed
+`[api]`, `[worker]` and `[ui]`. Ctrl-C stops all three; if one of them exits,
+the others are stopped too.
 
-- Windows `.wslconfig` set to `networkingMode=mirrored`, with a firewall rule
-  allowing inbound `8000`/`8081`.
-- `EXPO_PUBLIC_API_BASE_URL` set to the PC's LAN IP (e.g.
-  `http://192.168.1.10:8000`), and that LAN origin added to
-  `PACHAPP_CORS_ORIGINS`.
+```bash
+make dev              # web: http://localhost:8081 (settings from .env, or ENV_FILE=...)
+make dev-phone        # same, on the LAN with .env.lan, plus a phone reachability check
+make dev-phone-check  # only the check, against a stack that is already running
+```
 
-See `docs/specs/01-dev-tooling.md` for the full checklist and fallbacks.
+`make dev-phone` needs a gitignored `.env.lan` at the repo root with the PC's
+LAN IP, for example:
+
+```bash
+PACHAPP_API_HOST=0.0.0.0
+EXPO_PUBLIC_API_BASE_URL=http://192.168.1.41:8000
+PACHAPP_CORS_ORIGINS=["http://localhost:8081","http://192.168.1.41:8081"]
+```
+
+It starts Expo with `REACT_NATIVE_PACKAGER_HOSTNAME` set to that IP. Once the
+API and Metro answer on localhost, it requests `http://<ip>:8000/health` and
+`http://<ip>:8081`. When both answer it prints `exp://<ip>:8081`: in Expo Go
+choose "Enter URL manually" and type it (or scan the QR Expo prints). The
+phone and the PC must be on the same Wi-Fi.
+
+**When the check fails**, the stack keeps running (the web still works) and the
+script prints the fix with the current WSL IP filled in. It is the usual
+state after a Windows reboot (WSL runs in NAT mode; Windows forwards 8000 and
+8081 to WSL with `netsh interface portproxy`, and the network profile goes
+back to Public). In an administrator PowerShell:
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Ethernet 3" -NetworkCategory Private
+netsh interface portproxy reset
+netsh interface portproxy add v4tov4 listenaddress=<LAN IP> listenport=8000 connectaddress=<WSL IP> connectport=8000
+netsh interface portproxy add v4tov4 listenaddress=<LAN IP> listenport=8081 connectaddress=<WSL IP> connectport=8081
+Restart-Service iphlpsvc
+netstat -ano | Select-String "<LAN IP>:80"
+```
+
+(`<WSL IP>` is `hostname -I | awk '{print $1}'` in WSL.) Then run
+`make dev-phone-check`. Also needed once: an inbound firewall rule for 8000 and
+8081 on the Private profile. Do not use `wsl --shutdown`.
+
+`make run-ui` takes an optional `EXPO_PORT` (default: Expo's 8081).
+
+### Alternative: mirrored networking
+
+Instead of the portproxy, Windows `.wslconfig` can set
+`networkingMode=mirrored`, with a firewall rule allowing inbound `8000`/`8081`.
+Either way `EXPO_PUBLIC_API_BASE_URL` must be the PC's LAN IP and that origin
+must be in `PACHAPP_CORS_ORIGINS`. See `docs/specs/01-dev-tooling.md` for the
+full checklist and fallbacks.
 
 ## Android app (offline viewing)
 

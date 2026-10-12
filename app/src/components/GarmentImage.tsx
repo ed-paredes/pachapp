@@ -4,13 +4,9 @@ import { Platform, StyleSheet, type ImageStyle, useWindowDimensions, View } from
 
 import { useImageTransition } from '@/hooks/useImageTransition';
 import { GARMENT_IMAGE_CACHE_POLICY } from '@/lib/image-url';
-import { fitWithin, type Size } from '@/lib/fit-within';
+import { type Size } from '@/lib/fit-within';
+import { HERO_MAX_HEIGHT_RATIO, heroImageBox } from '@/lib/hero-size';
 import { colors, radii, spacing, tint } from '@/theme';
-
-/** Hero image is at most this share of the window height. */
-export const HERO_MAX_HEIGHT_RATIO = 0.45;
-/** Hero image is at most this wide (dp). */
-export const HERO_MAX_WIDTH = 520;
 
 type GarmentImageProps = {
   uri: string;
@@ -86,15 +82,15 @@ export function HeroImage({
   const { height } = useWindowDimensions();
   const duration = useImageTransition();
   const [loaded, setLoaded] = useState<{ uri: string; size: Size } | null>(null);
-  const intrinsic = loaded?.uri === uri ? loaded.size : null;
   const [panelWidth, setPanelWidth] = useState(0);
-
-  const max: Size = {
-    width: Math.min(HERO_MAX_WIDTH, Math.max(0, panelWidth - padding * 2)),
-    height: Math.round(height * maxHeightRatio),
-  };
-  // Before the source size is known, reserve the largest box so the page does not jump much.
-  const box = intrinsic ? fitWithin(intrinsic, max) : max;
+  const box = heroImageBox({
+    uri,
+    loaded,
+    panelWidth,
+    padding,
+    windowHeight: height,
+    maxHeightRatio,
+  });
 
   return (
     <View

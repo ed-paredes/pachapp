@@ -51,6 +51,13 @@ describe('gridColumns', () => {
   it('fits roughly one column per 190 dp plus the gap', () => {
     expect(gridColumns(1088, undefined, 12)).toBe(5);
     expect(gridColumns(800, undefined, 12)).toBe(4);
+    expect(gridColumns(1200, undefined, 12)).toBe(6);
+  });
+
+  it('uses two columns on a phone width and keeps the floor for degenerate widths', () => {
+    expect(gridColumns(390 - 32, undefined, 12)).toBe(2);
+    expect(gridColumns(0)).toBe(MIN_GRID_COLUMNS);
+    expect(gridColumns(-50)).toBe(MIN_GRID_COLUMNS);
   });
 });
 
