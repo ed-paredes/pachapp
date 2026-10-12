@@ -182,6 +182,8 @@ def test_setting_singleton_row_seeded_with_spec_defaults(migrated_db: Path) -> N
     assert row["duplicate_warning_threshold"] == 0.92
     assert row["needs_review_threshold"] == 0.7
     assert row["color_review_threshold"] == 0.7
+    assert row["tryon_gender"] == "woman"
+    assert row["tryon_skin_tone"] == 3
     assert row["updated_at"] is not None
 
 
@@ -259,6 +261,28 @@ def test_outfit_rating_check_constraint_rejects_out_of_range(migrated_db: Path) 
             _insert_outfit(conn, "o-bad", rating=2)
     finally:
         conn.close()
+
+
+def test_model_settings_migration_defaults_the_existing_row_and_drops_on_downgrade(
+    migrated_db: Path,
+) -> None:
+    cfg = _alembic_config()
+    command.downgrade(cfg, "c4e8f21a6d93")
+    conn = sqlite3.connect(migrated_db)
+    try:
+        columns = {r[1] for r in conn.execute("PRAGMA table_info(setting)")}
+        assert not columns & {"tryon_gender", "tryon_skin_tone"}
+        assert conn.execute("SELECT count(*) FROM setting").fetchone() == (1,)
+    finally:
+        conn.close()
+
+    command.upgrade(cfg, "head")
+    conn = sqlite3.connect(migrated_db)
+    try:
+        row = conn.execute("SELECT tryon_gender, tryon_skin_tone FROM setting").fetchall()
+    finally:
+        conn.close()
+    assert row == [("woman", 3)]
 
 
 def test_downgrade_then_upgrade_round_trip(migrated_db: Path) -> None:

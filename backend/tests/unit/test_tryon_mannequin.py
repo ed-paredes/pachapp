@@ -75,3 +75,19 @@ def test_bad_meta(tmp_path: Path, content: str) -> None:
     (make_mannequin(tmp_path) / "meta.json").write_text(content)
     with pytest.raises(MannequinError, match="meta.json"):
         load_mannequin(tmp_path, "m1")
+
+
+@pytest.mark.parametrize(
+    ("mannequin_id", "gender"),
+    [("m12-woman-crop-shorts", "woman"), ("m13-man-beige-shorts", "man")],
+)
+def test_tracked_base_mannequins_load_with_their_gender(mannequin_id: str, gender: str) -> None:
+    mannequin = load_mannequin(REPO_ASSETS, mannequin_id)
+    assert mannequin.person.size == (768, 1024)
+    assert mannequin.gender == gender
+    assert mannequin.meta["id"] == mannequin_id
+
+
+def test_gender_is_none_when_meta_has_none(tmp_path: Path) -> None:
+    make_mannequin(tmp_path)
+    assert load_mannequin(tmp_path, "m1").gender is None

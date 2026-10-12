@@ -60,7 +60,7 @@ def settings(tmp_path: Path) -> Settings:
         worker_poll_interval_ms=5,
         tryon_enabled=True,
         tryon_assets_dir=tmp_path / "assets",
-        tryon_mannequin="m1",
+        tryon_mannequin_woman="m1",
         tryon_width=SIZE,
         tryon_height=SIZE,
         tryon_steps=STEPS,

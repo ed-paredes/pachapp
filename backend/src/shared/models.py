@@ -265,6 +265,9 @@ class Setting(SQLModel, table=True):
     duplicate_warning_threshold: float = Field(default=0.92, nullable=False)
     needs_review_threshold: float = Field(default=0.7, nullable=False)
     color_review_threshold: float = Field(default=0.7, nullable=False)
+    # Try-on dummy: which base to dress and the flat skin tone (tryon.tones).
+    tryon_gender: str = Field(default="woman", nullable=False)
+    tryon_skin_tone: int = Field(default=3, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
 

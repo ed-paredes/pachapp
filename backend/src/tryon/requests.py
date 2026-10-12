@@ -27,11 +27,19 @@ from api.errors import (
     AppError,
 )
 from shared.enums import JobStatus, OutfitSlot
-from shared.models import MAX_RENDER_ATTEMPTS, Garment, Outfit, OutfitItem, TryOnRender
+from shared.models import (
+    MAX_RENDER_ATTEMPTS,
+    Garment,
+    Outfit,
+    OutfitItem,
+    Setting,
+    TryOnRender,
+)
 from shared.settings import Settings
 from tryon.cache import cache_key, hash_cutout, mannequin_version, model_version
 from tryon.mannequin import MannequinError, validate_mannequin_id
 from tryon.mapping import PassPlan, PlanGarment, plan_passes
+from tryon.tones import DEFAULT_GENDER, Gender
 
 # Failures a retry cannot fix (the codes of `tryon.service`/`worker.tryon_claim`): a resubmit
 # returns them as they are. The others (`out_of_memory`, `engine_unavailable`, `engine_error`,
@@ -109,6 +117,17 @@ def _plan(garments: dict[str, Garment], ordered_ids: list[str], max_passes: int)
     return plan
 
 
+def configured_mannequin(settings: Settings, gender: Gender) -> str:
+    return settings.tryon_mannequin_man if gender == "man" else settings.tryon_mannequin_woman
+
+
+def default_mannequin(session: Session, settings: Settings) -> str:
+    """The base mannequin for the owner's current `Setting.tryon_gender` (woman when unset)."""
+    row = session.get(Setting, 1)
+    gender = row.tryon_gender if row is not None else DEFAULT_GENDER
+    return configured_mannequin(settings, "man" if gender == "man" else DEFAULT_GENDER)
+
+
 def find_or_create_render(
     session: Session,
     settings: Settings,
@@ -155,7 +174,7 @@ def find_or_create_render(
             {"garment_ids": unreadable},
         )
 
-    mannequin = mannequin_id or settings.tryon_mannequin
+    mannequin = mannequin_id or default_mannequin(session, settings)
     try:
         validate_mannequin_id(mannequin)
         mannequin_digest = mannequin_version(settings.tryon_assets_dir, mannequin)
