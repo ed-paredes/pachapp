@@ -20,15 +20,15 @@ portproxy and the network profile reset). The owner asked (2026-10-12) for a flo
 
 ## Tasks
 
-- [ ] **D1** `make dev` (web) and `make dev-phone` (LAN, `.env.lan`): start API + worker + Expo in one command,
+- [x] **D1** `make dev` (web) and `make dev-phone` (LAN, `.env.lan`): start API + worker + Expo in one command,
   prefix and colour their logs, stop all three on Ctrl-C; `dev-phone` first runs a preflight that checks the API
   and Metro answer on the LAN IP from `.env.lan` and, when they do not, prints the exact admin PowerShell fix
   (network profile Private, portproxy reset/re-add with the WSL IP, `Restart-Service iphlpsvc`); then prints the
   `exp://<ip>:8081` URL (and a QR if Expo prints one). README section updated.
-- [ ] **D2** R1 from `ux-probador.md`: unit test for `gridColumns`; extract the hero sizing into a pure helper
+- [x] **D2** R1 from `ux-probador.md`: unit test for `gridColumns`; extract the hero sizing into a pure helper
   and test its caps; test the low-res note on the failed-upload/retry path; `useImageTransition` listens to
   reduce-motion changes; plus any other R1 item that still applies (check the current code).
-- [ ] **D3** Task docs: mark `ux-probador.md` D1/U4/U6 as superseded by the redesign and U5 as done in
+- [x] **D3** Task docs: mark `ux-probador.md` D1/U4/U6 as superseded by the redesign and U5 as done in
   `u5-garment-cutout.md` (#46/#47), R1 done after D2.
 
 ## Acceptance criteria
@@ -45,6 +45,27 @@ Delivery: one PR, a commit per task.
 
 ## Progress
 
+- 2026-10-12: owner started testing on the web and the phone with the real data. Before the writer the parent
+  backed up the DB (`pachapp.sqlite3.bak-pre-tryon`), ran `make migrate` (`c4e8f21a6d93`), enabled the try-on
+  in `.env`/`.env.lan` and started the stack with `ENV_FILE=.env.lan`.
+- D1 b8b6517 (+ c86dc82): `scripts/dev.sh` + `make dev`, `make dev-phone`, `make dev-phone-check` (LAN preflight
+  on `<ip>:<api port>/health` and Metro `/status`; on failure the admin PowerShell fix with the live WSL IP), an
+  optional `EXPO_PORT` on `run-ui`, README "Quick start for testing". `make dev-phone-check
+  LAN_ENV_FILE=<main checkout>/.env.lan` against the running stack: "Phone ready … exp://192.168.1.41:8081".
+  Start/stop verified with stub servers on spare ports; real SIGINT checked by reading only.
+- D2 a723274: `gridColumns` edge tests (the floor is 2, not 1), `heroImageBox` pure helper + 8 tests, low-res
+  note test on the retry path, `useImageTransition` follows live reduce-motion changes; optional thumbnail
+  backfill dropped (not worth a migration). App checks clean; jest 467.
+- D3 b5c2fe5: `ux-probador.md` D1/U4/U6 superseded, U5 done (#46/#47), R1 done.
+- Native review (high, granted, 4 lenses): one deterministic CRITICAL finding, `scripts/dev.sh` committed as
+  100644 while the Makefile ran it directly (`core.fileMode` is false in this clone) -> correction c86dc82 (run it
+  through `bash`, track it as 100755). Targeted validation then failed twice with `invalid_request` (the
+  in-process validator cannot inspect the frozen trees): Gentle AI defect, occurrence added to
+  Gentleman-Programming/gentle-ai#5334. Owner chose "report and continue"; the captured decline answer was
+  refused as `stale_target_identity` (it belongs to the pre-correction candidate), so lineage
+  review-846032b6e46a6892 stays open at `targeted_validation_inconclusive_recapture_required` with no receipt.
+  Delivery follows ordinary repository policy.
+
 ## Next step
 
-D1, D2, D3 with one writer.
+PR. The owner keeps testing the try-on, ingestion (A14), AI attributes (T4) and Hoy (E4).
