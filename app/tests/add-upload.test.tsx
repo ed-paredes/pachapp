@@ -160,6 +160,31 @@ describe('AddScreen upload flow', () => {
     await waitFor(() => expect(screen.getAllByText('Recortando').length).toBe(2));
   });
 
+  it('keeps the low-resolution note on a failed upload and after a retry', async () => {
+    let attempts = 0;
+    routeFetch({
+      'POST /garments': () =>
+        ++attempts === 1
+          ? json({ error: { code: 'X', message: 'Sin conexión con el servidor.' } }, 500)
+          : json({ garment_id: 'g1', job_id: 'j1' }, 202),
+      'GET /jobs/j1': job('running', 'cutout', 30),
+    });
+    ({ client } = await renderScreen());
+    ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+      canceled: false,
+      assets: [asset('small.jpg', 417, 300)],
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Elegir de la galería' }));
+
+    const retry = await screen.findByRole('button', { name: 'Reintentar subida de small.jpg' });
+    expect(screen.getAllByTestId('low-res-note')).toHaveLength(1);
+
+    await fireEvent.press(retry);
+    await waitFor(() => expect(screen.getAllByRole('progressbar').length).toBeGreaterThan(0));
+    expect(attempts).toBe(2);
+    expect(screen.getAllByTestId('low-res-note')).toHaveLength(1);
+  });
+
   it('lets the user add more photos while others are processing', async () => {
     let created = 0;
     routeFetch({
