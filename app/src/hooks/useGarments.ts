@@ -16,11 +16,21 @@ export async function fetchGarmentDetail(id: string) {
   );
 }
 
-/** `GET /garments` with optional filters (category, status, needs_review, ...). */
-export function useGarments(filters: GarmentFilters = {}) {
+/**
+ * Counters and Historial lists stay fresh this long. Every mutation that can change them
+ * (upload, patch, delete, wear) invalidates the lists, so only changes made elsewhere wait.
+ */
+export const GARMENT_SUMMARY_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * `GET /garments` with optional filters (category, status, needs_review, ...). `staleTime`
+ * overrides the client default for lists that mutations keep fresh.
+ */
+export function useGarments(filters: GarmentFilters = {}, options: { staleTime?: number } = {}) {
   return useQuery({
     queryKey: queryKeys.garments.list(filters),
     queryFn: () => fetchGarmentList(filters),
+    staleTime: options.staleTime,
   });
 }
 

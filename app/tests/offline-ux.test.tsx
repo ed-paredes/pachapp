@@ -496,7 +496,7 @@ describe('recovering', () => {
     });
 
     expect(getBackendStatus()).toBe('online');
-    expect(refetch).toHaveBeenCalledWith({ type: 'active' });
+    expect(refetch).toHaveBeenCalledWith({ type: 'active', stale: true });
     expect(mockSync).toHaveBeenCalledTimes(1);
   });
 
