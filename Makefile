@@ -42,7 +42,7 @@ NPM := npm --prefix app
 
 .PHONY: help install check-node run run-worker run-ui test lint fmt fmt-check \
 	typecheck migrate migrate-new gen-client ml-preload ml-cutouts ml-eval ml-cutout-eval backfill-ai recut-garments \
-	tryon-setup tryon-masks tryon-spike android-apk
+	tryon-setup tryon-masks tryon-spike android-apk dev dev-phone dev-phone-check
 
 help: ## List targets
 	@grep -hE '^[a-z-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -71,7 +71,30 @@ run-ui: check-node ## Start the Expo dev server (web on :8081)
 		echo "error: EXPO_PUBLIC_API_BASE_URL is empty or unset; set it in $(ENV_FILE) (or export it in the shell)." >&2; \
 		exit 1; \
 	fi
-	$(APP) EXPO_PUBLIC_API_BASE_URL="$(EXPO_PUBLIC_API_BASE_URL)" npx expo start
+	$(APP) EXPO_PUBLIC_API_BASE_URL="$(EXPO_PUBLIC_API_BASE_URL)" npx expo start $(if $(EXPO_PORT),--port $(EXPO_PORT))
+
+# API + worker + Expo in one terminal with [api]/[worker]/[ui] log prefixes
+# (scripts/dev.sh). dev-phone reads .env.lan (LAN_ENV_FILE) and checks that the
+# phone can reach the PC; see README "Quick start for testing".
+LAN_ENV_FILE ?= .env.lan
+DEV_MODE ?= web
+_DEV_ENV = DEV_ENV_FILE='$(ENV_FILE)' DEV_API_PORT='$(PACHAPP_API_PORT)' \
+	DEV_EXPO_PORT='$(or $(EXPO_PORT),8081)' DEV_API_URL='$(EXPO_PUBLIC_API_BASE_URL)'
+
+dev: ## Run API + worker + Expo together with prefixed logs (Ctrl-C stops all)
+	@$(_DEV_ENV) scripts/dev.sh $(DEV_MODE)
+
+dev-phone: ## Like dev, with .env.lan and a check that the phone can reach the PC
+	@$(call _need_lan)
+	@$(MAKE) --no-print-directory dev ENV_FILE=$(LAN_ENV_FILE) DEV_MODE=phone
+
+dev-phone-check: ## Only check that the phone can reach the running stack (touches nothing)
+	@$(call _need_lan)
+	@$(MAKE) --no-print-directory dev ENV_FILE=$(LAN_ENV_FILE) DEV_MODE=check
+
+define _need_lan
+if [[ ! -f "$(LAN_ENV_FILE)" ]]; then 	echo "error: $(LAN_ENV_FILE) not found. Create it as described in README.md (Quick start for testing)." >&2; 	exit 1; fi
+endef
 
 test: check-node ## Run backend and app tests
 	$(BACKEND) uv run pytest
