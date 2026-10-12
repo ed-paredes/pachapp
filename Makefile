@@ -82,7 +82,7 @@ _DEV_ENV = DEV_ENV_FILE='$(ENV_FILE)' DEV_API_PORT='$(PACHAPP_API_PORT)' \
 	DEV_EXPO_PORT='$(or $(EXPO_PORT),8081)' DEV_API_URL='$(EXPO_PUBLIC_API_BASE_URL)'
 
 dev: ## Run API + worker + Expo together with prefixed logs (Ctrl-C stops all)
-	@$(_DEV_ENV) scripts/dev.sh $(DEV_MODE)
+	@$(_DEV_ENV) bash scripts/dev.sh $(DEV_MODE)
 
 dev-phone: ## Like dev, with .env.lan and a check that the phone can reach the PC
 	@$(call _need_lan)
