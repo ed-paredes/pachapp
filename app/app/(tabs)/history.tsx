@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { ErrorState } from '@/components/ErrorState';
 import { HistoryView, type HistoryKpi, type RankItem } from '@/components/history';
 import { Eyebrow, Screen, Title } from '@/components/ui';
-import { useGarments } from '@/hooks/useGarments';
+import { GARMENT_SUMMARY_STALE_MS, useGarments } from '@/hooks/useGarments';
 import { useNow } from '@/hooks/useNow';
 import { garmentName } from '@/lib/garment-name';
 import { imageUrl } from '@/lib/image-url';
@@ -46,6 +46,9 @@ function toRow(item: Listed, detail: string, usage?: number): RankItem {
   };
 }
 
+/** Historial lists are refreshed by the mutations that change them (upload, patch, wear). */
+const SUMMARY_FRESH = { staleTime: GARMENT_SUMMARY_STALE_MS };
+
 /**
  * Historial. There is no wear-log endpoint yet, so the calendar, looks per month, cost per use
  * and trends are not shown (`calendar` stays undefined: the empty state shows). What the garment
@@ -58,10 +61,10 @@ export default function HistoryScreen() {
   const now = useNow();
 
   // Same request as Hoy, so the cache is shared: the active wardrobe, most worn first.
-  const active = useGarments(USAGE_FILTERS);
+  const active = useGarments(USAGE_FILTERS, SUMMARY_FRESH);
   // Never-worn first (the API sorts nulls last on `last_worn_at`, so they need `wear_count`).
-  const unworn = useGarments(UNWORN_FILTERS);
-  const stale = useGarments(STALE_FILTERS);
+  const unworn = useGarments(UNWORN_FILTERS, SUMMARY_FRESH);
+  const stale = useGarments(STALE_FILTERS, SUMMARY_FRESH);
 
   // A failed request must not look like an empty wardrobe. The main query drives the screen, so
   // without it there is nothing honest to show: block with the error (and the title, so the

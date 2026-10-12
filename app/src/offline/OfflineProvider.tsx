@@ -9,6 +9,8 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 
 import { apiClient } from '@/api-client/http-client';
+import { DEFAULT_STALE_TIME_MS } from '@/api-client/query-client';
+import { queryKeys } from '@/api-client/query-keys';
 
 import {
   cacheBuster,
@@ -49,9 +51,18 @@ function WardrobeSyncer() {
 }
 
 /**
+ * A reconnect right after a sync (a LAN blip, the phone locking) would refetch every list page
+ * and every garment detail again: skip it while the last successful sync is still fresh.
+ */
+function syncedRecently(client: QueryClient): boolean {
+  const last = client.getQueryData<number>(queryKeys.sync.last);
+  return typeof last === 'number' && Date.now() - last < DEFAULT_STALE_TIME_MS;
+}
+
+/**
  * While the backend is unreachable, asks it for `/health` every 15 s and when the app returns to
  * the foreground. The first answer flips the status back to online (the request itself reports
- * it, see `trackedFetch`); then the screens refresh and the wardrobe syncs again, no restart.
+ * it, see `trackedFetch`); then the stale screens refresh and the wardrobe syncs again (unless it just did), no restart.
  */
 function ReconnectWatcher() {
   const client = useQueryClient();
@@ -69,8 +80,9 @@ function ReconnectWatcher() {
       if (offline && !timer) timer = setInterval(ping, RECONNECT_INTERVAL_MS);
       if (!offline) stop();
       if (offlineBefore && !offline) {
-        void client.refetchQueries({ type: 'active' });
-        void syncWardrobe(client);
+        // Only what went stale: a quick flap must not refetch data that is still fresh.
+        void client.refetchQueries({ type: 'active', stale: true });
+        if (!syncedRecently(client)) void syncWardrobe(client);
       }
       offlineBefore = offline;
     };

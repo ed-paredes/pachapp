@@ -27,7 +27,12 @@ import {
   Title,
 } from '@/components/ui';
 import { useIsOffline } from '@/offline/reachability';
-import { flattenGarmentPages, useGarments, useInfiniteGarments } from '@/hooks/useGarments';
+import {
+  flattenGarmentPages,
+  GARMENT_SUMMARY_STALE_MS,
+  useGarments,
+  useInfiniteGarments,
+} from '@/hooks/useGarments';
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/labels';
 import {
   ALL_STATUS,
@@ -66,7 +71,7 @@ function statusFilter(choice: StatusChoice): GarmentStatus[] {
 
 /** Total of a list query: one cheap request (page size 1) per counter. */
 function useTotal(filters: CountFilters): number | undefined {
-  return useGarments(countFilters(filters)).data?.total;
+  return useGarments(countFilters(filters), { staleTime: GARMENT_SUMMARY_STALE_MS }).data?.total;
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -121,7 +126,9 @@ export default function WardrobeScreen() {
     archived: useTotal({ ...scope, status: ['archived'] }),
     all: useTotal({ ...scope, status: statusFilter('all') }),
   };
-  const reviewQuery = useGarments(countFilters({ status: DEFAULT_STATUS, ...review }));
+  const reviewQuery = useGarments(countFilters({ status: DEFAULT_STATUS, ...review }), {
+    staleTime: GARMENT_SUMMARY_STALE_MS,
+  });
   const pendingReview = needsReview ? 0 : (reviewQuery.data?.total ?? 0);
 
   const clearFilters = () => {
