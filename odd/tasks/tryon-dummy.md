@@ -67,7 +67,7 @@ as good, IoU 0.97-0.99), refining the tone look, changing config C or the spec v
   `tryon_skin_tone` columns + Alembic migration + `GET/PATCH /settings`, `POST /tryon` resolves the mannequin
   from the gender setting when no `mannequin_id` is given, `/tryon/capabilities` lists genders and tones;
   regenerate the app client.
-- [ ] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin_row`, ankle rule) in both
+- [x] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin_row`, ankle rule) in both
   metas, unload CatVTON, SegFormer parse, crop, alpha, flat recolour into
   6 tone variants, store them; `postprocess` version in the cache key; `GET /tryon/{id}` returns the image for
   the current tone; cleanup removes the variants.
@@ -137,7 +137,27 @@ fails; it would cost a second set of assets and a garment-length signal in the r
 - 2026-10-13: owner decision on skirts on the man base (g07 mini skirt renders as trousers, g08 as wide shorts):
   "se queda así", accepted as a known limit; skirts are not routed to the woman base.
 
+- 2026-10-13 V6c (delegated writer, 2+ non-trivial files): 0dc1d64 `feat(tryon): turn the render into a featureless
+  dummy in six skin tones`; 23 files, +961/-19 (source and config about +353/-17, tests about +585; over the 400
+  heuristic only because of tests). New `tryon/dummy.py` (`DUMMY_VERSION="dummy-1"`), worker parses with
+  SegFormer-b2 on the CPU (parser built once per process, CatVTON kept loaded), raw output kept at `img_path` plus
+  6 RGBA variants `tryon/<id>_t<n>.webp`, `params.dummy`, `postprocess` in the cache key and params, `GET /tryon`
+  returns the tone variant and `transparent`, cleanup removes variants, `tryon_dummy_enabled`/`tryon_dummy_device`
+  settings. Calibrated cut lines in meta: M12 chin 153/768 (0.1992), ankle shoe top, fallback 0.7852; M13 chin
+  138/768 (0.1797), fallback 0.8060. Failure path: any post-processing error keeps the raw output (`done`, no
+  `params.dummy`, `transparent=false`), logs and deletes partial variants; it stays cached under the dummy key until
+  purged or the version is bumped (no `dummy_failed` code). Pending renders created before this change fail as
+  `invalid_params`/`garment_changed` (key lacks `postprocess`); a resubmit makes a new render.
+  Checks (writer): ruff format/check, ty clean; pytest 1018 passed (+38); app typecheck, lint, prettier clean; jest
+  476 passed. Smoke (CPU, real b2 on 4 spike renders, `~/pachapp-data/eval-results/tryon-v6c-smoke-2026-10-13/`):
+  model load 19.7 s once; parse 2.6-3.0 s, post total 2.8-3.2 s per render; look matches the spike sheets.
+  Parent: spot check pytest on worker, API, cleanup and dummy tests: 128 passed. End-to-end on a migrated copy
+  of the owner's data (API :8010 + real worker from this branch, GPU): polo + trousers on M12 (gender woman) and
+  M13 (gender man): both `done`, `transparent: true`, 6 variants each; `PATCH tryon_skin_tone=6` switches `img` to
+  `_t6`; durations 115 s (first, with CatVTON and parser loads) and 45 s; peak VRAM 2859 MB (torch). Sheet:
+  `~/pachapp-data/eval-results/tryon-v6c-e2e-2026-10-13/e2e-sheet.jpg`. Known look issue from CatVTON, not the
+  post-processing: white hand-shaped blobs at the pockets on both bases (as g02 in V6a).
+
 ## Next step
 
-V6b merged (#68, f05a1a1, 2026-10-13). V6c on `feat/tryon-dummy-v6c`
-(next review boundary: 5308c2c; 992c612 is pending in that slice). The owner's DB needs `make migrate` before running V6b code.
+Review of the V6c slice (base 5308c2c, includes 992c612), then PR for V6c, then V6d. The owner's DB needs `make migrate` before running V6b code.
