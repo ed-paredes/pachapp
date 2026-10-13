@@ -207,7 +207,14 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   and the usable raw image is lost); suggestions R3-offline-disable-untested, R3-saved-confirmation-never-clears
   ("Guardado" never times out). Proposed fix: the dummy retry re-runs only the post-processing on the stored raw
   image (no CatVTON, no GPU), "Guardado" clears after a few seconds, an offline test.
+- 2026-10-13 V6d follow-up (delegated writer, owner: "perfecto! si"): 1b2a790 `fix(tryon): retry only the dummy on
+  the stored image and clear the saved note`; 5 files, +199/-13. A dummy retry with a readable stored raw image
+  runs only the post-processing (no engine, no `release_residents`, raw file untouched) and stays `done` raw if it
+  fails again; a missing raw file falls back to the full run. "Guardado" clears after 3 s (`SAVED_NOTE_MS`);
+  offline test added. Checks (writer): ruff format/check, ty clean; pytest 1030; app typecheck, lint, prettier
+  clean; jest 488. Parent: full pytest 1030 passed; settings.test.tsx 19 passed. Assess (base cdc6efc): medium,
+  under budget, pending in the next slice.
 
 ## Next step
 
-Owner decision on the V6d advisories fix, PR for V6d, then V6e. Next review boundary: cdc6efc. The owner's DB needs `make migrate` before running V6b code.
+PR for V6d (owner approved on 2026-10-13), then V6e. Next review boundary: cdc6efc (1b2a790 pending). The owner's DB needs `make migrate` before running V6b code.
