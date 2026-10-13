@@ -121,8 +121,10 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   base when the chosen base is unusable` fixes R3-gender-without-loadable-base (owner: "si dale"); an explicit
   `mannequin_id` still gets 422. Checks: ruff format/check, ty clean; pytest 980 passed (+2). Assess (base 5308c2c):
   medium, under budget (54 lines), stays pending in the next slice. The other advisories stay open as follow-ups.
+- 2026-10-13: owner decision on skirts on the man base (g07 mini skirt renders as trousers, g08 as wide shorts):
+  "se queda así", accepted as a known limit; skirts are not routed to the woman base.
 
 ## Next step
 
-PR for V6b (owner approved push and PR on 2026-10-13). Owner decision pending: skirts on the man base. Then V6c
+PR for V6b (owner approved push and PR on 2026-10-13). Then V6c
 (next review boundary: 5308c2c; 992c612 is pending in that slice). The owner's DB needs `make migrate` before running V6b code.
