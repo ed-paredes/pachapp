@@ -67,8 +67,8 @@ as good, IoU 0.97-0.99), refining the tone look, changing config C or the spec v
   `tryon_skin_tone` columns + Alembic migration + `GET/PATCH /settings`, `POST /tryon` resolves the mannequin
   from the gender setting when no `mannequin_id` is given, `/tryon/capabilities` lists genders and tones;
   regenerate the app client.
-- [x] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin_row`, ankle rule) in both
-  metas, unload CatVTON, SegFormer parse, crop, alpha, flat recolour into
+- [x] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin` ratio, ankle rule) in both
+  metas, CatVTON kept loaded (parse on the CPU), SegFormer parse, crop, alpha, flat recolour into
   6 tone variants, store them; `postprocess` version in the cache key; `GET /tryon/{id}` returns the image for
   the current tone; cleanup removes the variants.
 - [ ] V6d: "Tu modelo" screen in the app (gender, tone, previews), linked from settings, writes `/settings`
@@ -157,7 +157,15 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   `_t6`; durations 115 s (first, with CatVTON and parser loads) and 45 s; peak VRAM 2859 MB (torch). Sheet:
   `~/pachapp-data/eval-results/tryon-v6c-e2e-2026-10-13/e2e-sheet.jpg`. Known look issue from CatVTON, not the
   post-processing: white hand-shaped blobs at the pockets on both bases (as g02 in V6a).
+- 2026-10-13 native review of the V6c slice (5308c2c..b197b02, includes 992c612): owner granted (high, 24 files,
+  1105 lines), 4 lenses, approved and acknowledged (lineage review-1708e9c74e26e0cc). Advisories (non-blocking):
+  WARNING R3-transient-dummy-failure-cached-permanently / R4-transient-dummy-failure-pinned (a transient
+  post-processing failure pins the raw image under the dummy key, no retry), R3-unguarded-variant-cleanup-in-except
+  (rollback delete can raise), R3-legacy-inflight-render-postprocess-key (pending pre-V6c renders index
+  `params["postprocess"]` with no test), R2-task-doc-v6c-misdescribes-impl (V6c task text says `chin_row` and
+  "unload CatVTON"); suggestions: R2-shoe-row-threshold-unscaled, R3-tone-fallback-assumes-default-present,
+  R4-unguarded-variant-delete, R3-task-doc-mismatch.
 
 ## Next step
 
-Review of the V6c slice (base 5308c2c, includes 992c612), then PR for V6c, then V6d. The owner's DB needs `make migrate` before running V6b code.
+Owner decision on the V6c advisories (failure retry), then PR for V6c, then V6d. Next review boundary: b197b02. The owner's DB needs `make migrate` before running V6b code.
