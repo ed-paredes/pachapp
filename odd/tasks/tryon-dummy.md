@@ -50,11 +50,12 @@ as good, IoU 0.97-0.99), refining the tone look, changing config C or the spec v
 - [x] V6a: validate M13 (and M12 as reference) on the untested garment sets g02, g03, g05, g07, g08, g09 with
   the spike script (GPU run, no repo change). Gate for shipping M13; record failures and the decision.
 - [x] V6b: bases catalog and settings (backend): add M13 to `assets/tryon/mannequins/` (person, masks, meta with
-  source, licence, gender, cut lines), add `gender` and cut lines to M12's meta, `tryon_gender` and
+  source, licence, gender), add `gender` to M12's meta (the cut lines moved to V6c), `tryon_gender` and
   `tryon_skin_tone` columns + Alembic migration + `GET/PATCH /settings`, `POST /tryon` resolves the mannequin
   from the gender setting when no `mannequin_id` is given, `/tryon/capabilities` lists genders and tones;
   regenerate the app client.
-- [ ] V6c: dummy post-processing in the worker: unload CatVTON, SegFormer parse, crop, alpha, flat recolour into
+- [ ] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin_row`, ankle rule) in both
+  metas, unload CatVTON, SegFormer parse, crop, alpha, flat recolour into
   6 tone variants, store them; `postprocess` version in the cache key; `GET /tryon/{id}` returns the image for
   the current tone; cleanup removes the variants.
 - [ ] V6d: "Tu modelo" screen in the app (gender, tone, previews), linked from settings, writes `/settings`
@@ -109,10 +110,15 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   resolves the base by gender; capabilities list `genders` and `skin_tones`; client regenerated. Checks (writer):
   ruff format/check, ty clean; pytest 978 passed; app typecheck, lint, prettier clean; jest 476 passed. Parent
   spot check: pytest on test_api_tryon, test_api_settings, test_migrations: 81 passed. Native review assess
-  (base aff8a1f, committed-only): risk high, review due (high_risk); review consent pending with the owner (owner
-  away), not started.
+  (base aff8a1f, committed-only): risk high, review due (high_risk). 2026-10-13: owner granted the review (START
+  rated it medium, 26 files, 447 lines; 1 lens); approved and acknowledged (lineage review-09c0fb95352994ab,
+  aff8a1f..5308c2c). Advisories, non-blocking: R3-gender-without-loadable-base (WARNING, a stored gender whose
+  base does not load fails every `POST /tryon` with no fallback), R3-renamed-env-silently-ignored (WARNING,
+  `PACHAPP_TRYON_MANNEQUIN` is now ignored because settings use `extra="ignore"`; the owner's `.env`/`.env.lan`
+  do not set it), R3-capabilities-full-load-per-request, R3-gender-meta-unchecked,
+  R3-settings-read-strict-literal (suggestions), R3-task-doc-claims-cut-lines (fixed in this document).
 
 ## Next step
 
-Ask the owner for the review consent of 53fe9d9 (preflight STATUS with `--base-ref aff8a1f --committed-only`),
-show the V6a skirt result, then V6c. The owner's DB needs `make migrate` before running V6b code.
+Owner decisions: push and PR for V6b, which advisories to fix, skirts on the man base. Then V6c (next review
+boundary: 5308c2c). The owner's DB needs `make migrate` before running V6b code.
