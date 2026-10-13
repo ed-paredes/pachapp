@@ -165,7 +165,15 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   `params["postprocess"]` with no test), R2-task-doc-v6c-misdescribes-impl (V6c task text says `chin_row` and
   "unload CatVTON"); suggestions: R2-shoe-row-threshold-unscaled, R3-tone-fallback-assumes-default-present,
   R4-unguarded-variant-delete, R3-task-doc-mismatch.
+- 2026-10-13 V6c follow-up (delegated writer, owner: "si adelante"): 33a815a `fix(tryon): retry the dummy on
+  resubmit and harden its failure path`; 4 files, +245/-30. A done render whose dummy failed (dummy postprocess,
+  no `params.dummy`) is re-queued on resubmit (202, shared re-queue reset, `img_path` kept) while `attempts <
+  MAX_RENDER_ATTEMPTS`; past the budget it is served raw. Rollback deletes guarded with `except OSError`.
+  Pre-V6c pending renders end as `invalid_params` (already true through `_validate_params`; now pinned by a test,
+  reads use `.get`). Checks (writer): ruff format/check, ty clean; pytest 1027 passed. Parent spot check:
+  test_api_tryon + test_tryon_worker 104 passed. Assess (base b197b02): medium, under budget, pending in the next
+  slice.
 
 ## Next step
 
-Owner decision on the V6c advisories (failure retry), then PR for V6c, then V6d. Next review boundary: b197b02. The owner's DB needs `make migrate` before running V6b code.
+PR for V6c (owner approved push and PR on 2026-10-13), then V6d. Next review boundary: b197b02 (33a815a pending). The owner's DB needs `make migrate` before running V6b code.
