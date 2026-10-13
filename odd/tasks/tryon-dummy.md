@@ -117,8 +117,12 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   `PACHAPP_TRYON_MANNEQUIN` is now ignored because settings use `extra="ignore"`; the owner's `.env`/`.env.lan`
   do not set it), R3-capabilities-full-load-per-request, R3-gender-meta-unchecked,
   R3-settings-read-strict-literal (suggestions), R3-task-doc-claims-cut-lines (fixed in this document).
+- 2026-10-13 V6b follow-up (parent inline, 1 source file + its test): 992c612 `fix(tryon): fall back to the woman
+  base when the chosen base is unusable` fixes R3-gender-without-loadable-base (owner: "si dale"); an explicit
+  `mannequin_id` still gets 422. Checks: ruff format/check, ty clean; pytest 980 passed (+2). Assess (base 5308c2c):
+  medium, under budget (54 lines), stays pending in the next slice. The other advisories stay open as follow-ups.
 
 ## Next step
 
-Owner decisions: push and PR for V6b, which advisories to fix, skirts on the man base. Then V6c (next review
-boundary: 5308c2c). The owner's DB needs `make migrate` before running V6b code.
+PR for V6b (owner approved push and PR on 2026-10-13). Owner decision pending: skirts on the man base. Then V6c
+(next review boundary: 5308c2c; 992c612 is pending in that slice). The owner's DB needs `make migrate` before running V6b code.
