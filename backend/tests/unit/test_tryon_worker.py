@@ -653,6 +653,104 @@ def test_a_failure_midway_leaves_no_partial_set_of_variants(
     _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
 
 
+def _resubmit(factory, settings: Settings, *garment_ids: str):
+    with factory() as session:
+        return find_or_create_render(
+            session, settings, garment_ids=list(garment_ids), outfit_id=None, mannequin_id=None
+        )
+
+
+def test_a_resubmit_retries_a_dummy_that_failed_once(dummy_settings, factory) -> None:
+    top = _garment(factory, dummy_settings, GarmentCategory.top, 255)
+    render_id = _render(factory, dummy_settings, top)
+    broken = FakeParser(error=RuntimeError("transient"))
+    _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: broken)
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+    assert _get(factory, render_id).attempts == 1
+
+    outcome = _resubmit(factory, dummy_settings, top)
+
+    assert outcome.created and outcome.render.id == render_id
+    row = _get(factory, render_id)
+    assert (row.status, row.attempts) == (JobStatus.pending, 1)
+
+    working = FakeParser()
+    status = _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: working)
+
+    assert status == JobStatus.done
+    row = _get(factory, render_id)
+    assert row.attempts == 2
+    assert row.params["dummy"] == {"version": DUMMY_VERSION, "tones": [1, 2, 3, 4, 5, 6]}
+    assert len(_variants(dummy_settings, render_id)) == 6
+    assert not _resubmit(factory, dummy_settings, top).created  # a finished dummy stays cached
+
+
+def test_the_dummy_retries_stop_when_the_attempts_budget_is_spent(dummy_settings, factory) -> None:
+    top = _garment(factory, dummy_settings, GarmentCategory.top, 255)
+    render_id = _render(factory, dummy_settings, top)
+    broken = FakeParser(error=RuntimeError("always"))
+    for _ in range(MAX_RENDER_ATTEMPTS):
+        _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: broken)
+        outcome = _resubmit(factory, dummy_settings, top)
+
+    assert not outcome.created
+    row = _get(factory, render_id)
+    assert (row.status, row.attempts) == (JobStatus.done, MAX_RENDER_ATTEMPTS)
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+
+
+def test_a_switched_off_render_is_not_requeued_on_resubmit(settings, factory) -> None:
+    top = _garment(factory, settings, GarmentCategory.top, 255)
+    render_id = _render(factory, settings, top)
+    _run(settings, factory, render_id, FakeTryOnEngine())
+
+    assert not _resubmit(factory, settings, top).created
+    assert _get(factory, render_id).status == JobStatus.done
+
+
+def test_a_failing_variant_cleanup_does_not_fail_the_render(
+    dummy_settings, factory, monkeypatch
+) -> None:
+    render_id = _outfit_render(factory, dummy_settings)
+
+    def deny(root, relative):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr("tryon.service.storage.delete_file", deny)
+
+    status = _run(
+        dummy_settings,
+        factory,
+        render_id,
+        FakeTryOnEngine(),
+        get_parser=lambda: FakeParser(error=RuntimeError("boom")),
+    )
+
+    assert status == JobStatus.done
+    row = _get(factory, render_id)
+    assert (row.status, row.error) == (JobStatus.done, None)
+    assert "dummy" not in row.params
+
+
+def test_a_render_queued_before_the_dummy_fails_as_invalid_params(settings, factory) -> None:
+    """A legacy in-flight render has no `params.postprocess`: `invalid_params` (permanent, a
+    retry would fail the same way), not a KeyError."""
+    render_id = _outfit_render(factory, settings)
+    with factory() as session:
+        render = session.get(TryOnRender, render_id)
+        assert render is not None
+        render.params = {k: v for k, v in render.params.items() if k != "postprocess"}
+        session.add(render)
+        session.commit()
+    fake = FakeTryOnEngine()
+
+    assert _run(settings, factory, render_id, fake) == JobStatus.failed
+
+    row = _get(factory, render_id)
+    assert (row.status, row.error) == (JobStatus.failed, "invalid_params")
+    assert fake.calls == []
+
+
 def test_the_loop_reuses_one_resident_parser_for_every_render(
     dummy_settings, engine, factory
 ) -> None:

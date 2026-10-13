@@ -309,7 +309,7 @@ def run_render(
         peak = _cuda_peak_mb()
         dummy = (
             _write_dummy(settings, render_id, mannequin, image, get_parser)
-            if render.params["postprocess"] != NO_POSTPROCESS
+            if render.params.get("postprocess") not in (None, NO_POSTPROCESS)
             else None
         )
     except RenderFailure as failure:
@@ -353,9 +353,11 @@ def _write_dummy(
 
     A failure here never fails the render: the raw CatVTON image is already stored and is a
     usable result (a person, not a dummy), and CatVTON's minutes of work are not thrown away.
-    The trade-off is that the render stays cached as the raw image under the dummy's key until
-    it is purged or the dummy version changes; `GET /tryon/{id}` then returns it as non-
-    transparent. The variants written so far are removed so no half set is served."""
+    The raw image is served meanwhile (`GET /tryon/{id}` returns it as non-transparent). A
+    resubmit of the same request re-queues the render so the dummy is tried again, bounded by
+    `MAX_RENDER_ATTEMPTS` (`tryon.requests._reuse`); once spent, the raw render stays for good.
+    The variants written so far are removed (best effort, never raising) so no half set is
+    served."""
     assert settings.images_root is not None
     try:
         if get_parser is None:
@@ -372,9 +374,11 @@ def _write_dummy(
             "dummy post-processing of render %s failed; keeping the raw image", render_id
         )
         for tone_id, _ in SKIN_TONES:
-            storage.delete_file(
-                settings.images_root, storage.tryon_variant_path(render_id, tone_id)
-            )
+            path = storage.tryon_variant_path(render_id, tone_id)
+            try:
+                storage.delete_file(settings.images_root, path)
+            except OSError:
+                logger.warning("could not delete %s of render %s", path, render_id)
         return None
     return {"version": DUMMY_VERSION, "tones": [tone_id for tone_id, _ in SKIN_TONES]}
 

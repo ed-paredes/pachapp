@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
@@ -260,11 +260,46 @@ def find_or_create_render(
     return RenderOutcome(render, created=True)
 
 
+def _requeue_values(plan: PassPlan, outfit_id: str | None, now: dt.datetime) -> dict[str, Any]:
+    """The columns that put a settled render back in the queue (shared by both re-queue paths)."""
+    return {
+        "status": JobStatus.pending,
+        "step": "queued",
+        "progress": 0,
+        "error": None,
+        "claimed_by": None,
+        "claimed_at": None,
+        "started_at": None,
+        "finished_at": None,
+        "duration_ms": None,
+        "peak_vram_mb": None,
+        "skipped_garment_ids": list(plan.skipped_garment_ids),
+        "unsupported_garment_ids": list(plan.unsupported_garment_ids),
+        "outfit_id": outfit_id,
+        "last_accessed_at": now,
+    }
+
+
+def _dummy_retry_due(render: TryOnRender) -> bool:
+    """A `done` render asked for the dummy but has none (its post-processing failed, so only
+    the raw image exists) and still has attempts left."""
+    if render.status != JobStatus.done or render.attempts >= MAX_RENDER_ATTEMPTS:
+        return False
+    postprocess = render.params.get("postprocess")
+    return postprocess not in (None, NO_POSTPROCESS) and "dummy" not in render.params
+
+
 def _reuse(
     session: Session, render: TryOnRender, plan: PassPlan, outfit_id: str | None
 ) -> RenderOutcome:
     """Cache hit: refresh `last_accessed_at`; a `failed` render is reset to `pending` (retry on
     resubmit, same id) so the user does not need a separate retry endpoint.
+
+    A `done` render whose dummy post-processing failed (dummy version requested, no
+    `params.dummy`) is re-queued the same way on resubmit, so a transient parser failure is not
+    cached for good. It is bounded by the same cumulative `attempts` budget (each run counts one
+    claim) and, once spent, the raw render is returned as it is, with no cooldown round. Until
+    the new run finishes, the raw image stays in place and the render answers 202.
 
     Retry rule: a permanent failure (`PERMANENT_ERRORS`) stays failed. Any other failure is
     re-queued while `attempts` (cumulative across resubmits) is below `MAX_RENDER_ATTEMPTS`; once
@@ -300,23 +335,23 @@ def _reuse(
             update(TryOnRender)
             .where(*conditions)
             .values(
-                status=JobStatus.pending,
-                step="queued",
-                progress=0,
+                **_requeue_values(plan, outfit_id, now),
                 attempts=0 if capped else col(TryOnRender.attempts),
-                error=None,
-                claimed_by=None,
-                claimed_at=None,
-                started_at=None,
-                finished_at=None,
                 img_path=None,
-                duration_ms=None,
-                peak_vram_mb=None,
-                skipped_garment_ids=list(plan.skipped_garment_ids),
-                unsupported_garment_ids=list(plan.unsupported_garment_ids),
-                outfit_id=outfit_id,
-                last_accessed_at=now,
             )
+            .execution_options(synchronize_session=False)
+        )
+        requeued = result.rowcount == 1
+    elif _dummy_retry_due(render):
+        # The raw image keeps being served (and its file stays) until the new run replaces it.
+        result = session.connection().execute(
+            update(TryOnRender)
+            .where(
+                col(TryOnRender.id) == render.id,
+                col(TryOnRender.status) == JobStatus.done,
+                col(TryOnRender.attempts) < MAX_RENDER_ATTEMPTS,
+            )
+            .values(**_requeue_values(plan, outfit_id, now))
             .execution_options(synchronize_session=False)
         )
         requeued = result.rowcount == 1
