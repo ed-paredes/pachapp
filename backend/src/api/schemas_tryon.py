@@ -25,10 +25,17 @@ class TryOnRequest(BaseModel):
         return self
 
 
+class SkinTone(BaseModel):
+    id: int
+    hex: str
+
+
 class TryOnCapabilities(BaseModel):
     enabled: bool
     supported_categories: list[str]
     max_passes: int
+    genders: list[str]  # genders whose configured base mannequin loads
+    skin_tones: list[SkinTone]
 
 
 class TryOnRead(BaseModel):

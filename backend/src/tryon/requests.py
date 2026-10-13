@@ -10,6 +10,7 @@ garment id, so the same outfit always plans the same passes.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from dataclasses import dataclass
 from typing import Final
 
@@ -27,11 +28,21 @@ from api.errors import (
     AppError,
 )
 from shared.enums import JobStatus, OutfitSlot
-from shared.models import MAX_RENDER_ATTEMPTS, Garment, Outfit, OutfitItem, TryOnRender
+from shared.models import (
+    MAX_RENDER_ATTEMPTS,
+    Garment,
+    Outfit,
+    OutfitItem,
+    Setting,
+    TryOnRender,
+)
 from shared.settings import Settings
 from tryon.cache import cache_key, hash_cutout, mannequin_version, model_version
 from tryon.mannequin import MannequinError, validate_mannequin_id
 from tryon.mapping import PassPlan, PlanGarment, plan_passes
+from tryon.tones import DEFAULT_GENDER, Gender
+
+logger = logging.getLogger(__name__)
 
 # Failures a retry cannot fix (the codes of `tryon.service`/`worker.tryon_claim`): a resubmit
 # returns them as they are. The others (`out_of_memory`, `engine_unavailable`, `engine_error`,
@@ -109,6 +120,45 @@ def _plan(garments: dict[str, Garment], ordered_ids: list[str], max_passes: int)
     return plan
 
 
+def configured_mannequin(settings: Settings, gender: Gender) -> str:
+    return settings.tryon_mannequin_man if gender == "man" else settings.tryon_mannequin_woman
+
+
+def default_mannequin(session: Session, settings: Settings) -> str:
+    """The base mannequin for the owner's current `Setting.tryon_gender` (woman when unset)."""
+    row = session.get(Setting, 1)
+    gender = row.tryon_gender if row is not None else DEFAULT_GENDER
+    return configured_mannequin(settings, "man" if gender == "man" else DEFAULT_GENDER)
+
+
+def _mannequin_digest(settings: Settings, mannequin: str) -> str:
+    validate_mannequin_id(mannequin)
+    return mannequin_version(settings.tryon_assets_dir, mannequin)
+
+
+def _resolve_mannequin(
+    session: Session, settings: Settings, mannequin_id: str | None
+) -> tuple[str, str]:
+    """The mannequin id and its digest. An explicit id must be usable (422 otherwise); the
+    gender default falls back to the woman base when the chosen base is unusable, so a broken
+    or missing base asset never blocks every render."""
+    candidates = [mannequin_id] if mannequin_id else [default_mannequin(session, settings)]
+    fallback = configured_mannequin(settings, DEFAULT_GENDER)
+    if mannequin_id is None and fallback not in candidates:
+        candidates.append(fallback)
+    for mannequin in candidates:
+        try:
+            return mannequin, _mannequin_digest(settings, mannequin)
+        except MannequinError:
+            logger.warning("try-on mannequin %r is unusable", mannequin, exc_info=True)
+    raise AppError(
+        TRYON_INVALID_MANNEQUIN,
+        "El maniquí indicado no existe.",
+        422,
+        {"mannequin_id": candidates[0]},
+    )
+
+
 def find_or_create_render(
     session: Session,
     settings: Settings,
@@ -155,17 +205,7 @@ def find_or_create_render(
             {"garment_ids": unreadable},
         )
 
-    mannequin = mannequin_id or settings.tryon_mannequin
-    try:
-        validate_mannequin_id(mannequin)
-        mannequin_digest = mannequin_version(settings.tryon_assets_dir, mannequin)
-    except MannequinError as exc:
-        raise AppError(
-            TRYON_INVALID_MANNEQUIN,
-            "El maniquí indicado no existe.",
-            422,
-            {"mannequin_id": mannequin},
-        ) from exc
+    mannequin, mannequin_digest = _resolve_mannequin(session, settings, mannequin_id)
     model_tag = model_version(settings.tryon_base_revision, settings.tryon_attn_revision)
     key = cache_key(
         mannequin_id=mannequin,

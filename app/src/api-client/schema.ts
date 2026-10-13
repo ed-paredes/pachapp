@@ -325,8 +325,10 @@ export interface paths {
         put?: never;
         /**
          * Create Tryon
-         * @description 200 when the render is cached (`done`); 202 when queued, in progress, or re-queued after
-         *     a failure (resubmitting a failed render retries it under the same id).
+         * @description 200 when the render is final (cached `done`, a permanent failure, or a failure that spent
+         *     its `MAX_RENDER_ATTEMPTS` tries less than `RETRY_COOLDOWN` ago); 202 when queued, in
+         *     progress, or re-queued after a failure (resubmitting a failed render retries it under the
+         *     same id; see `tryon.requests._reuse`).
          */
         post: operations["create_tryon_tryon_post"];
         delete?: never;
@@ -799,6 +801,10 @@ export interface components {
             needs_review_threshold?: number | null;
             /** Color Review Threshold */
             color_review_threshold?: number | null;
+            /** Tryon Gender */
+            tryon_gender?: ("woman" | "man") | null;
+            /** Tryon Skin Tone */
+            tryon_skin_tone?: number | null;
         };
         /**
          * SettingsRead
@@ -823,6 +829,20 @@ export interface components {
             needs_review_threshold: number;
             /** Color Review Threshold */
             color_review_threshold: number;
+            /**
+             * Tryon Gender
+             * @enum {string}
+             */
+            tryon_gender: "woman" | "man";
+            /** Tryon Skin Tone */
+            tryon_skin_tone: number;
+        };
+        /** SkinTone */
+        SkinTone: {
+            /** Id */
+            id: number;
+            /** Hex */
+            hex: string;
         };
         /**
          * StyleTag
@@ -837,6 +857,10 @@ export interface components {
             supported_categories: string[];
             /** Max Passes */
             max_passes: number;
+            /** Genders */
+            genders: string[];
+            /** Skin Tones */
+            skin_tones: components["schemas"]["SkinTone"][];
         };
         /**
          * TryOnRead

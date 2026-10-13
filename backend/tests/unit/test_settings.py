@@ -372,7 +372,8 @@ def test_tryon_defaults(tmp_path: Path) -> None:
     assert settings.tryon_idle_unload_seconds == 300
     assert settings.tryon_cache_max_age_days == 30
     assert (settings.tryon_oom_retry_width, settings.tryon_oom_retry_height) == (384, 512)
-    assert settings.tryon_mannequin == "m12-woman-crop-shorts"
+    assert settings.tryon_mannequin_woman == "m12-woman-crop-shorts"
+    assert settings.tryon_mannequin_man == "m13-man-beige-shorts"
     assert settings.tryon_assets_dir == settings_module._REPO_ROOT / "assets" / "tryon"
     assert settings.tryon_catvton_dir == kwargs["data_dir"] / "vendor" / "CatVTON"
     assert settings.tryon_base_revision == "d260cf3646fe94c6d5d70820b77512f836d7cce2"

@@ -30,6 +30,12 @@ class Mannequin:
     masks: dict[str, Image.Image]  # mask type -> "L" image, same size as `person`
     meta: dict[str, Any]
 
+    @property
+    def gender(self) -> str | None:
+        """`meta.json` `gender`; None when absent or not a string."""
+        value = self.meta.get("gender")
+        return value if isinstance(value, str) else None
+
 
 def validate_mannequin_id(mannequin_id: str) -> str:
     if not _ID_PATTERN.fullmatch(mannequin_id):

@@ -13,6 +13,7 @@ from sqlmodel import Session
 from api.deps import get_session
 from api.errors import INVALID_WEIGHTS, AppError, ErrorResponse
 from shared.models import Setting
+from tryon.tones import MAX_SKIN_TONE, MIN_SKIN_TONE, Gender
 
 router = APIRouter(tags=["settings"])
 
@@ -22,6 +23,7 @@ WEIGHT_SUM_TOLERANCE = 0.01
 _Weight = Annotated[float, Field(ge=0, le=1)]
 _Threshold = Annotated[float, Field(ge=0, le=1)]
 _NonNegative = Annotated[int, Field(ge=0)]
+_SkinTone = Annotated[int, Field(ge=MIN_SKIN_TONE, le=MAX_SKIN_TONE)]
 
 
 class SettingsRead(BaseModel):
@@ -36,6 +38,8 @@ class SettingsRead(BaseModel):
     duplicate_warning_threshold: float
     needs_review_threshold: float
     color_review_threshold: float
+    tryon_gender: Gender
+    tryon_skin_tone: int
 
 
 class SettingsPatch(BaseModel):
@@ -53,6 +57,8 @@ class SettingsPatch(BaseModel):
     duplicate_warning_threshold: _Threshold | None = None
     needs_review_threshold: _Threshold | None = None
     color_review_threshold: _Threshold | None = None
+    tryon_gender: Gender | None = None
+    tryon_skin_tone: _SkinTone | None = None
 
     @field_validator("*", mode="before")
     @classmethod

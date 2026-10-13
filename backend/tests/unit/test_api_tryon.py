@@ -31,7 +31,7 @@ def _settings(tmp_path: Path, *, enabled: bool = True) -> Settings:
         ml_embed_revision="test-revision",
         tryon_enabled=enabled,
         tryon_assets_dir=tmp_path / "assets",
-        tryon_mannequin="m1",
+        tryon_mannequin_woman="m1",
     )
 
 
@@ -120,6 +120,10 @@ def test_capabilities_enabled(client: TestClient) -> None:
         "bottom",
         "one_piece",
     }
+    assert body["genders"] == ["woman"]  # only the woman base ("m1") exists in the fixture
+    assert [t["id"] for t in body["skin_tones"]] == [1, 2, 3, 4, 5, 6]
+    assert body["skin_tones"][0] == {"id": 1, "hex": "#F3DBC8"}
+    assert body["skin_tones"][5]["hex"] == "#583522"
 
 
 def test_capabilities_and_post_when_disabled(tmp_path: Path) -> None:
@@ -539,3 +543,87 @@ def test_get_render(client: TestClient, settings: Settings) -> None:
     missing = client.get(f"/tryon/{uuid4()}")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "TRYON_NOT_FOUND"
+
+
+def _gendered_settings(tmp_path: Path) -> Settings:
+    _write_mannequin(tmp_path / "assets", "w1")
+    _write_mannequin(tmp_path / "assets", "m1")
+    (tmp_path / "assets" / "mannequins" / "m1" / "meta.json").write_text(
+        json.dumps({"id": "m1", "gender": "man"}), encoding="utf-8"
+    )
+    return Settings(
+        _env_file=None,
+        data_dir=tmp_path / "pachapp-data",
+        ml_embed_revision="test-revision",
+        tryon_enabled=True,
+        tryon_assets_dir=tmp_path / "assets",
+        tryon_mannequin_woman="w1",
+        tryon_mannequin_man="m1",
+    )
+
+
+def _set_gender(client: TestClient, gender: str) -> None:
+    assert client.patch("/settings", json={"tryon_gender": gender}).status_code == 200
+
+
+def test_mannequin_follows_the_gender_setting_and_the_key_differs(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+
+        woman = _post(client, garment_ids=[top]).json()["id"]  # no setting row yet: woman
+        _set_gender(client, "man")
+        man = _post(client, garment_ids=[top]).json()["id"]
+        _set_gender(client, "woman")
+        woman_again = _post(client, garment_ids=[top]).json()["id"]
+
+        assert _render(client, woman).mannequin_id == "w1"
+        assert _render(client, man).mannequin_id == "m1"
+        assert man != woman
+        assert _render(client, man).cache_key != _render(client, woman).cache_key
+        assert woman_again == woman
+
+
+def test_explicit_mannequin_id_wins_over_the_gender_setting(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+        _set_gender(client, "man")
+
+        render_id = _post(client, garment_ids=[top], mannequin_id="w1").json()["id"]
+
+        assert _render(client, render_id).mannequin_id == "w1"
+
+
+def test_unusable_gender_base_falls_back_to_the_woman_base(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    (tmp_path / "assets" / "mannequins" / "m1" / "person.png").unlink()
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+        _set_gender(client, "man")
+
+        response = _post(client, garment_ids=[top])
+
+        assert response.status_code == 202
+        assert _render(client, response.json()["id"]).mannequin_id == "w1"
+
+
+def test_unusable_explicit_mannequin_is_still_422(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    (tmp_path / "assets" / "mannequins" / "m1" / "person.png").unlink()
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+
+        response = _post(client, garment_ids=[top], mannequin_id="m1")
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "TRYON_INVALID_MANNEQUIN"
+
+
+def test_capabilities_list_the_genders_whose_mannequin_loads(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    for client in _client(settings):
+        assert client.get("/tryon/capabilities").json()["genders"] == ["woman", "man"]
+    (tmp_path / "assets" / "mannequins" / "m1" / "person.png").unlink()
+    for client in _client(settings):
+        assert client.get("/tryon/capabilities").json()["genders"] == ["woman"]

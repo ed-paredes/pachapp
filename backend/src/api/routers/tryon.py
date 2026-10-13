@@ -20,12 +20,14 @@ from api.errors import (
     AppError,
     ErrorResponse,
 )
-from api.schemas_tryon import TryOnCapabilities, TryOnRead, TryOnRequest
+from api.schemas_tryon import SkinTone, TryOnCapabilities, TryOnRead, TryOnRequest
 from shared.enums import JobStatus
 from shared.models import TryOnRender
 from shared.settings import Settings
+from tryon.mannequin import MannequinError, load_mannequin
 from tryon.mapping import CATEGORY_CLOTH_TYPE
-from tryon.requests import find_or_create_render
+from tryon.requests import configured_mannequin, find_or_create_render
+from tryon.tones import GENDERS, SKIN_TONES
 
 router = APIRouter(tags=["tryon"])
 
@@ -46,6 +48,14 @@ def _read(render: TryOnRender) -> TryOnRead:
     )
 
 
+def _mannequin_loads(settings: Settings, mannequin_id: str) -> bool:
+    try:
+        load_mannequin(settings.tryon_assets_dir, mannequin_id)
+    except MannequinError:
+        return False
+    return True
+
+
 @router.get("/tryon/capabilities", response_model=TryOnCapabilities)
 def get_capabilities(
     settings: Annotated[Settings, Depends(get_settings_dep)],
@@ -54,6 +64,10 @@ def get_capabilities(
         enabled=settings.tryon_enabled,
         supported_categories=[c.value for c, t in CATEGORY_CLOTH_TYPE.items() if t is not None],
         max_passes=settings.tryon_max_passes,
+        genders=[
+            g for g in GENDERS if _mannequin_loads(settings, configured_mannequin(settings, g))
+        ],
+        skin_tones=[SkinTone(id=tone_id, hex=hex_) for tone_id, hex_ in SKIN_TONES],
     )
 
 

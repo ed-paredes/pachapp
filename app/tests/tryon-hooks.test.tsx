@@ -98,7 +98,13 @@ describe('try-on data layer', () => {
   });
 
   it('useTryOnCapabilities reads the endpoint and isLookTryable needs a supported piece', async () => {
-    const caps = { enabled: true, supported_categories: ['top', 'bottom'], max_passes: 3 };
+    const caps = {
+      enabled: true,
+      supported_categories: ['top', 'bottom'],
+      max_passes: 3,
+      genders: ['woman', 'man'],
+      skin_tones: [{ id: 1, hex: '#F3DBC8' }],
+    };
     fetchMock().mockResolvedValueOnce(json(caps));
     const { result } = await renderHook(() => useTryOnCapabilities(), {
       wrapper: wrapperFor(makeClient()),

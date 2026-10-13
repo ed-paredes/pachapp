@@ -24,6 +24,8 @@ DEFAULTS = {
     "duplicate_warning_threshold": 0.92,
     "needs_review_threshold": 0.7,
     "color_review_threshold": 0.7,
+    "tryon_gender": "woman",
+    "tryon_skin_tone": 3,
 }
 
 
@@ -41,7 +43,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         yield test_client
 
 
-def test_get_returns_the_nine_fields(client: TestClient) -> None:
+def test_get_returns_every_field(client: TestClient) -> None:
     response = client.get("/settings")
 
     assert response.status_code == 200
@@ -144,3 +146,29 @@ def test_invalid_patch_is_422_and_writes_nothing(client: TestClient, payload: di
 
 def test_empty_patch_is_a_no_op(client: TestClient) -> None:
     assert client.patch("/settings", json={}).json() == DEFAULTS
+
+
+def test_patch_stores_gender_and_skin_tone(client: TestClient) -> None:
+    response = client.patch("/settings", json={"tryon_gender": "man", "tryon_skin_tone": 5})
+
+    assert response.status_code == 200
+    assert response.json() == {**DEFAULTS, "tryon_gender": "man", "tryon_skin_tone": 5}
+    assert client.get("/settings").json()["tryon_gender"] == "man"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"tryon_gender": "dog"},
+        {"tryon_gender": None},
+        {"tryon_skin_tone": 0},
+        {"tryon_skin_tone": 7},
+        {"tryon_skin_tone": None},
+        {"tryon_skin_tone": "3.5"},
+    ],
+)
+def test_invalid_model_settings_are_422_and_write_nothing(
+    client: TestClient, payload: dict
+) -> None:
+    assert client.patch("/settings", json=payload).status_code == 422
+    assert client.get("/settings").json() == DEFAULTS
