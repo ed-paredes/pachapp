@@ -595,6 +595,31 @@ def test_explicit_mannequin_id_wins_over_the_gender_setting(tmp_path: Path) -> N
         assert _render(client, render_id).mannequin_id == "w1"
 
 
+def test_unusable_gender_base_falls_back_to_the_woman_base(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    (tmp_path / "assets" / "mannequins" / "m1" / "person.png").unlink()
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+        _set_gender(client, "man")
+
+        response = _post(client, garment_ids=[top])
+
+        assert response.status_code == 202
+        assert _render(client, response.json()["id"]).mannequin_id == "w1"
+
+
+def test_unusable_explicit_mannequin_is_still_422(tmp_path: Path) -> None:
+    settings = _gendered_settings(tmp_path)
+    (tmp_path / "assets" / "mannequins" / "m1" / "person.png").unlink()
+    for client in _client(settings):
+        top = _garment(client, settings, GarmentCategory.top)
+
+        response = _post(client, garment_ids=[top], mannequin_id="m1")
+
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "TRYON_INVALID_MANNEQUIN"
+
+
 def test_capabilities_list_the_genders_whose_mannequin_loads(tmp_path: Path) -> None:
     settings = _gendered_settings(tmp_path)
     for client in _client(settings):
