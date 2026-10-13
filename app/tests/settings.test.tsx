@@ -45,6 +45,8 @@ const SETTINGS = {
   weight_preference: 0.2,
   no_repeat_days: 7,
   max_accessories: 2,
+  tryon_gender: 'woman',
+  tryon_skin_tone: 3,
   duplicate_warning_threshold: 0.9,
   needs_review_threshold: 0.7,
   color_review_threshold: 0.6,
@@ -260,6 +262,149 @@ describe('SettingsScreen', () => {
       expect(await screen.findByText('Los pesos deben sumar 1.0 (±0.01).')).toBeTruthy();
       expect(screen.queryByText('Ajustes guardados')).toBeNull();
       expect(screen.getByLabelText('Peso de color').props.value).toBe('0.305');
+    });
+  });
+
+  describe('"Tu modelo" card', () => {
+    const TONES = [
+      { id: 1, hex: '#F3DBC8' },
+      { id: 2, hex: '#E5BF9E' },
+      { id: 3, hex: '#CF9D77' },
+      { id: 4, hex: '#AE7650' },
+      { id: 5, hex: '#85532F' },
+      { id: 6, hex: '#583522' },
+    ];
+    const caps = (patch: Record<string, unknown> = {}) =>
+      json({
+        enabled: true,
+        supported_categories: ['top', 'bottom'],
+        max_passes: 3,
+        genders: ['woman', 'man'],
+        skin_tones: TONES,
+        ...patch,
+      });
+    // The server keeps what was saved: the screen refetches the settings after a PATCH.
+    let stored = SETTINGS;
+    beforeEach(() => {
+      stored = SETTINGS;
+    });
+    const base = (extra: Record<string, Handler | Response> = {}) =>
+      routeFetch({
+        'GET /health': json({ status: 'ok' }),
+        'GET /settings': () => json(stored),
+        'GET /tryon/capabilities': caps(),
+        ...extra,
+      });
+
+    it('shows the current model: gender chosen, tone checked, six labelled radios', async () => {
+      base();
+      await renderWithClient(<SettingsScreen />);
+
+      const card = await screen.findByTestId('settings-model');
+      expect(within(card).getByRole('header', { name: 'Tu modelo' })).toBeTruthy();
+      expect(within(card).getByRole('tab', { name: 'Mujer', selected: true })).toBeTruthy();
+      expect(within(card).getByRole('tab', { name: 'Hombre', selected: false })).toBeTruthy();
+      expect(within(card).getByLabelText('Tono de piel', { exact: true })).toBeTruthy();
+      const radios = within(card).getAllByRole('radio');
+      expect(radios.map((radio) => radio.props.accessibilityLabel)).toEqual(
+        TONES.map((tone) => `Tono ${tone.id} de 6`),
+      );
+      expect(within(card).getByRole('radio', { name: 'Tono 3 de 6', checked: true })).toBeTruthy();
+      expect(within(card).getAllByRole('radio', { checked: true })).toHaveLength(1);
+      expect(within(card).getByLabelText('Modelo mujer, tono 3 de 6')).toBeTruthy();
+    });
+
+    it('PATCHes the tone, shows it at once and confirms with "Guardado"', async () => {
+      let body: unknown;
+      base({
+        'PATCH /settings': async (request) => {
+          body = await request.json();
+          stored = { ...SETTINGS, tryon_skin_tone: 5 };
+          return json(stored);
+        },
+      });
+      await renderWithClient(<SettingsScreen />);
+
+      await fireEvent.press(await screen.findByRole('radio', { name: 'Tono 5 de 6' }));
+
+      expect(await screen.findByTestId('model-saved')).toBeTruthy();
+      expect(screen.getByText('Guardado')).toBeTruthy();
+      expect(body).toEqual({ tryon_skin_tone: 5 });
+      expect(screen.getByRole('radio', { name: 'Tono 5 de 6', checked: true })).toBeTruthy();
+      expect(screen.getByLabelText('Modelo mujer, tono 5 de 6')).toBeTruthy();
+    });
+
+    it('PATCHes the gender and swaps the preview', async () => {
+      let body: unknown;
+      base({
+        'PATCH /settings': async (request) => {
+          body = await request.json();
+          stored = { ...SETTINGS, tryon_gender: 'man' };
+          return json(stored);
+        },
+      });
+      await renderWithClient(<SettingsScreen />);
+
+      await fireEvent.press(await screen.findByRole('tab', { name: 'Hombre' }));
+
+      expect(await screen.findByTestId('model-saved')).toBeTruthy();
+      expect(body).toEqual({ tryon_gender: 'man' });
+      expect(screen.getByRole('tab', { name: 'Hombre', selected: true })).toBeTruthy();
+      expect(screen.getByLabelText('Modelo hombre, tono 3 de 6')).toBeTruthy();
+    });
+
+    it('shows the pick while it saves, then reverts it and says why when the save fails', async () => {
+      let fail!: () => void;
+      base({
+        'PATCH /settings': () =>
+          new Promise<Response>((resolve) => {
+            fail = () =>
+              resolve(
+                json({ error: { code: 'X', message: 'Servidor caído', details: null } }, 500),
+              );
+          }),
+      });
+      await renderWithClient(<SettingsScreen />);
+
+      await fireEvent.press(await screen.findByRole('radio', { name: 'Tono 6 de 6' }));
+      expect(screen.getByRole('radio', { name: 'Tono 6 de 6', checked: true })).toBeTruthy();
+
+      await waitFor(() => expect(fail).toBeDefined());
+      await fail();
+
+      expect(await screen.findByRole('alert')).toBeTruthy();
+      expect(screen.getByText(/No se pudo guardar el cambio/)).toBeTruthy();
+      expect(screen.getByRole('radio', { name: 'Tono 3 de 6', checked: true })).toBeTruthy();
+      expect(screen.getByRole('radio', { name: 'Tono 6 de 6', checked: false })).toBeTruthy();
+      expect(screen.queryByTestId('model-saved')).toBeNull();
+    });
+
+    it('does not save the option that is already chosen', async () => {
+      base();
+      await renderWithClient(<SettingsScreen />);
+
+      await fireEvent.press(await screen.findByRole('radio', { name: 'Tono 3 de 6' }));
+      await fireEvent.press(screen.getByRole('tab', { name: 'Mujer' }));
+
+      expect(fetchCalls('PATCH /settings')).toHaveLength(0);
+    });
+
+    it('is hidden while the try-on is off', async () => {
+      base({ 'GET /tryon/capabilities': caps({ enabled: false }) });
+      await renderWithClient(<SettingsScreen />);
+
+      expect(await screen.findByLabelText('Peso de color')).toBeTruthy();
+      await waitFor(() => expect(fetchCalls('GET /tryon/capabilities')).toHaveLength(1));
+      expect(screen.queryByTestId('settings-model')).toBeNull();
+    });
+
+    it('offers only the genders the server lists', async () => {
+      base({ 'GET /tryon/capabilities': caps({ genders: ['woman'] }) });
+      await renderWithClient(<SettingsScreen />);
+
+      const card = await screen.findByTestId('settings-model');
+      expect(within(card).queryByRole('tab')).toBeNull();
+      expect(within(card).getAllByRole('radio')).toHaveLength(6);
     });
   });
 });

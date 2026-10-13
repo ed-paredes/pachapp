@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { EngineSettingsForm } from '@/components/EngineSettingsForm';
+import { ModelSettingsCard } from '@/components/ModelSettingsCard';
 import { ErrorState } from '@/components/ErrorState';
 import { BackButton } from '@/components/GarmentHero';
 import { LoadingState } from '@/components/LoadingState';
@@ -31,6 +32,8 @@ export default function SettingsScreen() {
           <Eyebrow>Preferencias</Eyebrow>
           <Title>Ajustes</Title>
         </View>
+
+        {settings.data ? <ModelSettingsCard settings={settings.data} /> : null}
 
         <Card style={styles.section} testID="settings-engine">
           <View style={styles.sectionHead}>
