@@ -38,6 +38,7 @@ from shared.models import (
 )
 from shared.settings import Settings
 from tryon.cache import cache_key, hash_cutout, mannequin_version, model_version
+from tryon.dummy import DUMMY_VERSION, NO_POSTPROCESS
 from tryon.mannequin import MannequinError, validate_mannequin_id
 from tryon.mapping import PassPlan, PlanGarment, plan_passes
 from tryon.tones import DEFAULT_GENDER, Gender
@@ -207,6 +208,7 @@ def find_or_create_render(
 
     mannequin, mannequin_digest = _resolve_mannequin(session, settings, mannequin_id)
     model_tag = model_version(settings.tryon_base_revision, settings.tryon_attn_revision)
+    postprocess = DUMMY_VERSION if settings.tryon_dummy_enabled else NO_POSTPROCESS
     key = cache_key(
         mannequin_id=mannequin,
         mannequin_digest=mannequin_digest,
@@ -217,6 +219,7 @@ def find_or_create_render(
         guidance=settings.tryon_guidance,
         seed=settings.tryon_seed,
         model_tag=model_tag,
+        postprocess=postprocess,
     )
 
     existing = session.exec(select(TryOnRender).where(TryOnRender.cache_key == key)).first()
@@ -241,6 +244,7 @@ def find_or_create_render(
             "seed": settings.tryon_seed,
             "mannequin_version": mannequin_digest,
             "model_version": model_tag,
+            "postprocess": postprocess,
             "cloth_types": [p.cloth_type.value for p in plan.passes],
         },
     )

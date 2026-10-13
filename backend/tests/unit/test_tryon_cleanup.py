@@ -16,6 +16,7 @@ from shared.enums import JobStatus
 from shared.models import TryOnRender
 from tryon import cleanup
 from tryon.cleanup import purge_stale_renders
+from tryon.tones import SKIN_TONES
 
 NOW = dt.datetime(2026, 10, 11, tzinfo=dt.UTC)
 OLD = NOW - dt.timedelta(days=31)
@@ -43,6 +44,7 @@ def _add(
     status: JobStatus = JobStatus.done,
     accessed: dt.datetime = OLD,
     with_file: bool = True,
+    variants: bool = False,
 ) -> TryOnRender:
     render = TryOnRender(cache_key=key, mannequin_id="m1", status=status, last_accessed_at=accessed)
     if status == JobStatus.done:
@@ -51,6 +53,9 @@ def _add(
             path = images_root / render.img_path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"webp")
+        if variants:
+            for tone, _ in SKIN_TONES:
+                (images_root / f"tryon/{render.id}_t{tone}.webp").write_bytes(b"webp")
     with factory() as session:
         session.add(render)
         session.commit()
@@ -77,6 +82,16 @@ def test_removes_stale_rows_and_files_and_keeps_recent_ones(factory, tmp_path: P
     assert stale.img_path is not None and not (tmp_path / stale.img_path).exists()
     assert _exists(factory, fresh.id)
     assert fresh.img_path is not None and (tmp_path / fresh.img_path).is_file()
+
+
+def test_the_dummy_variants_go_with_the_render(factory, tmp_path: Path) -> None:
+    stale = _add(factory, tmp_path, "stale", variants=True)
+    fresh = _add(factory, tmp_path, "fresh", accessed=RECENT, variants=True)
+
+    assert _purge(factory, tmp_path) == 1
+
+    assert list((tmp_path / "tryon").glob(f"{stale.id}*")) == []
+    assert len(list((tmp_path / "tryon").glob(f"{fresh.id}_t*.webp"))) == len(SKIN_TONES)
 
 
 def test_stale_failed_renders_go_too(factory, tmp_path: Path) -> None:

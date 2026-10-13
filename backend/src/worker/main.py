@@ -26,6 +26,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session
 
 from ml.cache import configure_model_cache
+from ml.garment_parse import GarmentParser, build_parser
 from shared.db import create_db_engine, create_session_factory
 from shared.enums import JobStep
 from shared.settings import Settings, get_settings
@@ -103,14 +104,16 @@ def run(
     steps: Mapping[JobStep, Step] | None = None,
     engine: Engine | None = None,
     tryon_engine: TryOnEngine | None = None,
+    dummy_parser: GarmentParser | None = None,
 ) -> None:
     """Requeue stuck jobs and renders, then claim and run one unit of work at a time until
     `stop_event` is set (VIS-REQ-025: single worker). Upload jobs always go first; a try-on
     render (only with `tryon_enabled`) runs when no job is pending.
 
-    `steps`, `engine` and `tryon_engine` are injectable for tests; production uses
-    `build_pipeline(settings)`, an engine built from `settings` and, lazily on the first
-    render, a `CatVTONEngine`.
+    `steps`, `engine`, `tryon_engine` and `dummy_parser` are injectable for tests; production
+    uses `build_pipeline(settings)`, an engine built from `settings` and, lazily on the first
+    render, a `CatVTONEngine` and the SegFormer-b2 parser of the dummy post-processing (kept
+    resident, on `tryon_dummy_device`, so CatVTON never has to unload for it).
 
     GPU hand-over (6 GB card): before CatVTON loads, the upload pipeline's models are released
     (they reload on the next upload); before an upload job runs, a loaded CatVTON is unloaded.
@@ -149,6 +152,12 @@ def run(
 
             release_resident_models(resident_unloaders(pipeline.cutout, pipeline.models))
 
+    def get_dummy_parser() -> GarmentParser:
+        nonlocal dummy_parser
+        if dummy_parser is None:
+            dummy_parser = build_parser("segformer-b2", settings, settings.tryon_dummy_device)
+        return dummy_parser
+
     next_cleanup = 0.0  # the first idle iteration cleans up
     while not stop_event.is_set():
         claimed = None
@@ -173,6 +182,7 @@ def run(
                         factory,
                         tryon_engine,
                         release_residents=release_residents,
+                        get_parser=get_dummy_parser,
                     )
                     continue
                 if tryon_engine is not None:

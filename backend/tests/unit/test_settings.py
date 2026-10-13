@@ -371,6 +371,8 @@ def test_tryon_defaults(tmp_path: Path) -> None:
     assert settings.tryon_max_passes == 3
     assert settings.tryon_idle_unload_seconds == 300
     assert settings.tryon_cache_max_age_days == 30
+    assert settings.tryon_dummy_enabled is True
+    assert settings.tryon_dummy_device == "cpu"
     assert (settings.tryon_oom_retry_width, settings.tryon_oom_retry_height) == (384, 512)
     assert settings.tryon_mannequin_woman == "m12-woman-crop-shorts"
     assert settings.tryon_mannequin_man == "m13-man-beige-shorts"

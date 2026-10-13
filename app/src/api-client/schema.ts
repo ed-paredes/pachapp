@@ -878,6 +878,8 @@ export interface components {
             error: string | null;
             /** Img */
             img: string | null;
+            /** Transparent */
+            transparent: boolean;
             /** Garment Ids */
             garment_ids: string[];
             /** Skipped Garment Ids */

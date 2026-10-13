@@ -31,6 +31,7 @@ const render = (patch: Partial<TryOnRender> = {}): TryOnRender => ({
   progress: 40,
   error: null,
   img: null,
+  transparent: false,
   garment_ids: ['p', 't', 'c'],
   skipped_garment_ids: [],
   unsupported_garment_ids: [],

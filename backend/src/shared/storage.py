@@ -29,6 +29,11 @@ def tryon_path(render_id: str) -> str:
     return f"tryon/{render_id}.webp"
 
 
+def tryon_variant_path(render_id: str, tone: int) -> str:
+    """The dummy of a render in skin tone `tone` (RGBA), next to the raw render."""
+    return f"tryon/{render_id}_t{tone}.webp"
+
+
 def resolve_path(images_root: Path, relative: str) -> Path:
     """Resolve a stored relative path against `images_root`.
 

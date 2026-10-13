@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from dummy_fakes import META, FakeParser
 from PIL import Image
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
@@ -20,6 +21,8 @@ from shared.db import create_db_engine, create_session_factory
 from shared.enums import GarmentCategory, JobStatus, JobStep
 from shared.models import MAX_RENDER_ATTEMPTS, Garment, Job, TryOnRender
 from shared.settings import Settings
+from tryon import dummy as dummy_module
+from tryon.dummy import DUMMY_VERSION, NO_POSTPROCESS
 from tryon.engine import (
     TryOnBlankOutput,
     TryOnError,
@@ -30,6 +33,7 @@ from tryon.engine import (
 from tryon.fake_engine import FakeTryOnEngine
 from tryon.requests import find_or_create_render
 from tryon.service import run_render
+from tryon.tones import SKIN_TONES
 from worker.main import run
 from worker.runner import STEP_ORDER, Step
 from worker.tryon_claim import (
@@ -59,6 +63,7 @@ def settings(tmp_path: Path) -> Settings:
         ml_embed_revision="test-revision",
         worker_poll_interval_ms=5,
         tryon_enabled=True,
+        tryon_dummy_enabled=False,  # the dummy section below switches it on
         tryon_assets_dir=tmp_path / "assets",
         tryon_mannequin_woman="m1",
         tryon_width=SIZE,
@@ -512,6 +517,167 @@ def test_params_use_the_stored_render_parameters(settings, factory) -> None:
         oom_retry_width=RETRY_SIZE,
         oom_retry_height=RETRY_SIZE,
     )
+
+
+# --- dummy post-processing ----------------------------------------------------
+
+
+@pytest.fixture
+def dummy_settings(settings: Settings) -> Settings:
+    """The same settings with the dummy switched on and a calibrated base mannequin."""
+    meta = settings.tryon_assets_dir / "mannequins" / "m1" / "meta.json"
+    meta.write_text(json.dumps({"id": "m1", **META}), encoding="utf-8")
+    return settings.model_copy(update={"tryon_dummy_enabled": True})
+
+
+def _variants(settings: Settings, render_id: str) -> list[Path]:
+    assert settings.images_root is not None
+    return sorted((settings.images_root / "tryon").glob(f"{render_id}_t*.webp"))
+
+
+def test_the_dummy_writes_six_tone_variants_and_keeps_the_raw_render(
+    dummy_settings, factory
+) -> None:
+    render_id = _outfit_render(factory, dummy_settings)
+    fake, parser = FakeTryOnEngine(), FakeParser()
+
+    status = _run(dummy_settings, factory, render_id, fake, get_parser=lambda: parser)
+
+    assert status == JobStatus.done
+    row = _get(factory, render_id)
+    assert row.params["postprocess"] == DUMMY_VERSION
+    assert row.params["dummy"] == {"version": DUMMY_VERSION, "tones": [1, 2, 3, 4, 5, 6]}
+    assert row.img_path == f"tryon/{render_id}.webp"
+    root = dummy_settings.images_root
+    assert root is not None
+    with Image.open(root / row.img_path) as raw:  # the raw output stays, opaque and full frame
+        assert raw.size == (SIZE, SIZE) and raw.mode == "RGB"
+    assert [p.name for p in _variants(dummy_settings, render_id)] == [
+        f"{render_id}_t{tone}.webp" for tone, _ in SKIN_TONES
+    ]
+    for path in _variants(dummy_settings, render_id):
+        with Image.open(path) as variant:
+            assert variant.format == "WEBP" and variant.mode == "RGBA"
+            assert variant.size == (round(SIZE * 0.75), SIZE)  # 3:4
+    assert parser.parsed == [(SIZE, SIZE)]  # one parse of the dressed image
+    assert fake.unloads == 0 and fake.loaded  # CatVTON stays warm for the next render
+
+
+def test_the_parser_is_only_built_when_the_dummy_runs(settings, dummy_settings, factory) -> None:
+    built: list[str] = []
+
+    def get_parser() -> FakeParser:
+        built.append("parser")
+        return FakeParser()
+
+    off = _outfit_render(factory, settings)  # requested with the switch off
+    _run(settings, factory, off, FakeTryOnEngine(), get_parser=get_parser)
+    on = _outfit_render(factory, dummy_settings)
+    _run(dummy_settings, factory, on, FakeTryOnEngine(), get_parser=get_parser)
+
+    assert built == ["parser"]
+
+
+def test_with_the_switch_off_the_render_is_the_raw_image(settings, factory) -> None:
+    render_id = _outfit_render(factory, settings)
+    parser = FakeParser()
+
+    status = _run(settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: parser)
+
+    assert status == JobStatus.done
+    row = _get(factory, render_id)
+    assert row.params["postprocess"] == NO_POSTPROCESS
+    assert "dummy" not in row.params
+    assert _variants(settings, render_id) == [] and parser.parsed == []
+    assert row.img_path is not None
+
+
+def _assert_raw_kept_without_dummy(settings: Settings, factory, render_id: str) -> None:
+    row = _get(factory, render_id)
+    assert (row.status, row.error) == (JobStatus.done, None)
+    assert "dummy" not in row.params
+    assert _variants(settings, render_id) == []
+    assert settings.images_root is not None and row.img_path is not None
+    assert (settings.images_root / row.img_path).is_file()
+
+
+@pytest.mark.parametrize(
+    "parser",
+    [FakeParser(error=RuntimeError("weights missing")), FakeParser(empty=True)],
+    ids=["parser-error", "no-figure"],
+)
+def test_a_failed_post_processing_keeps_the_raw_render(dummy_settings, factory, parser) -> None:
+    render_id = _outfit_render(factory, dummy_settings)
+
+    status = _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: parser)
+
+    assert status == JobStatus.done
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+
+
+def test_no_parser_keeps_the_raw_render(dummy_settings, factory) -> None:
+    render_id = _outfit_render(factory, dummy_settings)
+
+    _run(dummy_settings, factory, render_id, FakeTryOnEngine())
+
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+
+
+def test_an_uncalibrated_base_keeps_the_raw_render(settings, factory) -> None:
+    on = settings.model_copy(update={"tryon_dummy_enabled": True})  # meta.json has no `dummy`
+    render_id = _outfit_render(factory, on)
+
+    _run(on, factory, render_id, FakeTryOnEngine(), get_parser=FakeParser)
+
+    _assert_raw_kept_without_dummy(on, factory, render_id)
+
+
+def test_a_failure_midway_leaves_no_partial_set_of_variants(
+    dummy_settings, factory, monkeypatch
+) -> None:
+    render_id = _outfit_render(factory, dummy_settings)
+    real = dummy_module.recolour
+    calls: list[str] = []
+
+    def flaky(prepared, tone):
+        calls.append(tone)
+        if len(calls) == 4:
+            raise RuntimeError("boom")
+        return real(prepared, tone)
+
+    monkeypatch.setattr("tryon.service.recolour", flaky)
+
+    _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=FakeParser)
+
+    assert len(calls) == 4
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+
+
+def test_the_loop_reuses_one_resident_parser_for_every_render(
+    dummy_settings, engine, factory
+) -> None:
+    first = _outfit_render(factory, dummy_settings)
+    parser = FakeParser()
+    stop = threading.Event()
+    fake = FakeTryOnEngine()
+    steps = {step: (lambda _ctx: None) for step in STEP_ORDER}
+    thread = threading.Thread(
+        target=run,
+        args=(stop, dummy_settings, steps, engine, fake),
+        kwargs={"dummy_parser": parser},
+    )
+    thread.start()
+    try:
+        _wait_for(lambda: _get(factory, first).status == JobStatus.done)
+        second = _outfit_render(factory, dummy_settings)  # another garment colour: a new key
+        _wait_for(lambda: _get(factory, second).status == JobStatus.done)
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+    assert len(parser.parsed) == 2
+    assert len(_variants(dummy_settings, first)) == len(SKIN_TONES)
+    assert fake.unloads == 0
 
 
 # --- the worker loop -----------------------------------------------------------

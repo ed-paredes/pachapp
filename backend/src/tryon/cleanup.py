@@ -1,6 +1,7 @@
 """Cache cleanup for try-on renders (09-virtual-tryon.md §6.5).
 
-A render nobody has looked at for `tryon_cache_max_age_days` is deleted: its row and its WebP.
+A render nobody has looked at for `tryon_cache_max_age_days` is deleted: its row, its WebP and
+the dummy's tone variants.
 `last_accessed_at` is refreshed by every resubmit (`tryon.requests._reuse`) and by every read of
 a `done` render (`GET /tryon/{id}`), so a look the user keeps opening stays.
 """
@@ -16,7 +17,8 @@ from sqlmodel import Session, col
 
 from shared.enums import JobStatus
 from shared.models import TryOnRender
-from shared.storage import delete_file
+from shared.storage import delete_file, tryon_variant_path
+from tryon.tones import SKIN_TONES
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +64,13 @@ def purge_stale_renders(
             continue
         removed += 1
         if img_path:
-            try:
-                delete_file(images_root, img_path)
-            except OSError:
-                logger.warning("could not delete %s of render %s", img_path, render_id)
+            # The dummy's tone variants live and die with the raw render.
+            paths = [img_path, *(tryon_variant_path(render_id, tone) for tone, _ in SKIN_TONES)]
+            for path in paths:
+                try:
+                    delete_file(images_root, path)
+                except OSError:
+                    logger.warning("could not delete %s of render %s", path, render_id)
     if removed:
         logger.info("removed %d try-on renders not accessed for %d days", removed, max_age_days)
     return removed

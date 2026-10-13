@@ -545,6 +545,82 @@ def test_get_render(client: TestClient, settings: Settings) -> None:
     assert missing.json()["error"]["code"] == "TRYON_NOT_FOUND"
 
 
+def _done_with_dummy(client: TestClient, render_id: str, **dummy: Any) -> None:
+    with _db(client) as session:
+        render = session.get(TryOnRender, render_id)
+        assert render is not None
+        params = {
+            **render.params,
+            "dummy": {"version": "dummy-1", "tones": [1, 2, 3, 4, 5, 6], **dummy},
+        }
+        render.params = params
+        session.add(render)
+        session.commit()
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+
+
+def test_a_dummy_render_returns_the_variant_of_the_current_tone(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_with_dummy(client, render_id)
+
+    body = client.get(f"/tryon/{render_id}").json()
+    assert (body["img"], body["transparent"]) == (
+        f"tryon/{render_id}_t3.webp",
+        True,
+    )  # default tone
+
+    for tone in (1, 6):
+        assert client.patch("/settings", json={"tryon_skin_tone": tone}).status_code == 200
+        body = client.get(f"/tryon/{render_id}").json()
+        assert (body["img"], body["transparent"]) == (f"tryon/{render_id}_t{tone}.webp", True)
+
+    # The POST that finds the finished render answers with the same image.
+    again = _post(client, garment_ids=[top])
+    assert again.status_code == 200
+    assert again.json()["img"] == f"tryon/{render_id}_t6.webp"
+
+
+def test_a_tone_without_a_variant_falls_back_to_the_default(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_with_dummy(client, render_id, tones=[3])
+    client.patch("/settings", json={"tryon_skin_tone": 5})
+
+    assert client.get(f"/tryon/{render_id}").json()["img"] == f"tryon/{render_id}_t3.webp"
+
+
+def test_a_raw_render_is_not_transparent(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+
+    assert client.get(f"/tryon/{render_id}").json()["transparent"] is False  # not done yet
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+    body = client.get(f"/tryon/{render_id}").json()
+    assert (body["img"], body["transparent"]) == (f"tryon/{render_id}.webp", False)
+
+
+def test_the_dummy_switch_changes_the_cache_key(tmp_path: Path) -> None:
+    keys = []
+    for enabled in (True, False):
+        folder = tmp_path / str(enabled)
+        folder.mkdir()
+        _write_mannequin(folder / "assets")
+        settings = _settings(folder).model_copy(update={"tryon_dummy_enabled": enabled})
+        for client in _client(settings):
+            top = _garment(client, settings, GarmentCategory.top)
+            render_id = _post(client, garment_ids=[top]).json()["id"]
+            render = _render(client, render_id)
+            keys.append((render.cache_key, render.params["postprocess"]))
+
+    assert keys[0][0] != keys[1][0]
+    assert keys[0][1].startswith("dummy") and keys[1][1] == "none"
+
+
 def _gendered_settings(tmp_path: Path) -> Settings:
     _write_mannequin(tmp_path / "assets", "w1")
     _write_mannequin(tmp_path / "assets", "m1")

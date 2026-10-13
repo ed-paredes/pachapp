@@ -47,6 +47,9 @@ class TryOnRead(BaseModel):
     progress: int
     error: str | None
     img: str | None
+    # True when `img` is the featureless dummy (RGBA cut-out in the owner's skin tone), False for
+    # the raw full-frame render.
+    transparent: bool
     garment_ids: list[str]
     skipped_garment_ids: list[str]
     unsupported_garment_ids: list[str]

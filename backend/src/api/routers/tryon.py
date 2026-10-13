@@ -22,25 +22,41 @@ from api.errors import (
 )
 from api.schemas_tryon import SkinTone, TryOnCapabilities, TryOnRead, TryOnRequest
 from shared.enums import JobStatus
-from shared.models import TryOnRender
+from shared.models import Setting, TryOnRender
 from shared.settings import Settings
+from shared.storage import tryon_variant_path
 from tryon.mannequin import MannequinError, load_mannequin
 from tryon.mapping import CATEGORY_CLOTH_TYPE
 from tryon.requests import configured_mannequin, find_or_create_render
-from tryon.tones import GENDERS, SKIN_TONES
+from tryon.tones import DEFAULT_SKIN_TONE, GENDERS, SKIN_TONES
 
 router = APIRouter(tags=["tryon"])
 
 
-def _read(render: TryOnRender) -> TryOnRead:
+def _image(session: Session, render: TryOnRender) -> tuple[str | None, bool]:
+    """`(img, transparent)` of a done render: the dummy in the owner's current skin tone when
+    the worker made one, else the raw render."""
+    dummy = render.params.get("dummy")
+    if not isinstance(dummy, dict):
+        return render.img_path, False
+    row = session.get(Setting, 1)
+    tone = row.tryon_skin_tone if row is not None else DEFAULT_SKIN_TONE
+    if tone not in dummy.get("tones", ()):
+        tone = DEFAULT_SKIN_TONE
+    return tryon_variant_path(render.id, tone), True
+
+
+def _read(session: Session, render: TryOnRender) -> TryOnRead:
     done = render.status == JobStatus.done
+    img, transparent = _image(session, render) if done else (None, False)
     return TryOnRead(
         id=render.id,
         status=render.status,
         step=render.step,
         progress=render.progress,
         error=render.error,
-        img=render.img_path if done else None,
+        img=img,
+        transparent=transparent,
         garment_ids=render.garment_ids,
         skipped_garment_ids=render.skipped_garment_ids,
         unsupported_garment_ids=render.unsupported_garment_ids,
@@ -102,7 +118,7 @@ def create_tryon(
     )
     in_flight = (JobStatus.pending, JobStatus.claimed, JobStatus.running)
     response.status_code = 202 if outcome.render.status in in_flight else 200
-    return _read(outcome.render)
+    return _read(session, outcome.render)
 
 
 def _not_found(render_id: str) -> AppError:
@@ -137,4 +153,4 @@ def get_tryon(render_id: str, session: Annotated[Session, Depends(get_session)])
             raise _not_found(render_id)
         # No refresh: the response does not carry `last_accessed_at`, and the session keeps loaded
         # objects after a commit, so a purge landing from here on cannot turn this read into a 500.
-    return _read(render)
+    return _read(session, render)

@@ -66,12 +66,15 @@ def cache_key(
     guidance: float,
     seed: int,
     model_tag: str,
+    postprocess: str,
 ) -> str:
     """sha256 over a canonical serialisation of the inputs that determine the image.
 
     `garments` is `(garment_id, cutout_sha256, cloth_type)` in pass order; skipped and unsupported
     garments are not part of it. Order matters (each pass dresses the previous output), and the
     cloth type is part of it so a recategorised garment with the same cutout gets a new key.
+    `postprocess` is the dummy version (`tryon.dummy.DUMMY_VERSION`) or `"none"` with the dummy
+    switched off: the same inputs give a different image, so a different key.
     """
     payload = {
         "mannequin_id": mannequin_id,
@@ -85,6 +88,7 @@ def cache_key(
         "guidance": guidance,
         "seed": seed,
         "model_version": model_tag,
+        "postprocess": postprocess,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
