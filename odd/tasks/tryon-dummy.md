@@ -201,7 +201,13 @@ fails; it would cost a second set of assets and a garment-length signal in the r
   base; rerun green). Parent: browser check on Expo web (:8091) against a migrated data copy (API :8010):
   screenshots in `~/pachapp-data/eval-results/tryon-v6d-ui-2026-10-13/` (phone 390 px and 1280 px), choosing tone 6
   and Hombre saved `man`/6 on the server, no console errors. Not checked on the phone.
+- 2026-10-13 native review of the V6d slice (b197b02..cdc6efc, includes 33a815a): owner granted (medium, 23 files,
+  828 lines), 1 lens, approved and acknowledged (lineage review-a3c3af07179fe21d). Advisories: WARNING
+  R3-dummy-retry-can-lose-usable-raw (the dummy retry re-runs CatVTON; if that rerun fails the render ends failed
+  and the usable raw image is lost); suggestions R3-offline-disable-untested, R3-saved-confirmation-never-clears
+  ("Guardado" never times out). Proposed fix: the dummy retry re-runs only the post-processing on the stored raw
+  image (no CatVTON, no GPU), "Guardado" clears after a few seconds, an offline test.
 
 ## Next step
 
-Review of the V6d slice (base b197b02, includes 33a815a), PR for V6d, then V6e. The owner's DB needs `make migrate` before running V6b code.
+Owner decision on the V6d advisories fix, PR for V6d, then V6e. Next review boundary: cdc6efc. The owner's DB needs `make migrate` before running V6b code.
