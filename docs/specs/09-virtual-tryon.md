@@ -97,6 +97,8 @@ Orden: `overall` **o** (`lower` → `upper` interior → capa intermedia → abr
 | `PACHAPP_TRYON_IDLE_UNLOAD_SECONDS` | 300 | Descargar el modelo de la GPU tras estar inactivo; 0 = nunca |
 | `PACHAPP_TRYON_OOM_RETRY_WIDTH` × `PACHAPP_TRYON_OOM_RETRY_HEIGHT` | 384 × 512 | Reintento único tras un OOM de CUDA |
 | `PACHAPP_TRYON_MANNEQUIN_WOMAN` / `PACHAPP_TRYON_MANNEQUIN_MAN` | `m12-woman-crop-shorts` / `m13-man-beige-shorts` | Maniquí por defecto de cada género (`assets/tryon/mannequins/<id>/`); el género sale del ajuste `tryon_gender` |
+| `PACHAPP_TRYON_DUMMY_ENABLED` | `true` | Tras CatVTON, convierte el render en un maniquí sin cabeza sobre fondo transparente (SegFormer-b2, corte entre barbilla y tobillo calibrado en `meta.json` → `dummy`), con una imagen por tono de piel (`tryon/<id>_t<n>.webp`); `GET /tryon/{id}` devuelve la del tono elegido y `transparent: true`. `false` conserva el render completo. La versión del post-proceso forma parte de la clave de caché |
+| `PACHAPP_TRYON_DUMMY_DEVICE` | `cpu` | Dispositivo del parser del maniquí (`cpu` o `cuda`); en `cpu` CatVTON no se descarga de la GPU |
 | `PACHAPP_TRYON_ASSETS_DIR` / `PACHAPP_TRYON_CATVTON_DIR` | `<repo>/assets/tryon` / `<data dir>/vendor/CatVTON` | Activos versionados / clon externo fijado de CatVTON |
 | `PACHAPP_TRYON_BASE_REVISION` / `PACHAPP_TRYON_ATTN_REVISION` | commits fijados | Se rechazan refs móviles |
 

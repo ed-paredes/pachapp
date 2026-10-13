@@ -32,6 +32,7 @@ _BASE: dict[str, Any] = {
     "guidance": 2.5,
     "seed": 42,
     "model_tag": "model1",
+    "postprocess": "none",
 }
 
 
@@ -67,6 +68,7 @@ def test_key_depends_on_pass_order() -> None:
         {"guidance": 3.0},
         {"seed": 1},
         {"model_tag": "model2"},
+        {"postprocess": "dummy-1"},
     ],
 )
 def test_key_changes_with_every_input(changes: dict[str, Any]) -> None:

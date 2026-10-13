@@ -19,7 +19,7 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import sessionmaker
@@ -31,6 +31,7 @@ from shared.imaging import encode_webp
 from shared.models import Garment, TryOnRender
 from shared.settings import Settings
 from tryon.cache import cache_key
+from tryon.dummy import DUMMY_VERSION, NO_POSTPROCESS, cut_out, dummy_meta, recolour
 from tryon.engine import (
     TryOnBlankOutput,
     TryOnEngine,
@@ -41,6 +42,10 @@ from tryon.engine import (
     TryOnUnavailable,
 )
 from tryon.mannequin import Mannequin, MannequinError, load_mannequin
+from tryon.tones import SKIN_TONES
+
+if TYPE_CHECKING:
+    from ml.garment_parse import GarmentParser
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +221,7 @@ def _check_unchanged(
         guidance=p["guidance"],
         seed=p["seed"],
         model_tag=p["model_version"],
+        postprocess=p["postprocess"],
     )
     if rebuilt != render.cache_key:
         raise RenderFailure(ERROR_GARMENT_CHANGED, "a garment cutout changed after the request")
@@ -254,12 +260,17 @@ def run_render(
     engine: TryOnEngine,
     *,
     release_residents: Callable[[], object] | None = None,
+    get_parser: Callable[[], GarmentParser] | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> JobStatus:
     """Produce the image of a claimed render and store the outcome; returns the final status.
 
     `release_residents` frees the upload pipeline's GPU models (BiRefNet, FASHN, SigLIP) and
-    runs only while CatVTON is not loaded; they reload lazily on the next upload."""
+    runs only while CatVTON is not loaded; they reload lazily on the next upload.
+
+    `get_parser` returns the (resident, lazily built) SegFormer parser of the dummy
+    post-processing. A render whose `params.postprocess` is a dummy version gets the six
+    tone variants after the raw image; CatVTON stays loaded meanwhile."""
     assert settings.images_root is not None
     with factory() as session:
         render = session.get(TryOnRender, render_id)
@@ -296,6 +307,11 @@ def run_render(
         relative = storage.tryon_path(render_id)
         storage.write_atomic(settings.images_root, relative, encode_webp(image))
         peak = _cuda_peak_mb()
+        dummy = (
+            _write_dummy(settings, render_id, mannequin, image, get_parser)
+            if render.params.get("postprocess") not in (None, NO_POSTPROCESS)
+            else None
+        )
     except RenderFailure as failure:
         return _fail(factory, render_id, failure.code, failure)
     except TryOnOutOfMemory as exc:
@@ -316,12 +332,55 @@ def run_render(
         step="done",
         progress=100,
         img_path=relative,
+        params={**render.params, "dummy": dummy} if dummy else render.params,
         duration_ms=round((clock() - started) * 1000),
         peak_vram_mb=peak,
         finished_at=_now(),
         error=None,
     )
     return JobStatus.done
+
+
+def _write_dummy(
+    settings: Settings,
+    render_id: str,
+    mannequin: Mannequin,
+    image: Image.Image,
+    get_parser: Callable[[], GarmentParser] | None,
+) -> dict[str, Any] | None:
+    """Cut the dummy out of the dressed `image` and write one WebP per skin tone; returns the
+    `params.dummy` record, or None when the post-processing failed.
+
+    A failure here never fails the render: the raw CatVTON image is already stored and is a
+    usable result (a person, not a dummy), and CatVTON's minutes of work are not thrown away.
+    The raw image is served meanwhile (`GET /tryon/{id}` returns it as non-transparent). A
+    resubmit of the same request re-queues the render so the dummy is tried again, bounded by
+    `MAX_RENDER_ATTEMPTS` (`tryon.requests._reuse`); once spent, the raw render stays for good.
+    The variants written so far are removed (best effort, never raising) so no half set is
+    served."""
+    assert settings.images_root is not None
+    try:
+        if get_parser is None:
+            raise RuntimeError("no parser available for the dummy post-processing")
+        parse = get_parser().parse(image)
+        prepared = cut_out(image, parse, dummy_meta(mannequin.meta))
+        for tone_id, tone_hex in SKIN_TONES:
+            data = encode_webp(recolour(prepared, tone_hex))
+            storage.write_atomic(
+                settings.images_root, storage.tryon_variant_path(render_id, tone_id), data
+            )
+    except Exception:
+        logger.exception(
+            "dummy post-processing of render %s failed; keeping the raw image", render_id
+        )
+        for tone_id, _ in SKIN_TONES:
+            path = storage.tryon_variant_path(render_id, tone_id)
+            try:
+                storage.delete_file(settings.images_root, path)
+            except OSError:
+                logger.warning("could not delete %s of render %s", path, render_id)
+        return None
+    return {"version": DUMMY_VERSION, "tones": [tone_id for tone_id, _ in SKIN_TONES]}
 
 
 _PARAM_KEYS = (
@@ -332,6 +391,7 @@ _PARAM_KEYS = (
     "seed",
     "mannequin_version",
     "model_version",
+    "postprocess",
     "cloth_types",
 )
 

@@ -151,6 +151,10 @@ class Settings(BaseSettings):
     tryon_oom_retry_height: int = 512
     tryon_mannequin_woman: str = "m12-woman-crop-shorts"
     tryon_mannequin_man: str = "m13-man-beige-shorts"
+    # Dummy post-processing (V6c): SegFormer-b2 parse of the render, cut-out and one image per skin
+    # tone. It runs on the CPU by default so CatVTON stays loaded on the GPU between renders.
+    tryon_dummy_enabled: bool = True
+    tryon_dummy_device: Literal["cpu", "cuda"] = "cpu"
     # Renders not accessed for this many days are deleted (row and WebP); 0 = keep them forever.
     tryon_cache_max_age_days: int = Field(default=30, ge=0)
     # Tracked mannequin assets (§5.1); defaults to `<repo root>/assets/tryon`.

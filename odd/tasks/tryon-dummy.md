@@ -39,6 +39,19 @@ post-processing a normal CatVTON result gives a convincing dummy at about 1 s ex
   linked from settings; Hoy draws the transparent render on the linen gradient with a soft shadow instead of
   the blurred backdrop.
 
+## V6c design (parent, 2026-10-13)
+
+- Keep CatVTON warm: run the SegFormer-b2 parse on the **CPU** by default (`tryon_dummy_device`, default `cpu`)
+  instead of unloading CatVTON after every render (a cold load costs about 12 s on the next render). The parser is
+  built lazily by the worker and kept resident; its weights are already in the ML cache.
+- Feature switch `tryon_dummy_enabled` (default true). Off keeps today's full-frame output.
+- Cut lines are calibrated per base as ratios of the render height in `meta.json` (`dummy.chin`, `dummy.ankle`
+  rule) from the spike's per-base minimum chin, so the cut does not depend on the garment colour.
+- Files: the raw CatVTON output stays at `tryon/<id>.webp` (`img_path`); the dummy writes the 6 tone variants
+  `tryon/<id>_t<n>.webp` (RGBA, 3:4). `render.params.dummy` records the version; `GET /tryon/{id}` returns the
+  variant for the stored tone plus `transparent: true`, else `img_path` and `transparent: false`.
+- The cache key gains the post-processing version (`none` when the switch is off).
+
 ## Scope
 
 In: the tasks below. Out: complexion/body-type bases, a rounded neck cap, BiRefNet alpha (SegFormer alone was
@@ -54,8 +67,8 @@ as good, IoU 0.97-0.99), refining the tone look, changing config C or the spec v
   `tryon_skin_tone` columns + Alembic migration + `GET/PATCH /settings`, `POST /tryon` resolves the mannequin
   from the gender setting when no `mannequin_id` is given, `/tryon/capabilities` lists genders and tones;
   regenerate the app client.
-- [ ] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin_row`, ankle rule) in both
-  metas, unload CatVTON, SegFormer parse, crop, alpha, flat recolour into
+- [x] V6c: dummy post-processing in the worker: calibrated cut lines (`dummy.chin` ratio, ankle rule) in both
+  metas, CatVTON kept loaded (parse on the CPU), SegFormer parse, crop, alpha, flat recolour into
   6 tone variants, store them; `postprocess` version in the cache key; `GET /tryon/{id}` returns the image for
   the current tone; cleanup removes the variants.
 - [ ] V6d: "Tu modelo" screen in the app (gender, tone, previews), linked from settings, writes `/settings`
@@ -124,7 +137,43 @@ fails; it would cost a second set of assets and a garment-length signal in the r
 - 2026-10-13: owner decision on skirts on the man base (g07 mini skirt renders as trousers, g08 as wide shorts):
   "se queda así", accepted as a known limit; skirts are not routed to the woman base.
 
+- 2026-10-13 V6c (delegated writer, 2+ non-trivial files): 0dc1d64 `feat(tryon): turn the render into a featureless
+  dummy in six skin tones`; 23 files, +961/-19 (source and config about +353/-17, tests about +585; over the 400
+  heuristic only because of tests). New `tryon/dummy.py` (`DUMMY_VERSION="dummy-1"`), worker parses with
+  SegFormer-b2 on the CPU (parser built once per process, CatVTON kept loaded), raw output kept at `img_path` plus
+  6 RGBA variants `tryon/<id>_t<n>.webp`, `params.dummy`, `postprocess` in the cache key and params, `GET /tryon`
+  returns the tone variant and `transparent`, cleanup removes variants, `tryon_dummy_enabled`/`tryon_dummy_device`
+  settings. Calibrated cut lines in meta: M12 chin 153/768 (0.1992), ankle shoe top, fallback 0.7852; M13 chin
+  138/768 (0.1797), fallback 0.8060. Failure path: any post-processing error keeps the raw output (`done`, no
+  `params.dummy`, `transparent=false`), logs and deletes partial variants; it stays cached under the dummy key until
+  purged or the version is bumped (no `dummy_failed` code). Pending renders created before this change fail as
+  `invalid_params`/`garment_changed` (key lacks `postprocess`); a resubmit makes a new render.
+  Checks (writer): ruff format/check, ty clean; pytest 1018 passed (+38); app typecheck, lint, prettier clean; jest
+  476 passed. Smoke (CPU, real b2 on 4 spike renders, `~/pachapp-data/eval-results/tryon-v6c-smoke-2026-10-13/`):
+  model load 19.7 s once; parse 2.6-3.0 s, post total 2.8-3.2 s per render; look matches the spike sheets.
+  Parent: spot check pytest on worker, API, cleanup and dummy tests: 128 passed. End-to-end on a migrated copy
+  of the owner's data (API :8010 + real worker from this branch, GPU): polo + trousers on M12 (gender woman) and
+  M13 (gender man): both `done`, `transparent: true`, 6 variants each; `PATCH tryon_skin_tone=6` switches `img` to
+  `_t6`; durations 115 s (first, with CatVTON and parser loads) and 45 s; peak VRAM 2859 MB (torch). Sheet:
+  `~/pachapp-data/eval-results/tryon-v6c-e2e-2026-10-13/e2e-sheet.jpg`. Known look issue from CatVTON, not the
+  post-processing: white hand-shaped blobs at the pockets on both bases (as g02 in V6a).
+- 2026-10-13 native review of the V6c slice (5308c2c..b197b02, includes 992c612): owner granted (high, 24 files,
+  1105 lines), 4 lenses, approved and acknowledged (lineage review-1708e9c74e26e0cc). Advisories (non-blocking):
+  WARNING R3-transient-dummy-failure-cached-permanently / R4-transient-dummy-failure-pinned (a transient
+  post-processing failure pins the raw image under the dummy key, no retry), R3-unguarded-variant-cleanup-in-except
+  (rollback delete can raise), R3-legacy-inflight-render-postprocess-key (pending pre-V6c renders index
+  `params["postprocess"]` with no test), R2-task-doc-v6c-misdescribes-impl (V6c task text says `chin_row` and
+  "unload CatVTON"); suggestions: R2-shoe-row-threshold-unscaled, R3-tone-fallback-assumes-default-present,
+  R4-unguarded-variant-delete, R3-task-doc-mismatch.
+- 2026-10-13 V6c follow-up (delegated writer, owner: "si adelante"): 33a815a `fix(tryon): retry the dummy on
+  resubmit and harden its failure path`; 4 files, +245/-30. A done render whose dummy failed (dummy postprocess,
+  no `params.dummy`) is re-queued on resubmit (202, shared re-queue reset, `img_path` kept) while `attempts <
+  MAX_RENDER_ATTEMPTS`; past the budget it is served raw. Rollback deletes guarded with `except OSError`.
+  Pre-V6c pending renders end as `invalid_params` (already true through `_validate_params`; now pinned by a test,
+  reads use `.get`). Checks (writer): ruff format/check, ty clean; pytest 1027 passed. Parent spot check:
+  test_api_tryon + test_tryon_worker 104 passed. Assess (base b197b02): medium, under budget, pending in the next
+  slice.
+
 ## Next step
 
-PR for V6b (owner approved push and PR on 2026-10-13). Then V6c
-(next review boundary: 5308c2c; 992c612 is pending in that slice). The owner's DB needs `make migrate` before running V6b code.
+PR for V6c (owner approved push and PR on 2026-10-13), then V6d. Next review boundary: b197b02 (33a815a pending). The owner's DB needs `make migrate` before running V6b code.

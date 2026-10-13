@@ -232,18 +232,13 @@ def test_cache_hit_returns_200_and_refreshes_access(client: TestClient, settings
     top = _garment(client, settings, GarmentCategory.top)
     render_id = _post(client, garment_ids=[top]).json()["id"]
     old = dt.datetime(2020, 1, 1, tzinfo=dt.UTC)
-    _set_status(
-        client,
-        render_id,
-        JobStatus.done,
-        img_path=f"tryon/{render_id}.webp",
-        last_accessed_at=old,
-    )
+    _done_with_dummy(client, render_id, tones=[3])
+    _set_status(client, render_id, JobStatus.done, last_accessed_at=old)
 
     response = _post(client, garment_ids=[top])
     assert response.status_code == 200
     assert response.json()["id"] == render_id
-    assert response.json()["img"] == f"tryon/{render_id}.webp"
+    assert response.json()["img"] == f"tryon/{render_id}_t3.webp"
     assert _render(client, render_id).last_accessed_at > old
 
 
@@ -543,6 +538,165 @@ def test_get_render(client: TestClient, settings: Settings) -> None:
     missing = client.get(f"/tryon/{uuid4()}")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "TRYON_NOT_FOUND"
+
+
+def _done_with_dummy(client: TestClient, render_id: str, **dummy: Any) -> None:
+    with _db(client) as session:
+        render = session.get(TryOnRender, render_id)
+        assert render is not None
+        params = {
+            **render.params,
+            "dummy": {"version": "dummy-1", "tones": [1, 2, 3, 4, 5, 6], **dummy},
+        }
+        render.params = params
+        session.add(render)
+        session.commit()
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+
+
+def test_a_dummy_render_returns_the_variant_of_the_current_tone(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_with_dummy(client, render_id)
+
+    body = client.get(f"/tryon/{render_id}").json()
+    assert (body["img"], body["transparent"]) == (
+        f"tryon/{render_id}_t3.webp",
+        True,
+    )  # default tone
+
+    for tone in (1, 6):
+        assert client.patch("/settings", json={"tryon_skin_tone": tone}).status_code == 200
+        body = client.get(f"/tryon/{render_id}").json()
+        assert (body["img"], body["transparent"]) == (f"tryon/{render_id}_t{tone}.webp", True)
+
+    # The POST that finds the finished render answers with the same image.
+    again = _post(client, garment_ids=[top])
+    assert again.status_code == 200
+    assert again.json()["img"] == f"tryon/{render_id}_t6.webp"
+
+
+def test_a_tone_without_a_variant_falls_back_to_the_default(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_with_dummy(client, render_id, tones=[3])
+    client.patch("/settings", json={"tryon_skin_tone": 5})
+
+    assert client.get(f"/tryon/{render_id}").json()["img"] == f"tryon/{render_id}_t3.webp"
+
+
+def test_a_raw_render_is_not_transparent(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+
+    assert client.get(f"/tryon/{render_id}").json()["transparent"] is False  # not done yet
+    _set_status(client, render_id, JobStatus.done, img_path=f"tryon/{render_id}.webp")
+    body = client.get(f"/tryon/{render_id}").json()
+    assert (body["img"], body["transparent"]) == (f"tryon/{render_id}.webp", False)
+
+
+def _done_without_dummy(client: TestClient, render_id: str, attempts: int) -> None:
+    """A done render whose post-processing failed: raw image, no `params.dummy`."""
+    _set_status(
+        client,
+        render_id,
+        JobStatus.done,
+        img_path=f"tryon/{render_id}.webp",
+        step="done",
+        progress=100,
+        attempts=attempts,
+        finished_at=dt.datetime.now(dt.UTC),
+    )
+
+
+def test_a_dummy_failed_render_is_requeued_on_resubmit(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    assert _render(client, render_id).params["postprocess"] != "none"
+    _done_without_dummy(client, render_id, attempts=1)
+
+    # The raw image is served right away...
+    body = client.get(f"/tryon/{render_id}").json()
+    assert (body["status"], body["img"], body["transparent"]) == (
+        "done",
+        f"tryon/{render_id}.webp",
+        False,
+    )
+
+    # ...and the next identical request queues the dummy again, under the same id.
+    response = _post(client, garment_ids=[top])
+    assert response.status_code == 202
+    assert response.json()["id"] == render_id and response.json()["status"] == "pending"
+    render = _render(client, render_id)
+    assert (render.step, render.progress, render.attempts) == ("queued", 0, 1)
+    assert render.claimed_by is None and render.finished_at is None
+    assert render.img_path == f"tryon/{render_id}.webp"  # the raw file stays until replaced
+
+
+def test_a_dummy_failed_render_with_the_budget_spent_is_returned_as_is(
+    client: TestClient, settings: Settings
+) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_without_dummy(client, render_id, attempts=MAX_RENDER_ATTEMPTS)
+
+    response = _post(client, garment_ids=[top])
+
+    assert response.status_code == 200
+    assert (response.json()["status"], response.json()["transparent"]) == ("done", False)
+    assert response.json()["img"] == f"tryon/{render_id}.webp"
+    assert _render(client, render_id).status == JobStatus.done
+
+
+def test_a_successful_dummy_render_is_not_requeued(client: TestClient, settings: Settings) -> None:
+    top = _garment(client, settings, GarmentCategory.top)
+    render_id = _post(client, garment_ids=[top]).json()["id"]
+    _done_with_dummy(client, render_id)
+    _set_status(client, render_id, JobStatus.done, attempts=1)
+
+    response = _post(client, garment_ids=[top])
+
+    assert response.status_code == 200
+    assert response.json()["transparent"] is True
+    assert _render(client, render_id).status == JobStatus.done
+
+
+def test_a_render_without_the_dummy_switch_is_not_requeued(tmp_path: Path) -> None:
+    _write_mannequin(tmp_path / "assets")
+    off = _settings(tmp_path).model_copy(update={"tryon_dummy_enabled": False})
+    for client in _client(off):
+        top = _garment(client, off, GarmentCategory.top)
+        render_id = _post(client, garment_ids=[top]).json()["id"]
+        assert _render(client, render_id).params["postprocess"] == "none"
+        _done_without_dummy(client, render_id, attempts=1)
+
+        response = _post(client, garment_ids=[top])
+
+        assert response.status_code == 200
+        assert _render(client, render_id).status == JobStatus.done
+
+
+def test_the_dummy_switch_changes_the_cache_key(tmp_path: Path) -> None:
+    keys = []
+    for enabled in (True, False):
+        folder = tmp_path / str(enabled)
+        folder.mkdir()
+        _write_mannequin(folder / "assets")
+        settings = _settings(folder).model_copy(update={"tryon_dummy_enabled": enabled})
+        for client in _client(settings):
+            top = _garment(client, settings, GarmentCategory.top)
+            render_id = _post(client, garment_ids=[top]).json()["id"]
+            render = _render(client, render_id)
+            keys.append((render.cache_key, render.params["postprocess"]))
+
+    assert keys[0][0] != keys[1][0]
+    assert keys[0][1].startswith("dummy") and keys[1][1] == "none"
 
 
 def _gendered_settings(tmp_path: Path) -> Settings:
