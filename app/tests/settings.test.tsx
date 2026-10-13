@@ -1,9 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import SettingsScreen from '../app/settings';
+import { SAVED_NOTE_MS } from '../src/components/ModelSettingsCard';
+import { reportUnreachable, resetBackendStatus } from '../src/offline/reachability';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: jest.fn(), back: jest.fn(), canGoBack: () => false }),
@@ -78,6 +88,7 @@ describe('SettingsScreen', () => {
 
   afterEach(async () => {
     await cleanup();
+    resetBackendStatus();
     clients.splice(0).forEach((client) => client.clear());
     globalThis.fetch = originalFetch;
   });
@@ -387,6 +398,60 @@ describe('SettingsScreen', () => {
       await fireEvent.press(screen.getByRole('tab', { name: 'Mujer' }));
 
       expect(fetchCalls('PATCH /settings')).toHaveLength(0);
+    });
+
+    it('clears "Guardado" after a few seconds', async () => {
+      base({
+        'PATCH /settings': () => {
+          stored = { ...SETTINGS, tryon_skin_tone: 5 };
+          return json(stored);
+        },
+      });
+      await renderWithClient(<SettingsScreen />);
+      await fireEvent.press(await screen.findByRole('radio', { name: 'Tono 5 de 6' }));
+      expect(await screen.findByTestId('model-saved')).toBeTruthy();
+
+      jest.useFakeTimers();
+      try {
+        // The timer starts at the render that showed the note, so re-arm it under fake timers.
+        await fireEvent.press(screen.getByRole('radio', { name: 'Tono 2 de 6' }));
+        await waitFor(() => expect(fetchCalls('PATCH /settings')).toHaveLength(2));
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(50);
+        });
+        expect(screen.getByTestId('model-saved')).toBeTruthy();
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(SAVED_NOTE_MS - 100);
+        });
+        expect(screen.getByTestId('model-saved')).toBeTruthy();
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(200);
+        });
+        expect(screen.queryByTestId('model-saved')).toBeNull();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('sends nothing when offline: the tones and genders are disabled', async () => {
+      base();
+      await renderWithClient(<SettingsScreen />);
+      const radio = await screen.findByRole('radio', { name: 'Tono 5 de 6' });
+      await act(async () => {
+        reportUnreachable();
+      });
+
+      await fireEvent.press(radio);
+      await fireEvent.press(screen.getByRole('tab', { name: 'Hombre' }));
+
+      expect(screen.getByRole('radio', { name: 'Tono 5 de 6' }).props.accessibilityState).toEqual(
+        expect.objectContaining({ disabled: true }),
+      );
+      expect(fetchCalls('PATCH /settings')).toHaveLength(0);
+      expect(screen.getByRole('radio', { name: 'Tono 3 de 6', checked: true })).toBeTruthy();
+      expect(screen.getByRole('tab', { name: 'Mujer', selected: true })).toBeTruthy();
     });
 
     it('is hidden while the try-on is off', async () => {

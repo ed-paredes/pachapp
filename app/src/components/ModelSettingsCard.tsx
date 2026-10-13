@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ViewStyle } from 'react-native';
 
@@ -10,6 +10,9 @@ import { usePatchSettings, type SettingsRead } from '@/hooks/useSettings';
 import { useTryOnCapabilities } from '@/hooks/useTryOnCapabilities';
 import { tryOnPreview, type ModelGender } from '@/lib/tryon-preview';
 import { colors, fontFamilies, radii, spacing } from '@/theme';
+
+/** How long the "Guardado" confirmation stays on screen. */
+export const SAVED_NOTE_MS = 3000;
 
 const GENDER_LABELS: Record<ModelGender, string> = { woman: 'Mujer', man: 'Hombre' };
 
@@ -32,7 +35,8 @@ type Draft = { gender?: ModelGender; tone?: number };
 /**
  * "Tu modelo" (Ajustes): the model the try-on dresses, shown as a 3:4 preview on the linen
  * backdrop with its gender and skin tone. Every change is saved at once (`PATCH /settings`) and
- * shown right away; a failed save puts the previous value back and says so. The card is hidden
+ * shown right away; a failed save puts the previous value back and says so, and "Guardado"
+ * fades after a few seconds. The card is hidden
  * while the try-on is off or the capabilities are unknown.
  */
 export function ModelSettingsCard({ settings }: { settings: SettingsRead }) {
@@ -41,7 +45,14 @@ export function ModelSettingsCard({ settings }: { settings: SettingsRead }) {
   const offline = useOfflineBlock();
   // What the user picked and the server has not confirmed yet.
   const [draft, setDraft] = useState<Draft>({});
-  const [saved, setSaved] = useState(false);
+  // Counts the confirmed saves; 0 hides the note. A new count restarts its timer.
+  const [saved, setSaved] = useState(0);
+
+  useEffect(() => {
+    if (!saved) return undefined;
+    const timer = setTimeout(() => setSaved(0), SAVED_NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [saved]);
 
   const offered = capabilities.data;
   if (!offered?.enabled) return null;
@@ -53,9 +64,9 @@ export function ModelSettingsCard({ settings }: { settings: SettingsRead }) {
 
   const save = (next: Draft, body: { tryon_gender?: ModelGender; tryon_skin_tone?: number }) => {
     setDraft((current) => ({ ...current, ...next }));
-    setSaved(false);
+    setSaved(0);
     patch.mutate(body, {
-      onSuccess: () => setSaved(true),
+      onSuccess: () => setSaved((count) => count + 1),
       onSettled: () => setDraft({}),
     });
   };
@@ -160,7 +171,7 @@ export function ModelSettingsCard({ settings }: { settings: SettingsRead }) {
               No se pudo guardar el cambio. {patch.error.message}
             </Text>
           ) : null}
-          {saved && !patch.isPending ? (
+          {saved > 0 && !patch.isPending ? (
             <Text style={styles.ok} accessibilityRole="alert" testID="model-saved">
               Guardado
             </Text>

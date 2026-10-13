@@ -17,6 +17,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import Session, SQLModel
 
+from shared import storage
 from shared.db import create_db_engine, create_session_factory
 from shared.enums import GarmentCategory, JobStatus, JobStep
 from shared.models import MAX_RENDER_ATTEMPTS, Garment, Job, TryOnRender
@@ -683,6 +684,70 @@ def test_a_resubmit_retries_a_dummy_that_failed_once(dummy_settings, factory) ->
     assert row.params["dummy"] == {"version": DUMMY_VERSION, "tones": [1, 2, 3, 4, 5, 6]}
     assert len(_variants(dummy_settings, render_id)) == 6
     assert not _resubmit(factory, dummy_settings, top).created  # a finished dummy stays cached
+
+
+def _failed_first_dummy(dummy_settings, factory):
+    """A render whose first run left the raw image only, re-queued for its dummy."""
+    top = _garment(factory, dummy_settings, GarmentCategory.top, 255)
+    render_id = _render(factory, dummy_settings, top)
+    broken = FakeParser(error=RuntimeError("transient"))
+    _run(dummy_settings, factory, render_id, FakeTryOnEngine(), get_parser=lambda: broken)
+    assert _resubmit(factory, dummy_settings, top).created
+    return render_id
+
+
+def test_a_dummy_retry_post_processes_the_stored_image_without_the_engine(
+    dummy_settings, factory
+) -> None:
+    render_id = _failed_first_dummy(dummy_settings, factory)
+    raw = dummy_settings.images_root / storage.tryon_path(render_id)
+    before = raw.read_bytes()
+    fake, released = FakeTryOnEngine(), []
+
+    status = _run(
+        dummy_settings,
+        factory,
+        render_id,
+        fake,
+        get_parser=FakeParser,
+        release_residents=lambda: released.append(1),
+    )
+
+    assert status == JobStatus.done
+    row = _get(factory, render_id)
+    assert (row.status, row.error, row.attempts) == (JobStatus.done, None, 2)
+    assert row.params["dummy"] == {"version": DUMMY_VERSION, "tones": [1, 2, 3, 4, 5, 6]}
+    assert len(_variants(dummy_settings, render_id)) == 6
+    assert fake.calls == [] and released == []
+    assert raw.read_bytes() == before
+
+
+def test_a_dummy_retry_that_fails_again_stays_done_and_raw(dummy_settings, factory) -> None:
+    render_id = _failed_first_dummy(dummy_settings, factory)
+    raw = dummy_settings.images_root / storage.tryon_path(render_id)
+    before = raw.read_bytes()
+    fake = FakeTryOnEngine(error=TryOnError("must not run"))
+    broken = FakeParser(error=RuntimeError("still down"))
+
+    status = _run(dummy_settings, factory, render_id, fake, get_parser=lambda: broken)
+
+    assert status == JobStatus.done
+    _assert_raw_kept_without_dummy(dummy_settings, factory, render_id)
+    assert fake.calls == [] and raw.read_bytes() == before
+
+
+def test_a_dummy_retry_without_its_raw_file_runs_in_full(dummy_settings, factory) -> None:
+    render_id = _failed_first_dummy(dummy_settings, factory)
+    (dummy_settings.images_root / storage.tryon_path(render_id)).unlink()
+    fake = FakeTryOnEngine()
+
+    status = _run(dummy_settings, factory, render_id, fake, get_parser=FakeParser)
+
+    assert status == JobStatus.done
+    assert len(fake.calls) == 1
+    row = _get(factory, render_id)
+    assert row.params["dummy"]["version"] == DUMMY_VERSION
+    assert (dummy_settings.images_root / storage.tryon_path(render_id)).is_file()
 
 
 def test_the_dummy_retries_stop_when_the_attempts_budget_is_spent(dummy_settings, factory) -> None:
