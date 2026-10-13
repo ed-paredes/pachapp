@@ -52,6 +52,19 @@ post-processing a normal CatVTON result gives a convincing dummy at about 1 s ex
   variant for the stored tone plus `transparent: true`, else `img_path` and `transparent: false`.
 - The cache key gains the post-processing version (`none` when the switch is off).
 
+## V6d design (parent, 2026-10-13)
+
+- Follow the owner's prototype (`propotipo.html`, settings card "Tu modelo" and the "Elige tu modelo" sheet
+  styles): a "Tu modelo" card at the top of the existing settings screen (`app/app/settings.tsx`) with a 3:4
+  preview on the linen gradient, a gender choice (Mujer / Hombre) and 6 round tone swatches (radiogroup), saving on
+  change through `PATCH /settings` with a short "Guardado" confirmation. The first-run "Elige tu modelo" sheet is
+  out of scope (not asked).
+- Previews: 12 static WebPs bundled in the app (gender x tone), generated once with the shipped `tryon/dummy.py`
+  pipeline from the spike's raw renders of the same outfit on M12 and M13; the generator script and its source
+  images are recorded in this document, not shipped.
+- After a change, the Hoy render follows: a tone change refetches the render read (the `img` variant changes); a
+  gender change requests the render again (another base, another cache key).
+
 ## Scope
 
 In: the tasks below. Out: complexion/body-type bases, a rounded neck cap, BiRefNet alpha (SegFormer alone was
@@ -176,4 +189,4 @@ fails; it would cost a second set of assets and a garment-length signal in the r
 
 ## Next step
 
-PR for V6c (owner approved push and PR on 2026-10-13), then V6d. Next review boundary: b197b02 (33a815a pending). The owner's DB needs `make migrate` before running V6b code.
+V6c merged (#69, 64ce22b, 2026-10-13). V6d on `feat/tryon-dummy-v6d`. Next review boundary: b197b02 (33a815a pending). The owner's DB needs `make migrate` before running V6b code.
