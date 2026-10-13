@@ -39,6 +39,19 @@ post-processing a normal CatVTON result gives a convincing dummy at about 1 s ex
   linked from settings; Hoy draws the transparent render on the linen gradient with a soft shadow instead of
   the blurred backdrop.
 
+## V6c design (parent, 2026-10-13)
+
+- Keep CatVTON warm: run the SegFormer-b2 parse on the **CPU** by default (`tryon_dummy_device`, default `cpu`)
+  instead of unloading CatVTON after every render (a cold load costs about 12 s on the next render). The parser is
+  built lazily by the worker and kept resident; its weights are already in the ML cache.
+- Feature switch `tryon_dummy_enabled` (default true). Off keeps today's full-frame output.
+- Cut lines are calibrated per base as ratios of the render height in `meta.json` (`dummy.chin`, `dummy.ankle`
+  rule) from the spike's per-base minimum chin, so the cut does not depend on the garment colour.
+- Files: the raw CatVTON output stays at `tryon/<id>.webp` (`img_path`); the dummy writes the 6 tone variants
+  `tryon/<id>_t<n>.webp` (RGBA, 3:4). `render.params.dummy` records the version; `GET /tryon/{id}` returns the
+  variant for the stored tone plus `transparent: true`, else `img_path` and `transparent: false`.
+- The cache key gains the post-processing version (`none` when the switch is off).
+
 ## Scope
 
 In: the tasks below. Out: complexion/body-type bases, a rounded neck cap, BiRefNet alpha (SegFormer alone was
@@ -126,5 +139,5 @@ fails; it would cost a second set of assets and a garment-length signal in the r
 
 ## Next step
 
-PR for V6b (owner approved push and PR on 2026-10-13). Then V6c
+V6b merged (#68, f05a1a1, 2026-10-13). V6c on `feat/tryon-dummy-v6c`
 (next review boundary: 5308c2c; 992c612 is pending in that slice). The owner's DB needs `make migrate` before running V6b code.
