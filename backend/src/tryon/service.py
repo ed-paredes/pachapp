@@ -270,7 +270,10 @@ def run_render(
 
     `get_parser` returns the (resident, lazily built) SegFormer parser of the dummy
     post-processing. A render whose `params.postprocess` is a dummy version gets the six
-    tone variants after the raw image; CatVTON stays loaded meanwhile."""
+    tone variants after the raw image; CatVTON stays loaded meanwhile. A dummy retry (a `done`
+    render re-queued for its missing dummy) skips CatVTON: it post-processes the stored raw
+    image and ends `done` whatever happens, falling back to a full run only when that file is
+    missing or unreadable."""
     assert settings.images_root is not None
     with factory() as session:
         render = session.get(TryOnRender, render_id)
@@ -297,6 +300,24 @@ def run_render(
             raise RenderFailure(ERROR_INVALID_PARAMS, f"unknown cloth types {unknown}")
         garments = _load_garments(factory, settings, render)
         _check_unchanged(render, mannequin.id, garments)
+        stored = _stored_raw(settings, render)
+        if stored is not None:
+            # A dummy retry: only the post-processing runs, on the image already stored. No
+            # engine, no GPU, and the raw file is never rewritten, so nothing can be lost.
+            progress = _Progress(factory, render_id, len(garments), params.steps, clock)
+            progress.finalizing()
+            dummy = _write_dummy(settings, render_id, mannequin, stored, get_parser)
+            _update(
+                factory,
+                render_id,
+                status=JobStatus.done,
+                step="done",
+                progress=100,
+                params={**render.params, "dummy": dummy} if dummy else render.params,
+                finished_at=_now(),
+                error=None,
+            )
+            return JobStatus.done
         progress = _Progress(factory, render_id, len(garments), params.steps, clock)
         if release_residents is not None and not engine.loaded:
             release_residents()
@@ -341,6 +362,26 @@ def run_render(
     return JobStatus.done
 
 
+def _stored_raw(settings: Settings, render: TryOnRender) -> Image.Image | None:
+    """The stored raw image of a dummy retry, or None for a normal run.
+
+    A dummy retry is a render that already has a readable raw image, asks for a dummy version
+    and has no `params.dummy` (`tryon.requests._dummy_retry_due` re-queued it). A missing or
+    unreadable file means there is nothing to reuse, so the full run applies."""
+    assert settings.images_root is not None
+    p = render.params
+    if not render.img_path or p.get("postprocess") in (None, NO_POSTPROCESS) or "dummy" in p:
+        return None
+    try:
+        path = storage.resolve_path(settings.images_root, render.img_path)
+        with Image.open(path) as opened:
+            opened.load()
+            return opened.convert("RGB")
+    except (OSError, ValueError, UnidentifiedImageError):
+        logger.warning("raw image of render %s unreadable; running it in full", render.id)
+        return None
+
+
 def _write_dummy(
     settings: Settings,
     render_id: str,
@@ -355,7 +396,9 @@ def _write_dummy(
     usable result (a person, not a dummy), and CatVTON's minutes of work are not thrown away.
     The raw image is served meanwhile (`GET /tryon/{id}` returns it as non-transparent). A
     resubmit of the same request re-queues the render so the dummy is tried again, bounded by
-    `MAX_RENDER_ATTEMPTS` (`tryon.requests._reuse`); once spent, the raw render stays for good.
+    `MAX_RENDER_ATTEMPTS` (`tryon.requests._reuse`); that retry re-runs only this step on the
+    stored raw image (`run_render`), never CatVTON, and a failure leaves it `done` and raw
+    again. Once the budget is spent, the raw render stays for good.
     The variants written so far are removed (best effort, never raising) so no half set is
     served."""
     assert settings.images_root is not None

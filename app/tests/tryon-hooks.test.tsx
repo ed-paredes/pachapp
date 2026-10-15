@@ -17,6 +17,7 @@ import {
   useRequestTryOn,
   useTryOn,
 } from '../src/hooks/useTryOn';
+import { usePatchSettings } from '../src/hooks/useSettings';
 import { isLookTryable, useTryOnCapabilities } from '../src/hooks/useTryOnCapabilities';
 import { shouldPersistQuery } from '../src/offline/persistence';
 
@@ -278,6 +279,88 @@ describe('try-on data layer', () => {
     await act(async () => result.current.request());
     await waitFor(() => expect(result.current.renderId).toBe('r2'));
     expect(requestAt(1).method).toBe('POST');
+  });
+});
+
+describe('try-on follows the model settings', () => {
+  const originalFetch = globalThis.fetch;
+  const SETTINGS = { tryon_gender: 'woman', tryon_skin_tone: 3 };
+
+  beforeEach(() => {
+    resetPollFailures();
+    globalThis.fetch = jest.fn();
+    jest.spyOn(Image, 'prefetch').mockResolvedValue(true);
+    jest.spyOn(Image, 'getCachePathAsync').mockResolvedValue(null);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    clients.splice(0).forEach((client) => client.clear());
+    globalThis.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  function seeded() {
+    const client = makeClient();
+    client.setQueryData(queryKeys.settings, SETTINGS);
+    client.setQueryData(queryKeys.tryon.byLook('g1,g2'), { renderId: 'r1' });
+    client.setQueryData(
+      queryKeys.tryon.detail('r1'),
+      render({ status: 'done', img: 'tryon/r1_t3.webp' }),
+    );
+    return client;
+  }
+
+  it('a new tone refetches the render, so Hoy gets the new variant', async () => {
+    const client = seeded();
+    fetchMock().mockImplementation(async (request: Request) =>
+      request.method === 'PATCH'
+        ? json({ ...SETTINGS, tryon_skin_tone: 5 })
+        : json(render({ status: 'done', img: 'tryon/r1_t5.webp' })),
+    );
+    const { result } = await renderHook(
+      () => ({ look: useLookTryOn(['g1', 'g2'], PIECES), patch: usePatchSettings() }),
+      { wrapper: wrapperFor(client) },
+    );
+    expect(result.current.look.render?.img).toBe('tryon/r1_t3.webp');
+
+    await act(() => result.current.patch.mutateAsync({ tryon_skin_tone: 5 }));
+
+    await waitFor(() => expect(result.current.look.render?.img).toBe('tryon/r1_t5.webp'));
+    expect(requestAt(1).url).toContain('/tryon/r1');
+    // The link survives: same render, other image.
+    expect(result.current.look.renderId).toBe('r1');
+  });
+
+  it('a new gender forgets the links, so the look is untried and can be requested again', async () => {
+    const client = seeded();
+    fetchMock().mockResolvedValue(json({ ...SETTINGS, tryon_gender: 'man' }));
+    const { result } = await renderHook(
+      () => ({ look: useLookTryOn(['g1', 'g2'], PIECES), patch: usePatchSettings() }),
+      { wrapper: wrapperFor(client) },
+    );
+    expect(result.current.look.status.phase).toBe('done');
+
+    await act(() => result.current.patch.mutateAsync({ tryon_gender: 'man' }));
+
+    await waitFor(() => expect(result.current.look.status.phase).toBe('idle'));
+    expect(result.current.look.renderId).toBeUndefined();
+    expect(client.getQueryData(queryKeys.tryon.byLooks())).toBeUndefined();
+  });
+
+  it('saving unrelated settings leaves the render alone', async () => {
+    const client = seeded();
+    fetchMock().mockResolvedValue(json({ ...SETTINGS, no_repeat_days: 9 }));
+    const { result } = await renderHook(
+      () => ({ look: useLookTryOn(['g1', 'g2'], PIECES), patch: usePatchSettings() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await act(() => result.current.patch.mutateAsync({ no_repeat_days: 9 }));
+
+    expect(result.current.look.status.phase).toBe('done');
+    // Only the PATCH went out; the finished render was not read again.
+    expect(fetchMock()).toHaveBeenCalledTimes(1);
   });
 });
 

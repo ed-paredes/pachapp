@@ -297,9 +297,11 @@ def _reuse(
 
     A `done` render whose dummy post-processing failed (dummy version requested, no
     `params.dummy`) is re-queued the same way on resubmit, so a transient parser failure is not
-    cached for good. It is bounded by the same cumulative `attempts` budget (each run counts one
-    claim) and, once spent, the raw render is returned as it is, with no cooldown round. Until
-    the new run finishes, the raw image stays in place and the render answers 202.
+    cached for good. The worker then re-runs only the post-processing on the stored raw image
+    (no CatVTON), so the retry can never lose it. It is bounded by the same cumulative
+    `attempts` budget (each run counts one claim) and, once spent, the raw render is returned
+    as it is, with no cooldown round. Until the new run finishes, the raw image stays in place
+    and the render answers 202.
 
     Retry rule: a permanent failure (`PERMANENT_ERRORS`) stays failed. Any other failure is
     re-queued while `attempts` (cumulative across resubmits) is below `MAX_RENDER_ATTEMPTS`; once
@@ -343,7 +345,7 @@ def _reuse(
         )
         requeued = result.rowcount == 1
     elif _dummy_retry_due(render):
-        # The raw image keeps being served (and its file stays) until the new run replaces it.
+        # The raw image keeps being served (and its file stays): the worker only post-processes it.
         result = session.connection().execute(
             update(TryOnRender)
             .where(
