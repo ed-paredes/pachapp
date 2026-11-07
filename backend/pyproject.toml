@@ -1,6 +1,7 @@
 [project]
 name = "pachapp-backend"
 version = "0.1.0"
+license = "MIT"
 description = "Pachapp backend: API, worker, engine, and shared settings/models."
 requires-python = ">=3.12,<3.13"
 dependencies = [

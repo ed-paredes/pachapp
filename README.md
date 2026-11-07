@@ -249,3 +249,7 @@ The app's look follows the redesign in [`docs/redesign/`](docs/redesign/) (desig
 ## Manual testing
 
 A step-by-step manual testing guide for Hito A (upload a photo, see the garment in the wardrobe), in Spanish, lives in [`docs/manual-testing/hito-a.md`](docs/manual-testing/hito-a.md). It covers setup, the three processes, curl smoke tests, every app screen and the failure cases.
+
+## License
+
+P'achapp's source code is released under the [MIT License](LICENSE). Third-party models, ML code and the try-on mannequin assets keep their own licences, and several of them are non-commercial (CatVTON, its DensePose/SCHP weights, the FASHN human parser): see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before any commercial use.
